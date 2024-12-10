@@ -11,7 +11,6 @@ local env_vars = {}
 local cached_env_files = nil
 local last_opts = nil
 local current_watcher_group = nil
-local current_watched_file = nil
 
 -- Find environment files
 local function find_env_files(opts)
@@ -94,12 +93,12 @@ local function setup_file_watcher(opts)
 		end,
 	})
 	vim.api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
-        group = current_watcher_group,
-        pattern = file_path,
-        callback = function()
-            M.refresh_env_vars(opts)
-        end,
-    })
+		group = current_watcher_group,
+		pattern = file_path,
+		callback = function()
+			M.refresh_env_vars(opts)
+		end,
+	})
 end
 
 -- Parse environment files
@@ -161,7 +160,6 @@ function M.refresh_env_vars(opts)
 	cached_env_files = nil
 	last_opts = nil
 	parse_env_file(opts, true)
-	notify("Environment variables refreshed", vim.log.levels.INFO)
 end
 
 -- Setup function

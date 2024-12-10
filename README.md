@@ -21,6 +21,12 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   dependencies = {
     'hrsh7th/nvim-cmp', -- Optional, for autocompletion support
   },
+  -- Optionally reccommend adding keybinds (I use them personally)
+  keys = {
+    { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
+    { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
+    { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
+  },
   opts = {
     hide_cmp_values = true, -- Hide sensitive values in completion
     path = vim.fn.getcwd(), -- Path to search for .env files

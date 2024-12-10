@@ -249,12 +249,41 @@ local function setup_completion(cmp)
 	})
 end
 
+-- Get environment variables (for telescope integration)
+function M.get_env_vars()
+	if next(env_vars) == nil then
+		parse_env_file()
+	end
+	return env_vars
+end
+
 -- Setup function
 function M.setup(opts)
-	opts = opts or {}
+	opts = vim.tbl_deep_extend("force", {
+		shelter = {
+			configuration = {
+				-- When partial_mode is enabled, secrets will be partially visible
+				-- Can be boolean or table:
+				-- true: uses default settings
+				-- false: disables partial mode
+				-- table: custom settings
+				partial_mode = false,  -- Default to disabled
+				mask_char = "*"     -- Character used for masking
+			},
+			modules = {
+				cmp = false,       -- Enable masking in completion
+				peek = false,      -- Enable masking in peek view
+				files = false,     -- Enable masking in files
+				telescope = false  -- Enable masking in telescope
+			}
+		}
+	}, opts or {})
 	
-	-- Initialize shelter mode
-	shelter.setup(opts)
+	-- Initialize shelter mode with the config
+	shelter.setup({
+		config = opts.shelter.configuration,
+		partial = opts.shelter.modules
+	})
 	
 	-- Create highlight groups
 	require("ecolog.highlights").setup()

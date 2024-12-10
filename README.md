@@ -28,18 +28,55 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
   },
   opts = {
-    -- Enables shelter mode for sensitive values reccommend
-    shelter_mode = {
-        cmp = true,      -- Mask values in completion menu
-        peek = false,    -- Mask values in peek window
-        files = false    -- Mask values in .env files (visual only)
+    -- Enables shelter mode for sensitive values
+    shelter = {
+        configuration = {
+            partial_mode = false,
+            mask_char = "*",   -- Character used for masking
+        },
+        modules = {
+            cmp = false,       -- Mask values in completion
+            peek = false,      -- Mask values in peek view
+            files = false,     -- Mask values in files
+            telescope = false  -- Mask values in telescope
+        }
     },
-    shelter_char = "*"  -- Character used for masking (default: "*")
     path = vim.fn.getcwd(), -- Path to search for .env files
-    preferred_environment = "development" -- Optional: prioritize specific env files
+    preferred_environment = "development", -- Optional: prioritize specific env files
   },
 }
 ```
+
+### 🎨 Syntax Highlighting
+
+The plugin provides syntax highlighting for .env files with customizable colors. You can customize the colors by linking them to different highlight groups in your configuration:
+
+| Element  | Default Group | Description          | Example       |
+| -------- | ------------- | -------------------- | ------------- |
+| variable | Identifier    | Variable names       | `DB_HOST`     |
+| operator | Operator      | Equal signs          | `=`           |
+| quote    | Special       | Quotes around values | `"` and `'`   |
+| string   | String        | Quoted values        | `"localhost"` |
+| value    | Constant      | Unquoted values      | `5432`        |
+| comment  | Comment       | Comments             | `# Database`  |
+
+#### Example Custom Colors
+
+```lua
+{
+  'philosofonusus/ecolog.nvim',
+  opts = {
+    syntax_colors = {
+      -- Use any highlight group from your colorscheme
+      variable = "Function",     -- Make variables look like functions
+      value = "Number",         -- Make unquoted values look like numbers
+      quote = "SpecialChar",    -- Custom quote highlighting
+    }
+  }
+}
+```
+
+You can use any highlight group that exists in your colorscheme. To see available highlight groups, use `:highlight`.
 
 ### Completion Setup
 
@@ -184,16 +221,62 @@ Shelter mode provides a secure way to work with sensitive environment variables 
 
 ```lua
 require('ecolog').setup({
-    shelter_mode = {
-        cmp = true,     -- Mask values in completion menu
-        peek = false,   -- Mask values in peek window
-        files = true    -- Mask values in .env files (visual only)
+    shelter = {
+        configuration = {
+            -- Partial mode configuration:
+            -- false: completely mask values (default)
+            -- true: use default partial masking settings
+            -- table: customize partial masking
+            -- partial_mode = false,
+            -- or with custom settings:
+            partial_mode = {
+                show_start = 3,    -- Show first 3 characters
+                show_end = 3,      -- Show last 3 characters
+                min_mask = 3,      -- Minimum masked characters
+            },
+            mask_char = "*",   -- Character used for masking
+        },
+        modules = {
+            cmp = false,       -- Mask values in completion
+            peek = false,      -- Mask values in peek view
+            files = false,     -- Mask values in files
+            telescope = false  -- Mask values in telescope
+        }
     },
-    shelter_char = "*"  -- Character used for masking (default: "*")
+    path = vim.fn.getcwd(), -- Path to search for .env files
+    preferred_environment = "development", -- Optional: prioritize specific env files
 })
 ```
 
 ### 🎯 Features
+
+#### Partial Masking
+
+Three modes of operation:
+
+1. **Full Masking (Default)**
+
+   ```lua
+   partial_mode = false
+   -- Example: "my-secret-key" -> "************"
+   ```
+
+2. **Default Partial Masking**
+
+   ```lua
+   partial_mode = true
+   -- Example: "my-secret-key" -> "my-***-key"
+   ```
+
+3. **Custom Partial Masking**
+   ```lua
+   partial_mode = {
+       show_start = 4,    -- Show more start characters
+       show_end = 2,      -- Show fewer end characters
+       min_mask = 3,      -- Minimum mask length
+   }
+   -- Example: "my-secret-key" -> "my-s***ey"
+   ```
 
 #### 1. Completion Protection (cmp)
 
@@ -262,7 +345,7 @@ require('ecolog').setup({
 
 ### 📝 Example
 
-Consider this `.env` file:
+Original `.env` file:
 
 ```env
 # Authentication
@@ -273,27 +356,32 @@ AUTH_TOKEN="bearer 1234567890"
 DB_HOST=localhost
 DB_USER=admin
 DB_PASS=secure_password123
-
-# API Keys
-STRIPE_KEY=sk_test_abcdef123456
-GITHUB_TOKEN=ghp_123456789abcdef
 ```
 
-With shelter mode enabled for files, it appears as:
+With full masking (partial_mode = false):
 
 ```env
 # Authentication
-JWT_SECRET=******************
+JWT_SECRET=********************
 AUTH_TOKEN=******************
 
 # Database Configuration
 DB_HOST=*********
 DB_USER=*****
 DB_PASS=******************
+```
 
-# API Keys
-STRIPE_KEY=****************
-GITHUB_TOKEN=********************
+With partial masking (partial_mode = true):
+
+```env
+# Authentication
+JWT_SECRET=my-***********key
+AUTH_TOKEN="bea*********890"
+
+# Database Configuration
+DB_HOST=loc*****ost
+DB_USER=adm***min
+DB_PASS=sec*********123
 ```
 
 ### 💡 Tips
@@ -304,7 +392,24 @@ GITHUB_TOKEN=********************
    -- In your config
    if vim.fn.getcwd():match("production") then
      require('ecolog').setup({
-       shelter_mode = { cmp = true, peek = true, files = true }
+       shelter = {
+           configuration = {
+               partial_mode = {
+                   show_start = 3,    -- Number of characters to show at start
+                   show_end = 3,      -- Number of characters to show at end
+                   mask_char = "*",   -- Character used for masking
+                   min_mask = 3,      -- Minimum number of mask characters
+               }
+           },
+           modules = {
+               cmp = true,       -- Mask values in completion
+               peek = true,      -- Mask values in peek view
+               files = true,     -- Mask values in files
+               telescope = false -- Mask values in telescope
+           }
+       },
+       path = vim.fn.getcwd(), -- Path to search for .env files
+       preferred_environment = "development", -- Optional: prioritize specific env files
      })
    end
    ```
@@ -312,9 +417,21 @@ GITHUB_TOKEN=********************
 2. **Custom Masking**: Use different characters for masking:
 
    ```lua
-   shelter_char = "•"  -- Use dots
+   shelter = {
+       configuration = {
+           partial_mode = {
+               mask_char = "•"  -- Use dots
+           }
+       }
+   }
    -- or
-   shelter_char = "█"  -- Use blocks
+   shelter = {
+       configuration = {
+           partial_mode = {
+               mask_char = "█"  -- Use blocks
+           }
+       }
+   }
    ```
 
 3. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
@@ -346,13 +463,6 @@ Contributions are welcome! Feel free to:
 ## 📄 License
 
 MIT License - See [LICENSE](./LICENSE) for details.
-
-## Roadmap
-
-- [ ] Make our own LSP server for validation and syntax highlighting (tired of shellcheck issues)
-- [ ] Add support for more providers
-- [ ] Make sure it works fine
-- [ ] Add more features
 
 ---
 

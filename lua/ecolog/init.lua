@@ -274,7 +274,10 @@ function M.setup(opts)
 		typescript = require("ecolog.providers.typescript"),
 		javascript = require("ecolog.providers.javascript"),
 		python = require("ecolog.providers.python"),
-		php = require("ecolog.providers.php")
+		php = require("ecolog.providers.php"),
+		lua = require("ecolog.providers.lua"),
+		go = require("ecolog.providers.go"),
+		rust = require("ecolog.providers.rust")
 	}
 
 	-- Register providers

@@ -1,4 +1,4 @@
-# 🌲 ecolog.nvim
+# 🌲 ecolog.nvim (VERY WIP)
 
 <div align="center">
 
@@ -122,7 +122,7 @@ Files are loaded in the following priority order:
 
 ### 🔧 Language Support
 
-#### 🟢 Currently Supported
+#### 🟢 Currently Supported (have only tested JavaScript/TypeScript/React)
 
 | Language         | Environment Access & Autocompletion trigger | Description                                                      |
 | ---------------- | ------------------------------------------- | ---------------------------------------------------------------- |
@@ -130,19 +130,19 @@ Files are loaded in the following priority order:
 | JavaScript/React | `process.env.*`<br>`import.meta.env.*`      | Complete support for both Node.js and modern frontend frameworks |
 | Python           | `os.environ.get()`                          | Native Python environment variable access                        |
 | PHP              | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access                |
+| Lua              | `os.getenv()`                               | Native Lua environment variable access                           |
+| Go               | `os.Getenv()`                               | Go standard library environment access                           |
+| Rust             | `std::env::var()`<br>`env::var()`           | Rust standard library environment access                         |
 
 #### 🚧 Coming Soon
 
 | Language | Planned Support                        | Status         |
 | -------- | -------------------------------------- | -------------- |
 | Deno     | `Deno.env.get()`                       | In Development |
-| Rust     | `std::env::var()`                      | Planned        |
-| Go       | `os.Getenv()`                          | Planned        |
 | Ruby     | `ENV[]`                                | Planned        |
 | C#       | `Environment.GetEnvironmentVariable()` | Planned        |
 | Shell    | `$VAR`, `${VAR}`                       | Planned        |
 | Docker   | `ARG`, `ENV`                           | Planned        |
-| Lua      | `os.getenv()`                          | Planned        |
 | Kotlin   | `System.getenv()`                      | Planned        |
 
 > 💡 **Want support for another language?**  

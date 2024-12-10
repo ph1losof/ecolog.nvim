@@ -181,16 +181,21 @@ function M.mask_value(value, context)
 	if not config.partial_mode then
 		result = string.rep(config.mask_char, len)
 	else
-		if len <= (config.partial_mode.show_start + config.partial_mode.show_end) then
-			-- If string is too short, show first character and mask the rest
-			local mask_length = math.max(config.partial_mode.min_mask, len - 1)
-			result = string.sub(str_to_mask, 1, 1) .. string.rep(config.mask_char, mask_length)
+		local show_start = config.partial_mode.show_start
+		local show_end = config.partial_mode.show_end
+		local min_mask = config.partial_mode.min_mask
+
+		-- Calculate available space for masking
+		local available_mask_space = len - show_start - show_end
+
+		if available_mask_space < min_mask then
+			-- If we can't meet minimum mask requirement, mask the entire string
+			result = string.rep(config.mask_char, len)
 		else
 			-- Show start and end parts with masked middle section
-			local start_part = string.sub(str_to_mask, 1, config.partial_mode.show_start)
-			local end_part = string.sub(str_to_mask, -config.partial_mode.show_end)
-			local mask_length = math.max(config.partial_mode.min_mask, len - config.partial_mode.show_start - config.partial_mode.show_end)
-			result = start_part .. string.rep(config.mask_char, mask_length) .. end_part
+			local start_part = string.sub(str_to_mask, 1, show_start)
+			local end_part = string.sub(str_to_mask, -show_end)
+			result = start_part .. string.rep(config.mask_char, available_mask_space) .. end_part
 		end
 	end
 

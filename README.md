@@ -374,18 +374,20 @@ DB_USER=*****
 DB_PASS=******************
 ```
 
-With partial masking (partial_mode = true):
+#### Partial Masking Examples
 
-```env
-# Authentication
-JWT_SECRET=my-***********key
-AUTH_TOKEN="bea*********890"
+With default settings (show_start=3, show_end=3, min_mask=3):
 
-# Database Configuration
-DB_HOST=loc*****ost
-DB_USER=adm***min
-DB_PASS=sec*********123
 ```
+"mysecretkey"     -> "mys***key"    # Enough space for min_mask (3) characters
+"secret"          -> "******"        # Not enough space for min_mask between shown parts
+"api_key"         -> "*******"       # Would only have 1 char for masking, less than min_mask
+"very_long_key"   -> "ver*****key"   # Plenty of space for masking
+```
+
+The min_mask setting ensures that sensitive values are properly protected by requiring
+a minimum number of masked characters between the visible parts. If this minimum
+cannot be met, the entire value is masked for security.
 
 ### Telescope Integration
 

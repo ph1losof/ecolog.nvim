@@ -305,6 +305,18 @@ function M.setup(opts)
 	end, {
 		desc = "Select environment file to use",
 	})
+
+	api.nvim_create_user_command("EnvGoto", function()
+		select.select_env_file(opts, function(file)
+			if file then
+				-- Open the selected file in a new buffer
+				vim.cmd("edit " .. vim.fn.fnameescape(file))
+				notify("Opened environment file: " .. vim.fn.fnamemodify(file, ":t"), vim.log.levels.INFO)
+			end
+		end)
+	end, {
+		desc = "Go to selected environment file",
+	})
 end
 
 return M

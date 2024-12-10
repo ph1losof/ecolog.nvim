@@ -87,6 +87,7 @@ require('cmp').setup({
 | `:EnvPeek`                 | Peek at environment variable under cursor          |
 | `:EnvRefresh`              | Refresh environment variable cache                 |
 | `:EnvSelect`               | Open a selection window to choose environment file |
+| `:EnvGoto`                 | Open selected environment file in buffer           |
 
 ### 📝 Environment File Priority
 

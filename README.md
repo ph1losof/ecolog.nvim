@@ -28,7 +28,13 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
   },
   opts = {
-    hide_cmp_values = true, -- Hide sensitive values in completion
+    -- Enables shelter mode for sensitive values reccommend
+    shelter_mode = {
+        cmp = true,      -- Mask values in completion menu
+        peek = false,    -- Mask values in peek window
+        files = false    -- Mask values in .env files (visual only)
+    },
+    shelter_char = "*"  -- Character used for masking (default: "*")
     path = vim.fn.getcwd(), -- Path to search for .env files
     preferred_environment = "development" -- Optional: prioritize specific env files
   },
@@ -54,46 +60,57 @@ require('cmp').setup({
 
 - Quick peek at environment variable values and metadata
 - Intelligent context detection
+- Type-aware value display
 
 🤖 **Smart Autocompletion**
 
 - Integration with nvim-cmp
 - Context-aware suggestions
 - Type-safe completions
+- Intelligent provider detection
 
-🔒 **Security First**
+🛡️ **Shelter Mode Protection**
 
-- Optional sensitive value masking
-- Secure value display options
+- Mask sensitive values in completion menu
+- Visual protection for .env file content
+- Secure value peeking with masking
+- Flexible per-feature control
+- Real-time visual masking
 
 🔄 **Real-time Updates**
 
 - Automatic cache management
 - Live environment file monitoring
+- Instant mask updates
+- File change detection
 
 📁 **Multi-Environment Support**
 
 - Multiple .env file handling
 - Priority-based file loading
 - Environment-specific configurations
+- Smart file selection
 
 💡 **Intelligent Type System**
 
 - Automatic type inference
 - Type validation and checking
 - Smart type suggestions
+- Context-based type detection
 
 ## 🚀 Usage
 
 ### Available Commands
 
-| Command                       | Description                                        |
-| ----------------------------- | -------------------------------------------------- |
-| `:EcologPeek [variable_name]` | Peek at environment variable value and metadata    |
-| `:EcologPeek`                 | Peek at environment variable under cursor          |
-| `:EcologRefresh`              | Refresh environment variable cache                 |
-| `:EcologSelect`               | Open a selection window to choose environment file |
-| `:EcologGoto`                 | Open selected environment file in buffer           |
+| Command                                    | Description                                          |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata      |
+| `:EcologPeek`                              | Peek at environment variable under cursor            |
+| `:EcologRefresh`                           | Refresh environment variable cache                   |
+| `:EcologSelect`                            | Open a selection window to choose environment file   |
+| `:EcologGoto`                              | Open selected environment file in buffer             |
+| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values    |
+| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file |
 
 ### 📝 Environment File Priority
 
@@ -158,6 +175,154 @@ require('ecolog').setup({
   }
 })
 ```
+
+## 🛡️ Shelter Mode
+
+Shelter mode provides a secure way to work with sensitive environment variables by masking their values in different contexts. This feature helps prevent accidental exposure of sensitive data like API keys, passwords, tokens, and other credentials.
+
+### 🔧 Configuration
+
+```lua
+require('ecolog').setup({
+    shelter_mode = {
+        cmp = true,     -- Mask values in completion menu
+        peek = false,   -- Mask values in peek window
+        files = true    -- Mask values in .env files (visual only)
+    },
+    shelter_char = "*"  -- Character used for masking (default: "*")
+})
+```
+
+### 🎯 Features
+
+#### 1. Completion Protection (cmp)
+
+- Masks sensitive values in the completion menu
+- Preserves variable names and types for context
+- Integrates seamlessly with nvim-cmp
+- Example completion item:
+  ```
+  DB_PASSWORD  Type: string
+  Value: ********
+  ```
+
+#### 2. Peek Window Protection
+
+- Masks values when using `:EcologPeek`
+- Shows metadata (type, source) while protecting the value
+- Example peek window:
+  ```
+  Name   : DB_PASSWORD
+  Type   : string
+  Source : .env.development
+  Value  : ********
+  ```
+
+#### 3. File Content Protection
+
+- Visually masks values in .env files
+- Preserves the actual file content (masks are display-only)
+- Updates automatically on file changes
+- Maintains file structure and comments
+- Only masks the value portion after `=`
+- Supports quoted and unquoted values
+
+### 🎮 Commands
+
+`:EcologShelterToggle` provides flexible control over shelter mode:
+
+1. Basic Usage:
+
+   ```vim
+   :EcologShelterToggle              " Toggle between all-off and initial settings
+   ```
+
+2. Global Control:
+
+   ```vim
+   :EcologShelterToggle enable       " Enable all shelter modes
+   :EcologShelterToggle disable      " Disable all shelter modes
+   ```
+
+3. Feature-Specific Control:
+
+   ```vim
+   :EcologShelterToggle enable cmp   " Enable shelter for completion only
+   :EcologShelterToggle disable peek " Disable shelter for peek only
+   :EcologShelterToggle enable files " Enable shelter for file display
+   ```
+
+4. Quick Value Reveal:
+   ```vim
+   :EcologShelterLinePeek           " Temporarily reveal value on current line
+   ```
+   - Shows the actual value for the current line
+   - Value is hidden again when cursor moves away
+   - Only works when shelter mode is enabled for files
+
+### 📝 Example
+
+Consider this `.env` file:
+
+```env
+# Authentication
+JWT_SECRET=my-super-secret-key
+AUTH_TOKEN="bearer 1234567890"
+
+# Database Configuration
+DB_HOST=localhost
+DB_USER=admin
+DB_PASS=secure_password123
+
+# API Keys
+STRIPE_KEY=sk_test_abcdef123456
+GITHUB_TOKEN=ghp_123456789abcdef
+```
+
+With shelter mode enabled for files, it appears as:
+
+```env
+# Authentication
+JWT_SECRET=******************
+AUTH_TOKEN=******************
+
+# Database Configuration
+DB_HOST=*********
+DB_USER=*****
+DB_PASS=******************
+
+# API Keys
+STRIPE_KEY=****************
+GITHUB_TOKEN=********************
+```
+
+### 💡 Tips
+
+1. **Selective Protection**: Enable shelter mode only for sensitive environments:
+
+   ```lua
+   -- In your config
+   if vim.fn.getcwd():match("production") then
+     require('ecolog').setup({
+       shelter_mode = { cmp = true, peek = true, files = true }
+     })
+   end
+   ```
+
+2. **Custom Masking**: Use different characters for masking:
+
+   ```lua
+   shelter_char = "•"  -- Use dots
+   -- or
+   shelter_char = "█"  -- Use blocks
+   ```
+
+3. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
+
+4. **Security Best Practices**:
+   - Enable shelter mode by default for production environments
+   - Use file shelter mode during screen sharing or pair programming
+   - Enable completion shelter mode to prevent accidental exposure in screenshots
 
 ## 🎨 Theme Integration
 

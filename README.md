@@ -47,37 +47,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
-### 🎨 Syntax Highlighting
-
-The plugin provides syntax highlighting for .env files with customizable colors. You can customize the colors by linking them to different highlight groups in your configuration:
-
-| Element  | Default Group | Description          | Example       |
-| -------- | ------------- | -------------------- | ------------- |
-| variable | Identifier    | Variable names       | `DB_HOST`     |
-| operator | Operator      | Equal signs          | `=`           |
-| quote    | Special       | Quotes around values | `"` and `'`   |
-| string   | String        | Quoted values        | `"localhost"` |
-| value    | Constant      | Unquoted values      | `5432`        |
-| comment  | Comment       | Comments             | `# Database`  |
-
-#### Example Custom Colors
-
-```lua
-{
-  'philosofonusus/ecolog.nvim',
-  opts = {
-    syntax_colors = {
-      -- Use any highlight group from your colorscheme
-      variable = "Function",     -- Make variables look like functions
-      value = "Number",         -- Make unquoted values look like numbers
-      quote = "SpecialChar",    -- Custom quote highlighting
-    }
-  }
-}
-```
-
-You can use any highlight group that exists in your colorscheme. To see available highlight groups, use `:highlight`.
-
 ### Completion Setup
 
 Add 'ecolog' to your nvim-cmp sources:
@@ -88,6 +57,40 @@ require('cmp').setup({
     { name = 'ecolog' },
     -- your other sources...
   },
+})
+```
+
+### Telescope Integration
+
+First, load the extension:
+
+```lua
+require('telescope').load_extension('ecolog')
+```
+
+Then configure it in your Telescope setup (optional):
+
+```lua
+require('telescope').setup({
+  extensions = {
+    ecolog = {
+      shelter = {
+        -- Whether to show masked values when copying to clipboard
+        mask_on_copy = false,
+      },
+      -- Default keybindings
+      mappings = {
+        -- Key to copy value to clipboard
+        copy_value = "<C-y>",
+        -- Key to copy name to clipboard
+        copy_name = "<C-n>",
+        -- Key to append value to buffer
+        append_value = "<C-a>",
+        -- Key to append name to buffer (defaults to <CR>)
+        append_name = "<CR>",
+      },
+    }
+  }
 })
 ```
 
@@ -383,6 +386,37 @@ DB_HOST=loc*****ost
 DB_USER=adm***min
 DB_PASS=sec*********123
 ```
+
+### Telescope Integration
+
+The plugin provides a Telescope extension for searching and managing environment variables.
+
+#### Usage
+
+Open the environment variables picker:
+
+```vim
+:Telescope ecolog env
+```
+
+#### Features
+
+- 🔍 Search through all environment variables
+- 📋 Copy variable names or values to clipboard
+- ⌨️ Insert variables into your code
+- 🛡️ Integrated with shelter mode for sensitive data protection
+- 📝 Shows variable metadata (type, source file)
+
+#### Default Keymaps
+
+| Key     | Action                  |
+| ------- | ----------------------- |
+| `<CR>`  | Insert variable name    |
+| `<C-y>` | Copy value to clipboard |
+| `<C-n>` | Copy name to clipboard  |
+| `<C-a>` | Append value to buffer  |
+
+All keymaps are customizable through the configuration.
 
 ### 💡 Tips
 

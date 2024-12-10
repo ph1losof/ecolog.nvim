@@ -347,6 +347,13 @@ Contributions are welcome! Feel free to:
 
 MIT License - See [LICENSE](./LICENSE) for details.
 
+## Roadmap
+
+- [ ] Make our own LSP server for validation and syntax highlighting (tired of shellcheck issues)
+- [ ] Add support for more providers
+- [ ] Make sure it works fine
+- [ ] Add more features
+
 ---
 
 <div align="center">

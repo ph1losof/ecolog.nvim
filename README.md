@@ -433,9 +433,9 @@ All keymaps are customizable through the configuration.
                partial_mode = {
                    show_start = 3,    -- Number of characters to show at start
                    show_end = 3,      -- Number of characters to show at end
-                   mask_char = "*",   -- Character used for masking
                    min_mask = 3,      -- Minimum number of mask characters
                }
+              mask_char = "*",   -- Character used for masking
            },
            modules = {
                cmp = true,       -- Mask values in completion

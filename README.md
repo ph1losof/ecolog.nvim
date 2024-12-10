@@ -81,13 +81,13 @@ require('cmp').setup({
 
 ### Available Commands
 
-| Command                    | Description                                        |
-| -------------------------- | -------------------------------------------------- |
-| `:EnvPeek [variable_name]` | Peek at environment variable value and metadata    |
-| `:EnvPeek`                 | Peek at environment variable under cursor          |
-| `:EnvRefresh`              | Refresh environment variable cache                 |
-| `:EnvSelect`               | Open a selection window to choose environment file |
-| `:EnvGoto`                 | Open selected environment file in buffer           |
+| Command                       | Description                                        |
+| ----------------------------- | -------------------------------------------------- |
+| `:EcologPeek [variable_name]` | Peek at environment variable value and metadata    |
+| `:EcologPeek`                 | Peek at environment variable under cursor          |
+| `:EcologRefresh`              | Refresh environment variable cache                 |
+| `:EcologSelect`               | Open a selection window to choose environment file |
+| `:EcologGoto`                 | Open selected environment file in buffer           |
 
 ### 📝 Environment File Priority
 

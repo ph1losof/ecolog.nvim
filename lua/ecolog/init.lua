@@ -298,20 +298,20 @@ function M.setup(opts)
 	end
 
 	-- Create commands
-	api.nvim_create_user_command("EnvPeek", function(args)
+	api.nvim_create_user_command("EcologPeek", function(args)
 		peek.peek_env_value(args.args, opts, env_vars, providers, parse_env_file)
 	end, {
 		nargs = "?",
 		desc = "Peek at environment variable value",
 	})
 
-	api.nvim_create_user_command("EnvRefresh", function()
+	api.nvim_create_user_command("EcologRefresh", function()
 		M.refresh_env_vars(opts)
 	end, {
 		desc = "Refresh environment variables cache",
 	})
 
-	api.nvim_create_user_command("EnvSelect", function()
+	api.nvim_create_user_command("EcologSelect", function()
 		select.select_env_file(opts, function(file)
 			if file then
 				selected_env_file = file
@@ -324,7 +324,7 @@ function M.setup(opts)
 		desc = "Select environment file to use",
 	})
 
-	api.nvim_create_user_command("EnvGoto", function()
+	api.nvim_create_user_command("EcologGoto", function()
 		if selected_env_file then
 			vim.cmd("edit " .. vim.fn.fnameescape(selected_env_file))
 		else

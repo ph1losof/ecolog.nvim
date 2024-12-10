@@ -453,17 +453,13 @@ All keymaps are customizable through the configuration.
    ```lua
    shelter = {
        configuration = {
-           partial_mode = {
-               mask_char = "•"  -- Use dots
-           }
+          mask_char = "•"  -- Use dots
        }
    }
    -- or
    shelter = {
        configuration = {
-           partial_mode = {
-               mask_char = "█"  -- Use blocks
-           }
+          mask_char = "█"  -- Use blocks
        }
    }
    ```

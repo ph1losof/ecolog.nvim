@@ -129,7 +129,7 @@ Files are loaded in the following priority order:
 | Kotlin   | `System.getenv()`                      | Planned        |
 
 > 💡 **Want support for another language?**  
-> Feel free to contribute by adding a new provider! Check out the [Custom Providers](#-custom-providers) section.
+> Feel free to contribute by adding a new provider! Or just check out the [Custom Providers](#-custom-providers) section.
 
 ## 🔌 Custom Providers
 

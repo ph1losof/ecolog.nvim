@@ -327,7 +327,6 @@ function M.setup(opts)
 	api.nvim_create_user_command("EnvGoto", function()
 		if selected_env_file then
 			vim.cmd("edit " .. vim.fn.fnameescape(selected_env_file))
-			notify("Opened environment file: " .. vim.fn.fnamemodify(selected_env_file, ":t"), vim.log.levels.INFO)
 		else
 			notify("No environment file selected", vim.log.levels.WARN)
 		end

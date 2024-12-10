@@ -10,6 +10,8 @@ local peek = require("ecolog.peek")
 local env_vars = {}
 local cached_env_files = nil
 local last_opts = nil
+local current_watcher_group = nil
+local current_watched_file = nil
 
 -- Find environment files
 local function find_env_files(opts)
@@ -67,6 +69,37 @@ local function find_env_files(opts)
 
 	cached_env_files = files
 	return files
+end
+
+local function setup_file_watcher(opts)
+	-- Clear existing watcher if any
+	if current_watcher_group then
+		vim.api.nvim_del_augroup_by_id(current_watcher_group)
+	end
+
+	-- Create new watcher group
+	current_watcher_group = vim.api.nvim_create_augroup("EcologFileWatcher", { clear = true })
+
+	-- Watch for new .env files in the directory
+	vim.api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
+		group = current_watcher_group,
+		pattern = opts.path .. "/.env*",
+		callback = function(ev)
+			-- Check if the new file matches our env file pattern
+			if ev.file:match("%.env$") or ev.file:match("%.env%.[^.]+$") then
+				-- Refresh env vars to include the new file
+				M.refresh_env_vars(opts)
+				notify("New environment file detected: " .. vim.fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
+			end
+		end,
+	})
+	vim.api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
+        group = current_watcher_group,
+        pattern = file_path,
+        callback = function()
+            M.refresh_env_vars(opts)
+        end,
+    })
 end
 
 -- Parse environment files
@@ -157,6 +190,9 @@ function M.setup(opts)
 	end
 	providers.register_many(php)
 
+	-- Add file watchers for live monitoring
+	setup_file_watcher(opts)
+
 	-- Register completion source
 	local has_cmp, cmp = pcall(require, "cmp")
 	if has_cmp then
@@ -168,17 +204,17 @@ function M.setup(opts)
 
 		cmp.register_source("ecolog", {
 			get_trigger_characters = function()
-				return { ".", "'" }  -- Add '.' for process.env and import.meta.env
+				return { ".", "'" } -- Add '.' for process.env and import.meta.env
 			end,
 
 			complete = function(self, request, callback)
 				local filetype = vim.bo.filetype
 				local available_providers = providers.get_providers(filetype)
-				
+
 				-- Check if we're typing after any of the provider patterns
 				local should_complete = false
 				local line = request.context.cursor_before_line
-				
+
 				for _, provider in ipairs(available_providers) do
 					local trigger = provider.get_completion_trigger()
 					-- Create a pattern that matches partial completion of the trigger
@@ -194,17 +230,17 @@ function M.setup(opts)
 							break
 						end
 					end
-					
+
 					if should_complete then
 						break
 					end
 				end
-				
+
 				if not should_complete then
 					callback({ items = {}, isIncomplete = false })
 					return
 				end
-				
+
 				parse_env_file()
 
 				local items = {}

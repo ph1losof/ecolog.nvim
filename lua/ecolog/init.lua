@@ -11,6 +11,7 @@ local env_vars = {}
 local cached_env_files = nil
 local last_opts = nil
 local current_watcher_group = nil
+local selected_env_file = nil
 
 -- Find environment files
 local function find_env_files(opts)
@@ -47,17 +48,16 @@ local function find_env_files(opts)
 	table.sort(files, function(a, b)
 		-- If preferred environment is specified, prioritize it
 		if opts.preferred_environment ~= "" then
-			local a_is_preferred = b:match("%.env%." .. opts.preferred_environment .. "$") ~= nil
-			local b_is_preferred = a:match("%.env%." .. opts.preferred_environment .. "$") ~= nil
+			local a_is_preferred = a:match("%.env%." .. opts.preferred_environment .. "$") ~= nil
+			local b_is_preferred = b:match("%.env%." .. opts.preferred_environment .. "$") ~= nil
 			if a_is_preferred ~= b_is_preferred then
 				return a_is_preferred
 			end
 		end
 
 		-- Then prioritize .env file
-		local a_is_env = b:match("%.env$") ~= nil
-		local b_is_env = a:match("%.env$") ~= nil
-		print(a_is_env, b_is_env, a, b, a_is_env ~= b_is_env)
+		local a_is_env = a:match("%.env$") ~= nil
+		local b_is_env = b:match("%.env$") ~= nil
 		if a_is_env ~= b_is_env then
 			return a_is_env
 		end
@@ -92,11 +92,19 @@ local function setup_file_watcher(opts)
 			end
 		end,
 	})
+
+	-- If no file is selected, don't set up watcher
+	if not selected_env_file then
+		return
+	end
+
+	-- Watch only the selected env file for changes
 	vim.api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
 		group = current_watcher_group,
-		pattern = file_path,
+		pattern = selected_env_file,
 		callback = function()
 			M.refresh_env_vars(opts)
+			notify("Environment file updated: " .. vim.fn.fnamemodify(selected_env_file, ":t"), vim.log.levels.INFO)
 		end,
 	})
 end
@@ -170,6 +178,15 @@ function M.setup(opts)
 
 	-- Create highlight groups
 	require("ecolog.highlights").setup()
+
+	-- Find and select initial environment file
+	local env_files = find_env_files(opts)
+	if #env_files > 0 then
+		selected_env_file = env_files[1]
+		opts.preferred_environment = vim.fn.fnamemodify(selected_env_file, ":t"):gsub("^%.env%.", "")
+		notify("Using environment file: " .. vim.fn.fnamemodify(selected_env_file, ":t"), vim.log.levels.INFO)
+	end
+
 	parse_env_file(opts)
 
 	-- Register built-in providers first
@@ -297,6 +314,7 @@ function M.setup(opts)
 	api.nvim_create_user_command("EnvSelect", function()
 		select.select_env_file(opts, function(file)
 			if file then
+				selected_env_file = file
 				opts.preferred_environment = vim.fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
 				M.refresh_env_vars(opts)
 				notify("Switched to environment file: " .. vim.fn.fnamemodify(file, ":t"), vim.log.levels.INFO)
@@ -307,13 +325,12 @@ function M.setup(opts)
 	})
 
 	api.nvim_create_user_command("EnvGoto", function()
-		select.select_env_file(opts, function(file)
-			if file then
-				-- Open the selected file in a new buffer
-				vim.cmd("edit " .. vim.fn.fnameescape(file))
-				notify("Opened environment file: " .. vim.fn.fnamemodify(file, ":t"), vim.log.levels.INFO)
-			end
-		end)
+		if selected_env_file then
+			vim.cmd("edit " .. vim.fn.fnameescape(selected_env_file))
+			notify("Opened environment file: " .. vim.fn.fnamemodify(selected_env_file, ":t"), vim.log.levels.INFO)
+		else
+			notify("No environment file selected", vim.log.levels.WARN)
+		end
 	end, {
 		desc = "Go to selected environment file",
 	})

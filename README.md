@@ -1,21 +1,19 @@
-# 🌲 ecolog.nvim (VERY WIP)
+# 🌲 ecolog.nvim
+
+<div align="center">
+
+![Neovim](https://img.shields.io/badge/NeoVim-%2357A143.svg?&style=for-the-badge&logo=neovim&logoColor=white)
+![Lua](https://img.shields.io/badge/lua-%232C2D72.svg?style=for-the-badge&logo=lua&logoColor=white)
 
 A Neovim plugin for seamless environment variable integration and management. Provides intelligent autocompletion, type checking, and value peeking for environment variables in your projects.
 
-## ✨ Features
-
-- 🔍 **Environment Variable Peeking**: Quickly peek at environment variable values and metadata
-- 🤖 **Intelligent Autocompletion**: Integration with nvim-cmp for smart environment variable completion
-- 🔒 **Secure Value Display**: Option to hide sensitive environment variable values
-- 🔄 **Auto-refresh**: Automatic cache management for environment files
-- 📁 **Multiple Env File Support**: Handles multiple .env files with priority management
-- 💡 **Type Detection**: Automatic type inference for environment variables
+</div>
 
 ## 📦 Installation
 
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
-### Plugin setup
+### Plugin Setup
 
 ```lua
 {
@@ -44,54 +42,87 @@ require('cmp').setup({
 })
 ```
 
+## ✨ Features
+
+🔍 **Environment Variable Peeking**
+
+- Quick peek at environment variable values and metadata
+- Intelligent context detection
+
+🤖 **Smart Autocompletion**
+
+- Integration with nvim-cmp
+- Context-aware suggestions
+- Type-safe completions
+
+🔒 **Security First**
+
+- Optional sensitive value masking
+- Secure value display options
+
+🔄 **Real-time Updates**
+
+- Automatic cache management
+- Live environment file monitoring
+
+📁 **Multi-Environment Support**
+
+- Multiple .env file handling
+- Priority-based file loading
+- Environment-specific configurations
+
+💡 **Intelligent Type System**
+
+- Automatic type inference
+- Type validation and checking
+- Smart type suggestions
+
 ## 🚀 Usage
 
-### Commands
+### Available Commands
 
-- `:EnvPeek [variable_name]` - Peek at environment variable value and metadata
-- `:EnvPeek` - Peek at enviroment variable under cursor
-- `:EnvRefresh` - Refresh environment variable cache
-- `:EnvSelect` - Open a selection window to choose environment file
+| Command                    | Description                                        |
+| -------------------------- | -------------------------------------------------- |
+| `:EnvPeek [variable_name]` | Peek at environment variable value and metadata    |
+| `:EnvPeek`                 | Peek at environment variable under cursor          |
+| `:EnvRefresh`              | Refresh environment variable cache                 |
+| `:EnvSelect`               | Open a selection window to choose environment file |
 
-### Environment File Priority
+### 📝 Environment File Priority
 
-Files are loaded in the following priority:
+Files are loaded in the following priority order:
 
 1. `.env.{preferred_environment}` (if preferred_environment is set)
 2. `.env`
 3. Other `.env.*` files (alphabetically)
 
-### Supported File Types
+### 🔧 Language Support
 
-Currently supports:
+#### 🟢 Currently Supported
 
-- ⌨️ TypeScript/TypeScriptReact support for `process.env` completions
-- ⌨️ JavaScript/React support for `process.env` and `import.meta.env` completions
-- ⌨️ Python support for `os.environ.get`
-- ⌨️ PHP support for `getenv()` and `_ENV[]`
-- ⌨️ Deno support coming soon
-- ⌨️ Rust support coming soon
-- ... and more!
+| Language         | Environment Access & Autocompletion trigger | Description                                                      |
+| ---------------- | ------------------------------------------- | ---------------------------------------------------------------- |
+| TypeScript/React | `process.env.*`<br>`import.meta.env.*`      | Full support for Node.js, Vite environment variables             |
+| JavaScript/React | `process.env.*`<br>`import.meta.env.*`      | Complete support for both Node.js and modern frontend frameworks |
+| Python           | `os.environ.get()`                          | Native Python environment variable access                        |
+| PHP              | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access                |
 
-### Autocompletion
+#### 🚧 Coming Soon
 
-In TypeScript/TypeScriptReact files, autocompletion triggers when typing:
+| Language | Planned Support                        | Status         |
+| -------- | -------------------------------------- | -------------- |
+| Deno     | `Deno.env.get()`                       | In Development |
+| Rust     | `std::env::var()`                      | Planned        |
+| Go       | `os.Getenv()`                          | Planned        |
+| Ruby     | `ENV[]`                                | Planned        |
+| C#       | `Environment.GetEnvironmentVariable()` | Planned        |
+| Shell    | `$VAR`, `${VAR}`                       | Planned        |
+| Docker   | `ARG`, `ENV`                           | Planned        |
+| Lua      | `os.getenv()`                          | Planned        |
+| Kotlin   | `System.getenv()`                      | Planned        |
 
-- `process.env.`
-
-In JavaScript/React files, autocompletion triggers when typing:
-
-- `process.env.`
-- `import.meta.env.` (for Vite and other modern frameworks)
-
-In Python files, autocompletion triggers when typing:
-
-- `os.environ.get(`
-
-In PHP files, autocompletion triggers when typing:
-
-- `getenv('`
-- `_ENV['`
+> 💡 **Want support for another language?**  
+> Feel free to contribute by adding a new provider! Check out the [Custom Providers](#-custom-providers) section.
 
 ## 🔌 Custom Providers
 
@@ -121,19 +152,31 @@ require('ecolog').setup({
 })
 ```
 
-## 🎨 Appearance
+## 🎨 Theme Integration
 
-The plugin uses your current colorscheme's colors for a consistent look:
+The plugin seamlessly integrates with your current colorscheme:
 
-- Variable names use Identifier colors
-- Types use Type colors
-- Values use String colors
-- Sources use Directory colors
+| Element        | Color Source |
+| -------------- | ------------ |
+| Variable names | `Identifier` |
+| Types          | `Type`       |
+| Values         | `String`     |
+| Sources        | `Directory`  |
 
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to submit issues and pull requests on GitHub.
+Contributions are welcome! Feel free to:
+
+- 🐛 Report bugs
+- 💡 Suggest features
+- 🔧 Submit pull requests
 
 ## 📄 License
 
 MIT License - See [LICENSE](./LICENSE) for details.
+
+---
+
+<div align="center">
+Made with ❤️ by <a href="https://github.com/philosofonusus">TENTACLE</a>
+</div>

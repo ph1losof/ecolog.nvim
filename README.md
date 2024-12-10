@@ -31,17 +31,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Enables shelter mode for sensitive values
     shelter = {
         configuration = {
-            -- Partial mode configuration:
-            -- false: completely mask values (default)
-            -- true: use default partial masking settings
-            -- table: customize partial masking
-            -- partial_mode = false,
-            -- or with custom settings:
-            partial_mode = {
-                show_start = 3,    -- Show first 3 characters
-                show_end = 3,      -- Show last 3 characters
-                min_mask = 3,      -- Minimum masked characters
-            },
+            partial_mode = false, -- Disables partial mode see shelter configuration below
             mask_char = "*",   -- Character used for masking
         },
         modules = {

@@ -13,8 +13,8 @@ local PATTERNS = {
 	env_with_suffix = "%.env%.[^.]+$",
 	env_line = "^[^#](.+)$",
 	key_value = "([^=]+)=(.+)",
-	quoted = '^[\'"](.*)[\'"]$',
-	trim = "^%s*(.-)%s*$"
+	quoted = "^['\"](.*)['\"]$",
+	trim = "^%s*(.-)%s*$",
 }
 
 -- Cache and state management
@@ -97,7 +97,7 @@ local function parse_env_line(line, file_path)
 	return key, {
 		value = value,
 		type = tonumber(value) and "number" or "string",
-		source = file_path
+		source = file_path,
 	}
 end
 
@@ -165,15 +165,18 @@ function M.check_env_type(var_name, opts)
 
 	local var = env_vars[var_name]
 	if var then
-		notify(string.format(
-			"Environment variable '%s' exists with type: %s (from %s)",
-			var_name,
-			var.type,
-			fn.fnamemodify(var.source, ":t")
-		), vim.log.levels.INFO)
+		notify(
+			string.format(
+				"Environment variable '%s' exists with type: %s (from %s)",
+				var_name,
+				var.type,
+				fn.fnamemodify(var.source, ":t")
+			),
+			vim.log.levels.INFO
+		)
 		return var.type
 	end
-	
+
 	notify(string.format("Environment variable '%s' does not exist", var_name), vim.log.levels.WARN)
 	return nil
 end
@@ -210,9 +213,12 @@ local function setup_completion(cmp)
 			for _, provider in ipairs(available_providers) do
 				local trigger = provider.get_completion_trigger()
 				local parts = vim.split(trigger, ".", { plain = true })
-				local pattern = table.concat(vim.tbl_map(function(part)
-					return vim.pesc(part)
-				end, parts), "%.")
+				local pattern = table.concat(
+					vim.tbl_map(function(part)
+						return vim.pesc(part)
+					end, parts),
+					"%."
+				)
 
 				if line:match(pattern .. "$") then
 					should_complete = true
@@ -236,7 +242,7 @@ local function setup_completion(cmp)
 					detail = fn.fnamemodify(var_info.source, ":t"),
 					documentation = {
 						kind = "markdown",
-						value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, doc_value)
+						value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, doc_value),
 					},
 					kind_hl_group = "CmpItemKindEcolog",
 					menu_hl_group = "CmpItemMenuEcolog",
@@ -267,24 +273,24 @@ function M.setup(opts)
 				-- true: uses default settings
 				-- false: disables partial mode
 				-- table: custom settings
-				partial_mode = false,  -- Default to disabled
-				mask_char = "*"     -- Character used for masking
+				partial_mode = false, -- Default to disabled
+				mask_char = "*", -- Character used for masking
 			},
 			modules = {
-				cmp = false,       -- Enable masking in completion
-				peek = false,      -- Enable masking in peek view
-				files = false,     -- Enable masking in files
-				telescope = false  -- Enable masking in telescope
-			}
-		}
+				cmp = false, -- Enable masking in completion
+				peek = false, -- Enable masking in peek view
+				files = false, -- Enable masking in files
+				telescope = false, -- Enable masking in telescope
+			},
+		},
 	}, opts or {})
-	
+
 	-- Initialize shelter mode with the config
 	shelter.setup({
 		config = opts.shelter.configuration,
-		partial = opts.shelter.modules
+		partial = opts.shelter.modules,
 	})
-	
+
 	-- Create highlight groups
 	require("ecolog.highlights").setup()
 
@@ -306,7 +312,7 @@ function M.setup(opts)
 		php = require("ecolog.providers.php"),
 		lua = require("ecolog.providers.lua"),
 		go = require("ecolog.providers.go"),
-		rust = require("ecolog.providers.rust")
+		rust = require("ecolog.providers.rust"),
 	}
 
 	-- Register providers
@@ -341,7 +347,7 @@ function M.setup(opts)
 
 	api.nvim_create_user_command("EcologShelterToggle", function(args)
 		local arg = args.args:lower()
-		
+
 		if arg == "" then
 			shelter.toggle_all()
 			return

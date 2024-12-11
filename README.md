@@ -95,6 +95,16 @@ require('telescope').setup({
 })
 ```
 
+## ⚡ Performance
+
+Ecolog is designed with performance in mind:
+
+- Minimal impact on startup time through lazy loading of heavy dependencies
+- Smart caching of environment variables and file contents
+- Efficient file watching with debounced updates
+- On-demand loading of language providers and completion features
+- Optimized code path for frequently used operations
+
 ## ✨ Features
 
 🔍 **Environment Variable Peeking**

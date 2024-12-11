@@ -22,7 +22,7 @@ local function get_module(name)
 	return setmetatable({}, {
 		__index = function(_, key)
 			return require_on_demand(name)[key]
-		end
+		end,
 	})
 end
 
@@ -80,7 +80,7 @@ local function find_env_files(opts)
 	end
 
 	-- Store options for cache validation
-	last_opts = vim.tbl_extend("force", {}, opts)
+	last_opts = tbl_extend("force", {}, opts)
 
 	-- Find all env files
 	local raw_files = fn.globpath(opts.path, ".env*", false, true)
@@ -89,10 +89,10 @@ local function find_env_files(opts)
 	if type(raw_files) == "string" then
 		raw_files = vim.split(raw_files, "\n")
 	end
-	
+
 	local files = vim.tbl_filter(function(v)
 		local is_env = v:match(PATTERNS.env_file) or v:match(PATTERNS.env_with_suffix)
-		return is_env ~= nil  -- Return true if there's a match
+		return is_env ~= nil -- Return true if there's a match
 	end, raw_files)
 
 	if #files == 0 then
@@ -139,36 +139,37 @@ local function parse_env_line(line, file_path)
 
 	-- Clean up key
 	key = key:match(PATTERNS.trim)
-	
+
 	-- Extract comment if present
 	local comment
-	if value:match('^["\'].-["\']%s+(.+)$') then
+	if value:match("^[\"'].-[\"']%s+(.+)$") then
 		-- For quoted values with comments
-		local quoted_value = value:match('^(["\'].-["\'])%s+.+$')
-		comment = value:match('^["\'].-["\']%s+#?%s*(.+)$')
+		local quoted_value = value:match("^([\"'].-[\"'])%s+.+$")
+		comment = value:match("^[\"'].-[\"']%s+#?%s*(.+)$")
 		value = quoted_value
-	elseif value:match('^[^%s]+%s+(.+)$') and not value:match('^["\']') then
+	elseif value:match("^[^%s]+%s+(.+)$") and not value:match("^[\"']") then
 		-- For unquoted values with comments
-		local main_value = value:match('^([^%s]+)%s+.+$')
-		comment = value:match('^[^%s]+%s+#?%s*(.+)$')
+		local main_value = value:match("^([^%s]+)%s+.+$")
+		comment = value:match("^[^%s]+%s+#?%s*(.+)$")
 		value = main_value
 	end
 
 	-- Remove any quotes from value
 	value = value:gsub(PATTERNS.quoted, "%1")
 
-	return key, {
-		value = value,
-		type = tonumber(value) and "number" or "string",
-		source = file_path,
-		comment = comment,
-	}
+	return key,
+		{
+			value = value,
+			type = tonumber(value) and "number" or "string",
+			source = file_path,
+			comment = comment,
+		}
 end
 
 -- Parse environment files
 local function parse_env_file(opts, force)
 	opts = opts or {}
-	
+
 	if not force and next(env_vars) ~= nil then
 		return
 	end
@@ -361,11 +362,13 @@ function M.setup(opts)
 
 	-- Lazy load providers only when needed
 	local function load_providers()
-		if M._providers_loaded then return end
-		
+		if M._providers_loaded then
+			return
+		end
+
 		local providers_list = {
 			typescript = "ecolog.providers.typescript",
-			javascript = "ecolog.providers.javascript", 
+			javascript = "ecolog.providers.javascript",
 			python = "ecolog.providers.python",
 			php = "ecolog.providers.php",
 			lua = "ecolog.providers.lua",
@@ -402,21 +405,27 @@ function M.setup(opts)
 	end
 
 	-- Defer initial parsing
-	vim.schedule(function()
+	schedule(function()
 		parse_env_file(opts)
 	end)
 
 	-- Set up file watchers
 	setup_file_watcher(opts)
 
-	-- Set up completion if available
-	local has_cmp, cmp = pcall(require, "cmp")
-	if has_cmp then
-		-- Load providers first
-		load_providers()
-		-- Then set up completion
-		setup_completion(cmp)
-	end
+	-- Set up lazy loading for cmp
+	vim.api.nvim_create_autocmd("InsertEnter", {
+		callback = function()
+			local has_cmp, cmp = pcall(require, "cmp")
+			if has_cmp and not M._cmp_loaded then
+				-- Load providers first
+				load_providers()
+				-- Then set up completion
+				setup_completion(cmp)
+				M._cmp_loaded = true
+			end
+		end,
+		once = true,
+	})
 
 	-- Create commands
 	local commands = {
@@ -505,7 +514,7 @@ function M.setup(opts)
 					local line = api.nvim_get_current_line()
 					local cursor_pos = api.nvim_win_get_cursor(0)
 					local col = cursor_pos[2]
-					
+
 					-- Find word boundaries
 					local word_start, word_end = find_word_boundaries(line, col)
 
@@ -547,7 +556,7 @@ function M.setup(opts)
 				for i, line in ipairs(lines) do
 					if line:match("^" .. vim.pesc(var_name) .. "=") then
 						-- Move cursor to the line
-						api.nvim_win_set_cursor(0, {i, 0})
+						api.nvim_win_set_cursor(0, { i, 0 })
 						-- Center the screen on the line
 						vim.cmd("normal! zz")
 						break

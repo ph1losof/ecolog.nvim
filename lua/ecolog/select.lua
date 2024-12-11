@@ -18,6 +18,16 @@ function M.select_env_file(opts, callback)
 
     -- State for selection
     local selected_idx = 1
+    
+    -- Set initial selection to active file if it exists
+    if opts.active_file then
+        for i, file in ipairs(env_files) do
+            if file == opts.active_file then
+                selected_idx = i
+                break
+            end
+        end
+    end
 
     -- Function to update content
     local function get_content()

@@ -539,7 +539,10 @@ function M.setup(opts)
     },
     EcologSelect = {
       callback = function()
-        select.select_env_file(opts, function(file)
+        select.select_env_file({
+          path = opts.path,
+          active_file = selected_env_file  -- Pass the currently selected file
+        }, function(file)
           if file then
             selected_env_file = file
             opts.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")

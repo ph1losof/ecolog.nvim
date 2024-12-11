@@ -101,6 +101,7 @@ require('telescope').setup({
 - Quick peek at environment variable values and metadata
 - Intelligent context detection
 - Type-aware value display
+- Preview inline comments directly in your code
 
 🤖 **Smart Autocompletion**
 
@@ -298,10 +299,11 @@ Three modes of operation:
 - Shows metadata (type, source) while protecting the value
 - Example peek window:
   ```
-  Name   : DB_PASSWORD
-  Type   : string
-  Source : .env.development
-  Value  : ********
+  Name     : DB_PASSWORD
+  Type     : string
+  Source   : .env.development
+  Value    : ********
+  Comment  : Very important value
   ```
 
 #### 3. File Content Protection

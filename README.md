@@ -15,13 +15,13 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Features](#-features)
 - [Usage](#-usage)
 - [Integrations](#-integrations)
-  - [LSP Integration](#lsp-integration-experimental)
+  - [LSP Integration (Very convenient just check it out)](#lsp-integration-experimental)
   - [Telescope Integration](#telescope-integration)
   - [Completion Integration](#completion-setup)
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#-shelter-mode)
-- [Types System](#-ecolog-types)
+- [Type System](#-ecolog-types)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
 - [Contributing](#-contributing)
@@ -39,11 +39,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   dependencies = {
     'hrsh7th/nvim-cmp', -- Optional, for autocompletion support
   },
-  -- Optionally reccommend adding keybinds (I use them personally)
+  -- Optionally reccommend adding keybinds (lsp integration supposed to handle some of them automatically so please check it out)
   keys = {
     { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
-    { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
+    { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
   },
   lazy = false,
   opts = {
@@ -176,14 +176,14 @@ require('ecolog').setup({
 
 #### Features
 
-- **Hover Preview**: When you hover over an environment variable, it will show the value and metadata in a floating window
+- **Hover Preview**: When you hover (K) over an environment variable, it will show the value and metadata in a floating window
 - **Goto Definition**: Using goto-definition (gd) on an environment variable will jump to its definition in the .env file
 
 #### Known Limitations
 
 1. The integration overrides the default LSP hover and definition handlers
 2. May conflict with other plugins that modify LSP hover behavior (lsp-saga for example, working on it btw)
-3. Performance impact on LSP operations (though optimized)
+3. Performance impact on LSP operations (though optimized and should be unnoticable)
 
 #### Disabling LSP Integration
 
@@ -197,13 +197,7 @@ require('ecolog').setup({
 })
 ```
 
-#### Troubleshooting
-
-If you experience issues with LSP functionality:
-
-1. Try disabling the LSP integration
-2. Check for conflicts with other LSP-related plugins
-3. Report issues on our GitHub repository
+Please report such issues on our GitHub repository
 
 ### Telescope Integration
 
@@ -502,174 +496,91 @@ All keymaps are customizable through the configuration.
 
 ## 🛡 Ecolog Types
 
-Ecolog includes a flexible type system for environment variables with built-in types and custom type support.
+Ecolog includes a flexible type system for environment variables with built-in and custom types.
 
 ### Type Configuration
 
-You can configure which types are enabled through the `types` option in setup:
+Configure types through the `types` option in setup:
 
 ```lua
 require('ecolog').setup({
   types = {
-    -- Network types
+    -- Built-in types
     url = true,          -- URLs (http/https)
     localhost = true,    -- Localhost URLs
     ipv4 = true,        -- IPv4 addresses
     database_url = true, -- Database connection strings
-    
-    -- Data types
     number = true,       -- Integers and decimals
     boolean = true,      -- true/false/yes/no/1/0
     json = true,         -- JSON objects and arrays
-    
-    -- Date and time
     iso_date = true,     -- ISO 8601 dates (YYYY-MM-DD)
     iso_time = true,     -- ISO 8601 times (HH:MM:SS)
-    
-    -- Visual
     hex_color = true,    -- Hex color codes (#RGB or #RRGGBB)
+
+    -- Custom types
+    semver = {
+      pattern = "^v?(%d+)%.(%d+)%.(%d+)([%-+].+)?$",
+      validate = function(value)
+        local major, minor, patch = value:match("^v?(%d+)%.(%d+)%.(%d+)")
+        return major and minor and patch
+      end,
+      transform = function(value)
+        return value:gsub("^v", "")
+      end
+    },
+
+    aws_region = {
+      pattern = "^[a-z]{2}%-[a-z]+%-[0-9]$",
+      validate = function(value)
+        local valid_regions = {
+          ["us-east-1"] = true,
+          ["us-west-2"] = true,
+          -- ... etc
+        }
+        return valid_regions[value] == true
+      end
+    }
   }
 })
 ```
 
 You can also:
+
 - Enable all built-in types: `types = true`
 - Disable all built-in types: `types = false`
-- Enable specific types only:
+- Enable specific types and add custom ones:
+
 ```lua
 require('ecolog').setup({
   types = {
     url = true,
     number = true,
-    -- other types will be disabled
+    -- Custom type
+    jwt = {
+      pattern = "^[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+$",
+      validate = function(value)
+        local parts = vim.split(value, ".", { plain = true })
+        return #parts == 3
+      end
+    }
   }
 })
 ```
 
-Note: Custom types (configured via `custom_types`) are independent of this configuration and will remain active regardless of built-in type settings.
+### Custom Type Definition
 
-### Custom Types
-
-Ecolog allows you to define your own custom types for environment variables. This feature enables you to add specialized validation and transformation for your specific needs.
-
-### Built-in Types
-
-Ecolog includes several built-in types:
-
-- `string` (default)
-- `number`
-- `boolean` (true/false/yes/no/1/0)
-- `ipv4`
-- `url`
-- `localhost`
-- `database_url`
-- `iso_date`
-- `iso_time`
-- `json`
-- `hex_color`
-
-### Example: Adding Custom Types
-
-```lua
-require('ecolog').setup({
-    -- ... other options ...
-    types = {
-        -- Semantic Version type
-        semver = {
-            pattern = "^v?(%d+)%.(%d+)%.(%d+)([%-+].+)?$",
-            validate = function(value)
-                local major, minor, patch = value:match("^v?(%d+)%.(%d+)%.(%d+)")
-                return major and minor and patch
-            end,
-            transform = function(value)
-                -- Remove 'v' prefix if present
-                return value:gsub("^v", "")
-            end
-        },
-
-        -- AWS Region type
-        aws_region = {
-            pattern = "^[a-z]{2}%-[a-z]+%-[0-9]$",
-            validate = function(value)
-                -- List of valid AWS regions
-                local valid_regions = {
-                    ["us-east-1"] = true,
-                    ["us-west-2"] = true,
-                    -- ... etc
-                }
-                return valid_regions[value] == true
-            end
-        },
-
-        -- JWT Token type
-        jwt = {
-            pattern = "^[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+$",
-            validate = function(value)
-                -- Check if it has three parts separated by dots
-                local parts = vim.split(value, ".", { plain = true })
-                return #parts == 3
-            end
-        }
-    }
-})
-```
-
-### Custom Type Configuration
-
-Each custom type can have the following components:
+Each custom type requires:
 
 1. **`pattern`** (required): A Lua pattern string for initial matching
-
-   - Must be a valid Lua pattern
-   - Used for first-pass validation
-
 2. **`validate`** (optional): A function for additional validation
-
-   ```lua
-   validate = function(value)
-       -- Return true if valid, false if not
-       return is_valid
-   end
-   ```
-
-   - Receives the raw value as argument
-   - Should return `true` for valid values, `false` otherwise
-   - Can implement complex validation logic
-
 3. **`transform`** (optional): A function to transform the value
-   ```lua
-   transform = function(value)
-       -- Return the transformed value
-       return transformed_value
-   end
-   ```
-   - Receives the raw value as argument
-   - Returns the transformed value
-   - Useful for normalization or formatting
 
-### Usage in .env Files
-
-Once custom types are defined, they will be automatically detected in your .env files:
+Example usage in .env files:
 
 ```env
-# These will be recognized by the custom types above
-VERSION=v1.2.3                  # type: semver
-REGION=us-east-1               # type: aws_region
-AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # type: jwt
-```
-
-### Type Detection
-
-Types are automatically detected when environment variables are loaded. You can check a variable's type using the `:EcologPeek` command or use cmp feature.
-
-### Disabling Types
-
-If you don't need type checking, you can disable it:
-
-```lua
-require('ecolog').setup({
-    types = false
-})
+VERSION=v1.2.3                  # Will be detected as semver type
+REGION=us-east-1               # Will be detected as aws_region type
+AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
 ```
 
 ## 💡 Tips

@@ -2,7 +2,6 @@ local M = {}
 
 -- Configuration state
 local config = {
-  custom_types_enabled = true,
   built_in_types = {
     -- Network types
     url = true,
@@ -27,14 +26,21 @@ function M.setup(opts)
   
   -- Handle types configuration
   if type(opts.types) == "table" then
-    -- Reset all built-in types to false first
+    -- Reset all types to false first
     for type_name in pairs(config.built_in_types) do
       config.built_in_types[type_name] = false
     end
-    -- Enable only specified types
-    for type_name, enabled in pairs(opts.types) do
+    -- Enable specified types and store custom types
+    for type_name, type_def in pairs(opts.types) do
       if config.built_in_types[type_name] ~= nil then
-        config.built_in_types[type_name] = enabled
+        config.built_in_types[type_name] = type_def
+      elseif type(type_def) == "table" and type_def.pattern then
+        -- Store custom type
+        M.custom_types[type_name] = {
+          pattern = type_def.pattern,
+          validate = type_def.validate,
+          transform = type_def.transform,
+        }
       end
     end
   elseif type(opts.types) == "boolean" then
@@ -43,9 +49,6 @@ function M.setup(opts)
       config.built_in_types[type_name] = opts.types
     end
   end
-
-  -- Register any custom types if provided
-  M.register_custom_types(opts.custom_types)
 end
 
 -- Pre-compile patterns for better performance

@@ -350,6 +350,9 @@ function M.setup(opts)
 		},
 	}, opts or {})
 
+	-- Initialize highlights first
+	require("ecolog.highlights").setup()
+
 	-- Initialize shelter mode with the config
 	shelter.setup({
 		config = opts.shelter.configuration,

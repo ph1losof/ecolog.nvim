@@ -427,6 +427,85 @@ function M.setup(opts)
 	end, {
 		desc = "Go to selected environment file",
 	})
+
+	-- Add these functions at the top of the file with other local functions
+	local function find_word_boundaries(line, col)
+		local word_start = col
+		while word_start > 0 and line:sub(word_start, word_start):match("[%w_]") do
+			word_start = word_start - 1
+		end
+
+		local word_end = col
+		while word_end <= #line and line:sub(word_end + 1, word_end + 1):match("[%w_]") do
+			word_end = word_end + 1
+		end
+
+		return word_start + 1, word_end
+	end
+
+	-- Update the EcologGotoVar command
+	api.nvim_create_user_command("EcologGotoVar", function(args)
+		local filetype = vim.bo.filetype
+		local available_providers = providers.get_providers(filetype)
+		local var_name = args.args
+
+		-- If no variable name provided, try to get it from cursor position
+		if var_name == "" then
+			local line = api.nvim_get_current_line()
+			local cursor_pos = api.nvim_win_get_cursor(0)
+			local col = cursor_pos[2]
+			
+			-- Find word boundaries
+			local word_start, word_end = find_word_boundaries(line, col)
+
+			-- Try to extract variable using providers
+			for _, provider in ipairs(available_providers) do
+				local extracted = provider.extract_var(line, word_end)
+				if extracted then
+					var_name = extracted
+					break
+				end
+			end
+
+			-- If no provider matched, use the word under cursor
+			if not var_name or #var_name == 0 then
+				var_name = line:sub(word_start, word_end)
+			end
+		end
+
+		if not var_name or #var_name == 0 then
+			notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
+			return
+		end
+
+		-- Parse env files if needed
+		parse_env_file(opts)
+
+		-- Check if variable exists
+		local var = env_vars[var_name]
+		if not var then
+			notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
+			return
+		end
+
+		-- Open the file
+		vim.cmd("edit " .. fn.fnameescape(var.source))
+
+		-- Find the line with the variable
+		local lines = api.nvim_buf_get_lines(0, 0, -1, false)
+		for i, line in ipairs(lines) do
+			if line:match("^" .. vim.pesc(var_name) .. "=") then
+				-- Move cursor to the line
+				api.nvim_win_set_cursor(0, {i, 0})
+				-- Center the screen on the line
+				vim.cmd("normal! zz")
+				break
+			end
+		end
+	end, {
+		nargs = "?",
+		desc = "Go to environment variable definition in file",
+	})
 end
 
 return M

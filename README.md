@@ -143,15 +143,17 @@ require('telescope').setup({
 
 ### Available Commands
 
-| Command                                    | Description                                          |
-| ------------------------------------------ | ---------------------------------------------------- |
-| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata      |
-| `:EcologPeek`                              | Peek at environment variable under cursor            |
-| `:EcologRefresh`                           | Refresh environment variable cache                   |
-| `:EcologSelect`                            | Open a selection window to choose environment file   |
-| `:EcologGoto`                              | Open selected environment file in buffer             |
-| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values    |
-| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file |
+| Command                                    | Description                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                           |
+| `:EcologPeek`                              | Peek at environment variable under cursor                                 |
+| `:EcologRefresh`                           | Refresh environment variable cache                                        |
+| `:EcologSelect`                            | Open a selection window to choose environment file                        |
+| `:EcologGoto`                              | Open selected environment file in buffer                                  |
+| `:EcologGotoVar`                           | Go to specific variable definition in env file                            |
+| `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor |
+| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                         |
+| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                      |
 
 ### 📝 Environment File Priority
 

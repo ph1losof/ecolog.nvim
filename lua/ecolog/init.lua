@@ -91,13 +91,31 @@ local function parse_env_line(line, file_path)
 		return nil
 	end
 
-	value = value:gsub(PATTERNS.quoted, "%1")
+	-- Clean up key
 	key = key:match(PATTERNS.trim)
+	
+	-- Extract comment if present
+	local comment
+	if value:match('^["\'].-["\']%s+(.+)$') then
+		-- For quoted values with comments
+		local quoted_value = value:match('^(["\'].-["\'])%s+.+$')
+		comment = value:match('^["\'].-["\']%s+#?%s*(.+)$')
+		value = quoted_value
+	elseif value:match('^[^%s]+%s+(.+)$') and not value:match('^["\']') then
+		-- For unquoted values with comments
+		local main_value = value:match('^([^%s]+)%s+.+$')
+		comment = value:match('^[^%s]+%s+#?%s*(.+)$')
+		value = main_value
+	end
+
+	-- Remove any quotes from value
+	value = value:gsub(PATTERNS.quoted, "%1")
 
 	return key, {
 		value = value,
 		type = tonumber(value) and "number" or "string",
 		source = file_path,
+		comment = comment, -- Clean comment is stored
 	}
 end
 

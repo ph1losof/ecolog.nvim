@@ -9,7 +9,7 @@ local M = {}
 -- Cached patterns
 local PATTERNS = {
 	word = "[%w_]",
-	label_width = 9, -- Length of "Name   : ", "Type   : ", etc.
+	label_width = 10, -- 8 chars for label + 2 chars for ":"
 }
 
 -- Peek state
@@ -67,20 +67,32 @@ local function create_peek_content(var_name, var_info)
 	local value = shelter.mask_value(var_info.value, "peek")
 	local source = fn.fnamemodify(var_info.source, ":t")
 
+	local lines = {
+		"Name    : " .. var_name,
+		"Type    : " .. var_info.type,
+		"Source  : " .. source,
+		"Value   : " .. value,
+	}
+
+	local label_width = 10 -- 8 chars for label + 2 chars for ":"
+
+	local highlights = {
+		{ "EcologTitle", 0, 0, -1 },
+		{ "EcologVariable", 0, label_width, label_width + #var_name },
+		{ "EcologType", 1, label_width, label_width + #var_info.type },
+		{ "EcologSource", 2, label_width, label_width + #source },
+		{ "EcologValue", 3, label_width, label_width + #value },
+	}
+
+	-- Add comment line if comment exists
+	if var_info.comment then
+		table.insert(lines, "Comment : " .. var_info.comment)
+		table.insert(highlights, { "Comment", #lines - 1, label_width, -1 })
+	end
+
 	return {
-		lines = {
-			"Name   : " .. var_name,
-			"Type   : " .. var_info.type,
-			"Source : " .. source,
-			"Value  : " .. value,
-		},
-		highlights = {
-			{ "EcologTitle", 0, 0, -1 },
-			{ "EcologVariable", 0, PATTERNS.label_width, PATTERNS.label_width + #var_name },
-			{ "EcologType", 1, PATTERNS.label_width, PATTERNS.label_width + #var_info.type },
-			{ "EcologSource", 2, PATTERNS.label_width, PATTERNS.label_width + #source },
-			{ "EcologValue", 3, PATTERNS.label_width, PATTERNS.label_width + #value },
-		},
+		lines = lines,
+		highlights = highlights,
 	}
 end
 

@@ -8,7 +8,9 @@ local namespace = api.nvim_create_namespace("ecolog_shelter")
 -- Cached patterns
 local PATTERNS = {
 	env_line = "^([^#%s][^=]+)=(.+)$",
-	quoted = "^(['\"])(.*)['\"]$", -- Capture the quote type and content separately
+	quoted = "^(['\"])(.*[^%s])['\"]%s*", -- Updated to match quotes with optional trailing spaces
+	quoted_with_comment = "^(['\"])(.*[^%s])['\"]%s+(.+)$", -- New pattern for quoted values with comments
+	unquoted_with_spaces = "^(%S+)%s+(%S.*)$", -- New pattern to match unquoted values with spaces
 }
 
 -- Features list for iteration
@@ -170,41 +172,38 @@ function M.mask_value(value, context)
 		return value
 	end
 
-	-- Check if value is quoted and extract content if it is
-	local quote, content = value:match(PATTERNS.quoted)
-	local str_to_mask = content or value
-
-	local len = #str_to_mask
-	local result
-
-	-- If partial mode is disabled or not configured, use full masking
-	if not config.partial_mode then
-		result = string.rep(config.mask_char, len)
-	else
-		local show_start = config.partial_mode.show_start
-		local show_end = config.partial_mode.show_end
-		local min_mask = config.partial_mode.min_mask
-
-		-- Calculate available space for masking
-		local available_mask_space = len - show_start - show_end
-
-		if available_mask_space < min_mask then
-			-- If we can't meet minimum mask requirement, mask the entire string
-			result = string.rep(config.mask_char, len)
-		else
-			-- Show start and end parts with masked middle section
-			local start_part = string.sub(str_to_mask, 1, show_start)
-			local end_part = string.sub(str_to_mask, -show_end)
-			result = start_part .. string.rep(config.mask_char, available_mask_space) .. end_part
-		end
+	-- Check if value has an inline comment
+	local quote, content = value:match(PATTERNS.quoted_with_comment)
+	if quote and content then
+		-- If there's an inline comment, only mask the content and preserve the comment
+		local masked = M.mask_value(quote .. content .. quote, context)
+		return masked .. " " .. value:match(PATTERNS.quoted_with_comment):sub(3)
 	end
 
-	-- If the original value was quoted, add quotes back
-	if quote then
-		return quote .. result .. quote
+	-- Check if value is quoted (without comment) and extract content if it is
+	quote, content = value:match(PATTERNS.quoted)
+	if quote and content then
+		-- For quoted values, mask everything inside quotes but preserve trailing spaces
+		local trailing_spaces = value:match(quote .. content .. quote .. "(%s*)$") or ""
+		local masked = string.rep(config.mask_char, #content)
+		return quote .. masked .. quote .. trailing_spaces
 	end
 
-	return result
+	-- Handle unquoted values with spaces
+	local first_word, rest = value:match(PATTERNS.unquoted_with_spaces)
+	if first_word and rest then
+		-- Mask only the first word, preserve the rest
+		return string.rep(config.mask_char, #first_word) .. " " .. rest
+	end
+
+	-- For single words or other cases, preserve trailing spaces
+	local word, spaces = value:match("^(%S+)(%s*)$")
+	if word then
+		return string.rep(config.mask_char, #word) .. spaces
+	end
+
+	-- Default case: mask everything
+	return string.rep(config.mask_char, #value)
 end
 
 -- Get current state for a feature

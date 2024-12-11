@@ -27,6 +27,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
   },
+  lazy = false,
   opts = {
     -- Enables shelter mode for sensitive values
     shelter = {

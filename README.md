@@ -95,6 +95,58 @@ require('telescope').setup({
 })
 ```
 
+## LSP Integration (Experimental)
+
+> ⚠️ **Warning**: The LSP integration is currently experimental and may interfere with your existing LSP setup. Use with caution.
+
+Ecolog provides optional LSP integration that enhances the hover and definition functionality for environment variables. When enabled, it will:
+
+- Show environment variable values when hovering over them
+- Jump to environment variable definitions using goto-definition
+
+### Setup
+
+To enable LSP integration, add this to your Neovim configuration:
+
+```lua
+require('ecolog').setup({
+    integrations = {
+        lsp = true,
+    }
+})
+```
+
+### Features
+
+- **Hover Preview**: When you hover over an environment variable, it will show the value and metadata in a floating window
+- **Goto Definition**: Using goto-definition (gd) on an environment variable will jump to its definition in the .env file
+
+### Known Limitations
+
+1. The integration overrides the default LSP hover and definition handlers
+2. May conflict with other plugins that modify LSP hover behavior
+3. Performance impact on LSP operations (though optimized)
+
+### Disabling LSP Integration
+
+If you experience any issues, you can disable the LSP integration:
+
+```lua
+require('ecolog').setup({
+    integrations = {
+        lsp = false,
+    }
+})
+```
+
+### Troubleshooting
+
+If you experience issues with LSP functionality:
+
+1. Try disabling the LSP integration
+2. Check for conflicts with other LSP-related plugins
+3. Report issues on our GitHub repository
+
 ## ⚡ Performance
 
 Ecolog is designed with performance in mind:

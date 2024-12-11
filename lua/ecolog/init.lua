@@ -379,6 +379,9 @@ function M.setup(opts)
         telescope = false,
       },
     },
+    integrations = {
+      lsp = false,
+    },
     types = true, -- Enable all types by default
     custom_types = {}, -- Custom types configuration
     preferred_environment = "", -- Add this default
@@ -398,6 +401,11 @@ function M.setup(opts)
     types = opts.types,
     custom_types = opts.custom_types,
   })
+
+  -- Set up LSP integration if enabled
+  if opts.integrations.lsp then
+    require("ecolog.lsp").setup()
+  end
 
   -- Lazy load providers only when needed
   local function load_providers()

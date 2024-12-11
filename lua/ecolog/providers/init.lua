@@ -14,6 +14,40 @@ M.providers = setmetatable({}, {
   end,
 })
 
+-- Load providers
+function M.load_providers()
+  if M._providers_loaded then
+    return
+  end
+
+  local providers_list = {
+    typescript = "ecolog.providers.typescript",
+    javascript = "ecolog.providers.javascript",
+    python = "ecolog.providers.python",
+    php = "ecolog.providers.php",
+    lua = "ecolog.providers.lua",
+    go = "ecolog.providers.go",
+    rust = "ecolog.providers.rust",
+  }
+
+  for name, module_path in pairs(providers_list) do
+    local ok, provider = pcall(require, module_path)
+    if ok then
+      if type(provider) == "table" then
+        if provider.provider then
+          M.register(provider.provider)
+        else
+          M.register_many(provider)
+        end
+      else
+        M.register(provider)
+      end
+    end
+  end
+
+  M._providers_loaded = true
+end
+
 -- Optimized register function
 function M.register(provider)
   if not (provider.pattern and provider.filetype and provider.extract_var) then

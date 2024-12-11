@@ -444,7 +444,7 @@ function M.setup(opts)
   if #initial_env_files > 0 then
     -- Get the first file and set it as selected
     selected_env_file = initial_env_files[1]
-    
+
     -- Only update preferred_environment if it wasn't already set
     if opts.preferred_environment == "" then
       local env_suffix = fn.fnamemodify(selected_env_file, ":t"):gsub("^%.env%.", "")
@@ -456,7 +456,7 @@ function M.setup(opts)
         selected_env_file = sorted_files[1]
       end
     end
-    
+
     -- Show notification
     notify(string.format("Selected environment file: %s", fn.fnamemodify(selected_env_file, ":t")), vim.log.levels.INFO)
   end
@@ -541,7 +541,7 @@ function M.setup(opts)
       callback = function()
         select.select_env_file({
           path = opts.path,
-          active_file = selected_env_file  -- Pass the currently selected file
+          active_file = selected_env_file, -- Pass the currently selected file
         }, function(file)
           if file then
             selected_env_file = file

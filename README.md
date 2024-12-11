@@ -92,7 +92,7 @@ require('ecolog').setup({
 ### Known Limitations
 
 1. The integration overrides the default LSP hover and definition handlers
-2. May conflict with other plugins that modify LSP hover behavior
+2. May conflict with other plugins that modify LSP hover behavior (lsp-saga for example, working on it btw)
 3. Performance impact on LSP operations (though optimized)
 
 ### Disabling LSP Integration

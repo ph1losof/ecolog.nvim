@@ -1,16 +1,35 @@
 local M = {}
 
--- Table to store language providers
-M.providers = {}
+-- Cache vim functions
+local type = type
+local error = error
+local ipairs = ipairs
+local tinsert = table.insert
 
--- Provider interface definition
----@class Provider
----@field pattern string Pattern to match environment variable access
----@field filetype string[] List of filetypes this provider supports
----@field extract_var function Function to extract variable name from line
----@field get_completion_trigger function Function to get completion trigger pattern
+-- Optimize provider storage
+M.providers = setmetatable({}, {
+	__index = function(t, k)
+		t[k] = {}
+		return t[k]
+	end
+})
 
--- Register multiple providers
+-- Optimized register function
+function M.register(provider)
+	if not (provider.pattern and provider.filetype and provider.extract_var) then
+		error("Provider must have pattern, filetype, and extract_var fields")
+	end
+
+	local filetypes = type(provider.filetype) == "string" 
+		and {provider.filetype} 
+		or provider.filetype
+
+	for _, ft in ipairs(filetypes) do
+		tinsert(M.providers[ft], provider)
+	end
+end
+
+-- Optimized register_many
 function M.register_many(providers)
 	if type(providers) ~= "table" then
 		error("Providers must be a table")
@@ -21,29 +40,9 @@ function M.register_many(providers)
 	end
 end
 
--- Register a new language provider
-function M.register(provider)
-	if not provider.pattern or not provider.filetype or not provider.extract_var then
-		error("Provider must have pattern, filetype, and extract_var fields")
-	end
-
-	-- Allow single filetype to be passed as string
-	if type(provider.filetype) == "string" then
-		provider.filetype = { provider.filetype }
-	end
-
-	-- Register provider for each filetype
-	for _, ft in ipairs(provider.filetype) do
-		if not M.providers[ft] then
-			M.providers[ft] = {}
-		end
-		table.insert(M.providers[ft], provider)
-	end
-end
-
--- Get providers for a filetype
+-- Optimized get_providers
 function M.get_providers(filetype)
-	return M.providers[filetype] or {}
+	return M.providers[filetype]
 end
 
 return M

@@ -2,20 +2,59 @@ local M = {}
 local api = vim.api
 local fn = vim.fn
 local notify = vim.notify
-local providers = require("ecolog.providers")
-local select = require("ecolog.select")
-local peek = require("ecolog.peek")
-local shelter = require("ecolog.shelter")
 
--- Cached patterns
+-- Cache frequently used functions
+local tbl_extend = vim.tbl_deep_extend
+local schedule = vim.schedule
+local pesc = vim.pesc
+
+-- Lazy load modules with caching
+local _cached_modules = {}
+local function require_on_demand(name)
+	if not _cached_modules[name] then
+		_cached_modules[name] = require(name)
+	end
+	return _cached_modules[name]
+end
+
+-- Lazy load modules only when needed
+local function get_module(name)
+	return setmetatable({}, {
+		__index = function(_, key)
+			return require_on_demand(name)[key]
+		end
+	})
+end
+
+local providers = get_module("ecolog.providers")
+local select = get_module("ecolog.select")
+local peek = get_module("ecolog.peek")
+local shelter = get_module("ecolog.shelter")
+
+-- Pre-compile patterns for better performance
 local PATTERNS = {
-	env_file = "%.env$",
-	env_with_suffix = "%.env%.[^.]+$",
+	env_file = "^.+/%.env$",
+	env_with_suffix = "^.+/%.env%.[^.]+$",
 	env_line = "^[^#](.+)$",
 	key_value = "([^=]+)=(.+)",
 	quoted = "^['\"](.*)['\"]$",
 	trim = "^%s*(.-)%s*$",
 }
+
+-- Find word boundaries around cursor position
+local function find_word_boundaries(line, col)
+	local word_start = col
+	while word_start > 0 and line:sub(word_start, word_start):match("[%w_]") do
+		word_start = word_start - 1
+	end
+
+	local word_end = col
+	while word_end <= #line and line:sub(word_end + 1, word_end + 1):match("[%w_]") do
+		word_end = word_end + 1
+	end
+
+	return word_start + 1, word_end
+end
 
 -- Cache and state management
 local env_vars = {}
@@ -45,19 +84,26 @@ local function find_env_files(opts)
 
 	-- Find all env files
 	local raw_files = fn.globpath(opts.path, ".env*", false, true)
+
+	-- Ensure raw_files is a table
+	if type(raw_files) == "string" then
+		raw_files = vim.split(raw_files, "\n")
+	end
+	
 	local files = vim.tbl_filter(function(v)
-		return v:match(PATTERNS.env_file) or v:match(PATTERNS.env_with_suffix)
+		local is_env = v:match(PATTERNS.env_file) or v:match(PATTERNS.env_with_suffix)
+		return is_env ~= nil  -- Return true if there's a match
 	end, raw_files)
 
 	if #files == 0 then
 		return {}
 	end
 
-	-- Sort files by priority
+	-- Sort files by priority using string patterns
 	table.sort(files, function(a, b)
 		-- If preferred environment is specified, prioritize it
 		if opts.preferred_environment ~= "" then
-			local pref_pattern = "%.env%." .. vim.pesc(opts.preferred_environment) .. "$"
+			local pref_pattern = "%.env%." .. pesc(opts.preferred_environment) .. "$"
 			local a_is_preferred = a:match(pref_pattern) ~= nil
 			local b_is_preferred = b:match(pref_pattern) ~= nil
 			if a_is_preferred ~= b_is_preferred then
@@ -115,12 +161,14 @@ local function parse_env_line(line, file_path)
 		value = value,
 		type = tonumber(value) and "number" or "string",
 		source = file_path,
-		comment = comment, -- Clean comment is stored
+		comment = comment,
 	}
 end
 
 -- Parse environment files
 local function parse_env_file(opts, force)
+	opts = opts or {}
+	
 	if not force and next(env_vars) ~= nil then
 		return
 	end
@@ -220,27 +268,32 @@ local function setup_completion(cmp)
 			return { ".", "'" }
 		end,
 
-		complete = function(_, request, callback)
+		complete = function(self, request, callback)
 			local filetype = vim.bo.filetype
 			local available_providers = providers.get_providers(filetype)
+
+			-- Force parse env files to ensure we have the latest
+			parse_env_file(nil, true)
 
 			-- Check completion trigger
 			local should_complete = false
 			local line = request.context.cursor_before_line
 
 			for _, provider in ipairs(available_providers) do
-				local trigger = provider.get_completion_trigger()
-				local parts = vim.split(trigger, ".", { plain = true })
-				local pattern = table.concat(
-					vim.tbl_map(function(part)
-						return vim.pesc(part)
-					end, parts),
-					"%."
-				)
+				if provider.get_completion_trigger then
+					local trigger = provider.get_completion_trigger()
+					local parts = vim.split(trigger, ".", { plain = true })
+					local pattern = table.concat(
+						vim.tbl_map(function(part)
+							return pesc(part)
+						end, parts),
+						"%."
+					)
 
-				if line:match(pattern .. "$") then
-					should_complete = true
-					break
+					if line:match(pattern .. "$") then
+						should_complete = true
+						break
+					end
 				end
 			end
 
@@ -248,8 +301,6 @@ local function setup_completion(cmp)
 				callback({ items = {}, isIncomplete = false })
 				return
 			end
-
-			parse_env_file()
 
 			local items = {}
 			for var_name, var_info in pairs(env_vars) do
@@ -284,21 +335,17 @@ end
 -- Setup function
 function M.setup(opts)
 	opts = vim.tbl_deep_extend("force", {
+		path = vim.fn.getcwd(),
 		shelter = {
 			configuration = {
-				-- When partial_mode is enabled, secrets will be partially visible
-				-- Can be boolean or table:
-				-- true: uses default settings
-				-- false: disables partial mode
-				-- table: custom settings
-				partial_mode = false, -- Default to disabled
-				mask_char = "*", -- Character used for masking
+				partial_mode = false,
+				mask_char = "*",
 			},
 			modules = {
-				cmp = false, -- Enable masking in completion
-				peek = false, -- Enable masking in peek view
-				files = false, -- Enable masking in files
-				telescope = false, -- Enable masking in telescope
+				cmp = false,
+				peek = false,
+				files = false,
+				telescope = false,
 			},
 		},
 	}, opts or {})
@@ -309,8 +356,39 @@ function M.setup(opts)
 		partial = opts.shelter.modules,
 	})
 
-	-- Create highlight groups
-	require("ecolog.highlights").setup()
+	-- Lazy load providers only when needed
+	local function load_providers()
+		if M._providers_loaded then return end
+		
+		local providers_list = {
+			typescript = "ecolog.providers.typescript",
+			javascript = "ecolog.providers.javascript", 
+			python = "ecolog.providers.python",
+			php = "ecolog.providers.php",
+			lua = "ecolog.providers.lua",
+			go = "ecolog.providers.go",
+			rust = "ecolog.providers.rust",
+		}
+
+		for name, module_path in pairs(providers_list) do
+			local ok, provider = pcall(require, module_path)
+			if ok then
+				if type(provider) == "table" then
+					if provider.provider then
+						providers.register(provider.provider)
+					else
+						providers.register_many(provider)
+					end
+				else
+					providers.register(provider)
+				end
+			else
+				notify(string.format("Failed to load %s provider: %s", name, provider), vim.log.levels.WARN)
+			end
+		end
+
+		M._providers_loaded = true
+	end
 
 	-- Find and select initial environment file
 	local env_files = find_env_files(opts)
@@ -320,31 +398,10 @@ function M.setup(opts)
 		notify("Using environment file: " .. fn.fnamemodify(selected_env_file, ":t"), vim.log.levels.INFO)
 	end
 
-	parse_env_file(opts)
-
-	-- Register built-in providers
-	local providers_list = {
-		typescript = require("ecolog.providers.typescript"),
-		javascript = require("ecolog.providers.javascript"),
-		python = require("ecolog.providers.python"),
-		php = require("ecolog.providers.php"),
-		lua = require("ecolog.providers.lua"),
-		go = require("ecolog.providers.go"),
-		rust = require("ecolog.providers.rust"),
-	}
-
-	-- Register providers
-	for _, provider in pairs(providers_list) do
-		if type(provider) == "table" then
-			if provider.provider then
-				providers.register(provider.provider)
-			else
-				providers.register_many(provider)
-			end
-		else
-			providers.register(provider)
-		end
-	end
+	-- Defer initial parsing
+	vim.schedule(function()
+		parse_env_file(opts)
+	end)
 
 	-- Set up file watchers
 	setup_file_watcher(opts)
@@ -352,160 +409,160 @@ function M.setup(opts)
 	-- Set up completion if available
 	local has_cmp, cmp = pcall(require, "cmp")
 	if has_cmp then
+		-- Load providers first
+		load_providers()
+		-- Then set up completion
 		setup_completion(cmp)
 	end
 
 	-- Create commands
-	api.nvim_create_user_command("EcologPeek", function(args)
-		peek.peek_env_value(args.args, opts, env_vars, providers, parse_env_file)
-	end, {
-		nargs = "?",
-		desc = "Peek at environment variable value",
-	})
+	local commands = {
+		EcologPeek = {
+			callback = function(args)
+				load_providers() -- Lazy load providers when needed
+				parse_env_file(opts) -- Make sure env vars are loaded
+				peek.peek_env_value(args.args, opts, env_vars, providers, parse_env_file)
+			end,
+			nargs = "?",
+			desc = "Peek at environment variable value",
+		},
+		EcologShelterToggle = {
+			callback = function(args)
+				local arg = args.args:lower()
 
-	api.nvim_create_user_command("EcologShelterToggle", function(args)
-		local arg = args.args:lower()
-
-		if arg == "" then
-			shelter.toggle_all()
-			return
-		end
-
-		local parts = vim.split(arg, " ")
-		local command = parts[1]
-		local feature = parts[2]
-
-		if command ~= "enable" and command ~= "disable" then
-			notify("Invalid command. Use 'enable' or 'disable'", vim.log.levels.ERROR)
-			return
-		end
-
-		shelter.set_state(command, feature)
-	end, {
-		nargs = "?",
-		desc = "Toggle all shelter modes or enable/disable specific features",
-		complete = function(arglead, cmdline)
-			local args = vim.split(cmdline, "%s+")
-			if #args == 2 then
-				return vim.tbl_filter(function(item)
-					return item:find(arglead, 1, true)
-				end, { "enable", "disable" })
-			elseif #args == 3 then
-				return vim.tbl_filter(function(item)
-					return item:find(arglead, 1, true)
-				end, { "cmp", "peek", "files" })
-			end
-			return { "enable", "disable" }
-		end,
-	})
-
-	api.nvim_create_user_command("EcologRefresh", function()
-		M.refresh_env_vars(opts)
-	end, {
-		desc = "Refresh environment variables cache",
-	})
-
-	api.nvim_create_user_command("EcologSelect", function()
-		select.select_env_file(opts, function(file)
-			if file then
-				selected_env_file = file
-				opts.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
-				M.refresh_env_vars(opts)
-				notify("Switched to environment file: " .. fn.fnamemodify(file, ":t"), vim.log.levels.INFO)
-			end
-		end)
-	end, {
-		desc = "Select environment file to use",
-	})
-
-	api.nvim_create_user_command("EcologGoto", function()
-		if selected_env_file then
-			vim.cmd("edit " .. fn.fnameescape(selected_env_file))
-		else
-			notify("No environment file selected", vim.log.levels.WARN)
-		end
-	end, {
-		desc = "Go to selected environment file",
-	})
-
-	-- Add these functions at the top of the file with other local functions
-	local function find_word_boundaries(line, col)
-		local word_start = col
-		while word_start > 0 and line:sub(word_start, word_start):match("[%w_]") do
-			word_start = word_start - 1
-		end
-
-		local word_end = col
-		while word_end <= #line and line:sub(word_end + 1, word_end + 1):match("[%w_]") do
-			word_end = word_end + 1
-		end
-
-		return word_start + 1, word_end
-	end
-
-	-- Update the EcologGotoVar command
-	api.nvim_create_user_command("EcologGotoVar", function(args)
-		local filetype = vim.bo.filetype
-		local available_providers = providers.get_providers(filetype)
-		local var_name = args.args
-
-		-- If no variable name provided, try to get it from cursor position
-		if var_name == "" then
-			local line = api.nvim_get_current_line()
-			local cursor_pos = api.nvim_win_get_cursor(0)
-			local col = cursor_pos[2]
-			
-			-- Find word boundaries
-			local word_start, word_end = find_word_boundaries(line, col)
-
-			-- Try to extract variable using providers
-			for _, provider in ipairs(available_providers) do
-				local extracted = provider.extract_var(line, word_end)
-				if extracted then
-					var_name = extracted
-					break
+				if arg == "" then
+					shelter.toggle_all()
+					return
 				end
-			end
 
-			-- If no provider matched, use the word under cursor
-			if not var_name or #var_name == 0 then
-				var_name = line:sub(word_start, word_end)
-			end
-		end
+				local parts = vim.split(arg, " ")
+				local command = parts[1]
+				local feature = parts[2]
 
-		if not var_name or #var_name == 0 then
-			notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
-			return
-		end
+				if command ~= "enable" and command ~= "disable" then
+					notify("Invalid command. Use 'enable' or 'disable'", vim.log.levels.ERROR)
+					return
+				end
 
-		-- Parse env files if needed
-		parse_env_file(opts)
+				shelter.set_state(command, feature)
+			end,
+			nargs = "?",
+			desc = "Toggle all shelter modes or enable/disable specific features",
+			complete = function(arglead, cmdline)
+				local args = vim.split(cmdline, "%s+")
+				if #args == 2 then
+					return vim.tbl_filter(function(item)
+						return item:find(arglead, 1, true)
+					end, { "enable", "disable" })
+				elseif #args == 3 then
+					return vim.tbl_filter(function(item)
+						return item:find(arglead, 1, true)
+					end, { "cmp", "peek", "files" })
+				end
+				return { "enable", "disable" }
+			end,
+		},
+		EcologRefresh = {
+			callback = function()
+				M.refresh_env_vars(opts)
+			end,
+			desc = "Refresh environment variables cache",
+		},
+		EcologSelect = {
+			callback = function()
+				select.select_env_file(opts, function(file)
+					if file then
+						selected_env_file = file
+						opts.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
+						M.refresh_env_vars(opts)
+						notify("Switched to environment file: " .. fn.fnamemodify(file, ":t"), vim.log.levels.INFO)
+					end
+				end)
+			end,
+			desc = "Select environment file to use",
+		},
+		EcologGoto = {
+			callback = function()
+				if selected_env_file then
+					vim.cmd("edit " .. fn.fnameescape(selected_env_file))
+				else
+					notify("No environment file selected", vim.log.levels.WARN)
+				end
+			end,
+			desc = "Go to selected environment file",
+		},
+		EcologGotoVar = {
+			callback = function(args)
+				local filetype = vim.bo.filetype
+				local available_providers = providers.get_providers(filetype)
+				local var_name = args.args
 
-		-- Check if variable exists
-		local var = env_vars[var_name]
-		if not var then
-			notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
-			return
-		end
+				-- If no variable name provided, try to get it from cursor position
+				if var_name == "" then
+					local line = api.nvim_get_current_line()
+					local cursor_pos = api.nvim_win_get_cursor(0)
+					local col = cursor_pos[2]
+					
+					-- Find word boundaries
+					local word_start, word_end = find_word_boundaries(line, col)
 
-		-- Open the file
-		vim.cmd("edit " .. fn.fnameescape(var.source))
+					-- Try to extract variable using providers
+					for _, provider in ipairs(available_providers) do
+						local extracted = provider.extract_var(line, word_end)
+						if extracted then
+							var_name = extracted
+							break
+						end
+					end
 
-		-- Find the line with the variable
-		local lines = api.nvim_buf_get_lines(0, 0, -1, false)
-		for i, line in ipairs(lines) do
-			if line:match("^" .. vim.pesc(var_name) .. "=") then
-				-- Move cursor to the line
-				api.nvim_win_set_cursor(0, {i, 0})
-				-- Center the screen on the line
-				vim.cmd("normal! zz")
-				break
-			end
-		end
-	end, {
-		nargs = "?",
-		desc = "Go to environment variable definition in file",
-	})
+					-- If no provider matched, use the word under cursor
+					if not var_name or #var_name == 0 then
+						var_name = line:sub(word_start, word_end)
+					end
+				end
+
+				if not var_name or #var_name == 0 then
+					notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
+					return
+				end
+
+				-- Parse env files if needed
+				parse_env_file(opts)
+
+				-- Check if variable exists
+				local var = env_vars[var_name]
+				if not var then
+					notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
+					return
+				end
+
+				-- Open the file
+				vim.cmd("edit " .. fn.fnameescape(var.source))
+
+				-- Find the line with the variable
+				local lines = api.nvim_buf_get_lines(0, 0, -1, false)
+				for i, line in ipairs(lines) do
+					if line:match("^" .. vim.pesc(var_name) .. "=") then
+						-- Move cursor to the line
+						api.nvim_win_set_cursor(0, {i, 0})
+						-- Center the screen on the line
+						vim.cmd("normal! zz")
+						break
+					end
+				end
+			end,
+			nargs = "?",
+			desc = "Go to environment variable definition in file",
+		},
+	}
+
+	for name, cmd in pairs(commands) do
+		api.nvim_create_user_command(name, cmd.callback, {
+			nargs = cmd.nargs,
+			desc = cmd.desc,
+			complete = cmd.complete,
+		})
+	end
 end
 
 return M

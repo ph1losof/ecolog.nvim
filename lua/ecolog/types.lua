@@ -3,26 +3,49 @@ local M = {}
 -- Configuration state
 local config = {
   custom_types_enabled = true,
-  built_in_types_enabled = true,
-  basic_types_only = false, -- New flag for basic types mode
+  built_in_types = {
+    -- Network types
+    url = true,
+    localhost = true,
+    ipv4 = true,
+    database_url = true,
+    -- Data types
+    number = true,
+    boolean = true,
+    json = true,
+    -- Date and time
+    iso_date = true,
+    iso_time = true,
+    -- Visual
+    hex_color = true,
+  }
 }
 
 -- Setup function for types module
 function M.setup(opts)
   opts = opts or {}
-  -- Handle types being completely disabled
-  if opts.types == false then
-    config.custom_types_enabled = false
-    config.built_in_types_enabled = false
-    config.basic_types_only = true -- Enable basic types mode
-  else
-    -- Otherwise enable all types by default
-    config.custom_types_enabled = true
-    config.built_in_types_enabled = true
-    config.basic_types_only = false
-    -- Register any custom types if provided
-    M.register_custom_types(opts.custom_types)
+  
+  -- Handle types configuration
+  if type(opts.types) == "table" then
+    -- Reset all built-in types to false first
+    for type_name in pairs(config.built_in_types) do
+      config.built_in_types[type_name] = false
+    end
+    -- Enable only specified types
+    for type_name, enabled in pairs(opts.types) do
+      if config.built_in_types[type_name] ~= nil then
+        config.built_in_types[type_name] = enabled
+      end
+    end
+  elseif type(opts.types) == "boolean" then
+    -- Enable/disable all built-in types based on boolean value
+    for type_name in pairs(config.built_in_types) do
+      config.built_in_types[type_name] = opts.types
+    end
   end
+
+  -- Register any custom types if provided
+  M.register_custom_types(opts.custom_types)
 end
 
 -- Pre-compile patterns for better performance
@@ -284,28 +307,20 @@ end
 
 -- Type detection function
 function M.detect_type(value)
-  -- Basic types mode - only string and number
-  if config.basic_types_only then
-    -- Check for number first
-    if value:match(M.PATTERNS.number) then
-      return "number", value
-    end
-    -- Default to string
-    return "string", value
+  -- Check enabled built-in types
+  if config.built_in_types.url and value:match(M.PATTERNS.url) and is_valid_url(value) then
+    return "url", value
+  end
+  
+  if config.built_in_types.localhost and value:match(M.PATTERNS.localhost) and is_valid_localhost(value) then
+    return "localhost", value
+  end
+  
+  if config.built_in_types.database_url and value:match(M.PATTERNS.database_url) and is_valid_database_url(value) then
+    return "database_url", value
   end
 
-  -- Full type detection mode
-  if config.built_in_types_enabled then
-    if value:match(M.PATTERNS.url) then
-      return "url", value
-    elseif value:match(M.PATTERNS.localhost) and is_valid_localhost(value) then
-      return "localhost", value
-    elseif value:match(M.PATTERNS.database_url) and is_valid_database_url(value) then
-      return "database_url", value
-    end
-  end
-
-  -- Check custom types only if enabled
+  -- Check custom types if enabled
   if config.custom_types_enabled then
     for type_name, type_def in pairs(M.custom_types) do
       if value:match(type_def.pattern) then
@@ -319,55 +334,48 @@ function M.detect_type(value)
     end
   end
 
-  -- Check other built-in types if enabled
-  if config.built_in_types_enabled then
-    if value:match(M.PATTERNS.boolean) then
-      -- Normalize boolean values
-      value = value:lower()
-      if value == "yes" or value == "1" or value == "true" then
-        value = "true"
-      else
-        value = "false"
-      end
-      return "boolean", value
-    elseif value:match(M.PATTERNS.json) and is_valid_json(value) then
-      return "json", value
-    elseif value:match(M.PATTERNS.hex_color) and is_valid_hex_color(value) then
-      return "hex_color", value
-    elseif value:match(M.PATTERNS.database_url) and is_valid_database_url(value) then
-      return "database_url", value
-    elseif value:match(M.PATTERNS.localhost) and is_valid_localhost(value) then
-      return "localhost", value
-    elseif value:match(M.PATTERNS.url) and is_valid_url(value) then
-      return "url", value
+  if config.built_in_types.boolean and value:match(M.PATTERNS.boolean) then
+    -- Normalize boolean values
+    value = value:lower()
+    if value == "yes" or value == "1" or value == "true" then
+      value = "true"
     else
-      -- Check IPv4 with validation
-      local ip_parts = { value:match(M.PATTERNS.ipv4) }
-      if #ip_parts == 4 and is_valid_ipv4(ip_parts) then
-        return "ipv4", value
-      -- Check date with validation
-      elseif value:match(M.PATTERNS.iso_date) then
-        local year, month, day = value:match(M.PATTERNS.iso_date)
-        if is_valid_date(year, month, day) then
-          return "iso_date", value
-        end
-      -- Check time with validation
-      elseif value:match(M.PATTERNS.iso_time) then
-        local hour, minute, second = value:match(M.PATTERNS.iso_time)
-        if is_valid_time(hour, minute, second) then
-          return "iso_time", value
-        end
-      -- Check number last (after more specific numeric types)
-      elseif value:match(M.PATTERNS.number) then
-        return "number", value
-      end
+      value = "false"
     end
-  else
-    -- When built-in types are disabled but not in basic mode,
-    -- still check for number type
-    if value:match(M.PATTERNS.number) then
-      return "number", value
+    return "boolean", value
+  end
+
+  if config.built_in_types.json and value:match(M.PATTERNS.json) and is_valid_json(value) then
+    return "json", value
+  end
+
+  if config.built_in_types.hex_color and value:match(M.PATTERNS.hex_color) and is_valid_hex_color(value) then
+    return "hex_color", value
+  end
+
+  if config.built_in_types.ipv4 then
+    local ip_parts = { value:match(M.PATTERNS.ipv4) }
+    if #ip_parts == 4 and is_valid_ipv4(ip_parts) then
+      return "ipv4", value
     end
+  end
+
+  if config.built_in_types.iso_date and value:match(M.PATTERNS.iso_date) then
+    local year, month, day = value:match(M.PATTERNS.iso_date)
+    if is_valid_date(year, month, day) then
+      return "iso_date", value
+    end
+  end
+
+  if config.built_in_types.iso_time and value:match(M.PATTERNS.iso_time) then
+    local hour, minute, second = value:match(M.PATTERNS.iso_time)
+    if is_valid_time(hour, minute, second) then
+      return "iso_time", value
+    end
+  end
+
+  if config.built_in_types.number and value:match(M.PATTERNS.number) then
+    return "number", value
   end
 
   -- Default to string type

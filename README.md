@@ -9,6 +9,24 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 
 </div>
 
+## Table of Contents
+
+- [Installation](#-installation)
+- [Features](#-features)
+- [Usage](#-usage)
+- [Integrations](#-integrations)
+  - [LSP Integration](#lsp-integration-experimental)
+  - [Telescope Integration](#telescope-integration)
+  - [Completion Integration](#completion-setup)
+- [Language Support](#-language-support)
+- [Custom Providers](#-custom-providers)
+- [Shelter Mode](#-shelter-mode)
+- [Types System](#-ecolog-types)
+- [Tips](#-tips)
+- [Theme Integration](#-theme-integration)
+- [Contributing](#-contributing)
+- [License](#-license)
+
 ## 📦 Installation
 
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
@@ -48,9 +66,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
-### Completion Setup
+### Completion Setup (Recommended)
 
-Add 'ecolog' to your nvim-cmp sources:
+Add `ecolog` to your nvim-cmp sources:
 
 ```lua
 require('cmp').setup({
@@ -60,104 +78,6 @@ require('cmp').setup({
   },
 })
 ```
-
-## LSP Integration (Experimental)
-
-> ⚠️ **Warning**: The LSP integration is currently experimental and may interfere with your existing LSP setup. Use with caution.
-
-Ecolog provides optional LSP integration that enhances the hover and definition functionality for environment variables. When enabled, it will:
-
-- Show environment variable values when hovering over them
-- Jump to environment variable definitions using goto-definition
-
-meaning you dont need any custom keymaps
-
-### Setup
-
-To enable LSP integration, add this to your Neovim configuration:
-
-```lua
-require('ecolog').setup({
-    integrations = {
-        lsp = true,
-    }
-})
-```
-
-### Features
-
-- **Hover Preview**: When you hover over an environment variable, it will show the value and metadata in a floating window
-- **Goto Definition**: Using goto-definition (gd) on an environment variable will jump to its definition in the .env file
-
-### Known Limitations
-
-1. The integration overrides the default LSP hover and definition handlers
-2. May conflict with other plugins that modify LSP hover behavior (lsp-saga for example, working on it btw)
-3. Performance impact on LSP operations (though optimized)
-
-### Disabling LSP Integration
-
-If you experience any issues, you can disable the LSP integration:
-
-```lua
-require('ecolog').setup({
-    integrations = {
-        lsp = false,
-    }
-})
-```
-
-### Troubleshooting
-
-If you experience issues with LSP functionality:
-
-1. Try disabling the LSP integration
-2. Check for conflicts with other LSP-related plugins
-3. Report issues on our GitHub repository
-
-## Telescope Integration
-
-First, load the extension:
-
-```lua
-require('telescope').load_extension('ecolog')
-```
-
-Then configure it in your Telescope setup (optional):
-
-```lua
-require('telescope').setup({
-  extensions = {
-    ecolog = {
-      shelter = {
-        -- Whether to show masked values when copying to clipboard
-        mask_on_copy = false,
-      },
-      -- Default keybindings
-      mappings = {
-        -- Key to copy value to clipboard
-        copy_value = "<C-y>",
-        -- Key to copy name to clipboard
-        copy_name = "<C-n>",
-        -- Key to append value to buffer
-        append_value = "<C-a>",
-        -- Key to append name to buffer (defaults to <CR>)
-        append_name = "<CR>",
-      },
-    }
-  }
-})
-```
-
-## ⚡ Performance
-
-Ecolog is designed with performance in mind:
-
-- Minimal impact on startup time through lazy loading of heavy dependencies
-- Smart caching of environment variables and file contents
-- Efficient file watching with debounced updates
-- On-demand loading of language providers and completion features
-- Optimized code path for frequently used operations
 
 ## ✨ Features
 
@@ -229,9 +149,99 @@ Files are loaded in the following priority order:
 2. `.env`
 3. Other `.env.*` files (alphabetically)
 
-### 🔧 Language Support
+## 🔌 Integrations
 
-#### 🟢 Currently Supported (have only tested JavaScript/TypeScript/React)
+### LSP Integration (Experimental)
+
+> ⚠️ **Warning**: The LSP integration is currently experimental and may interfere with your existing LSP setup. Use with caution.
+
+Ecolog provides optional LSP integration that enhances the hover and definition functionality for environment variables. When enabled, it will:
+
+- Show environment variable values when hovering over them
+- Jump to environment variable definitions using goto-definition
+
+meaning you dont need any custom keymaps
+
+#### Setup
+
+To enable LSP integration, add this to your Neovim configuration:
+
+```lua
+require('ecolog').setup({
+    integrations = {
+        lsp = true,
+    }
+})
+```
+
+#### Features
+
+- **Hover Preview**: When you hover over an environment variable, it will show the value and metadata in a floating window
+- **Goto Definition**: Using goto-definition (gd) on an environment variable will jump to its definition in the .env file
+
+#### Known Limitations
+
+1. The integration overrides the default LSP hover and definition handlers
+2. May conflict with other plugins that modify LSP hover behavior (lsp-saga for example, working on it btw)
+3. Performance impact on LSP operations (though optimized)
+
+#### Disabling LSP Integration
+
+If you experience any issues, you can disable the LSP integration:
+
+```lua
+require('ecolog').setup({
+    integrations = {
+        lsp = false,
+    }
+})
+```
+
+#### Troubleshooting
+
+If you experience issues with LSP functionality:
+
+1. Try disabling the LSP integration
+2. Check for conflicts with other LSP-related plugins
+3. Report issues on our GitHub repository
+
+### Telescope Integration
+
+First, load the extension:
+
+```lua
+require('telescope').load_extension('ecolog')
+```
+
+Then configure it in your Telescope setup (optional):
+
+```lua
+require('telescope').setup({
+  extensions = {
+    ecolog = {
+      shelter = {
+        -- Whether to show masked values when copying to clipboard
+        mask_on_copy = false,
+      },
+      -- Default keybindings
+      mappings = {
+        -- Key to copy value to clipboard
+        copy_value = "<C-y>",
+        -- Key to copy name to clipboard
+        copy_name = "<C-n>",
+        -- Key to append value to buffer
+        append_value = "<C-a>",
+        -- Key to append name to buffer (defaults to <CR>)
+        append_name = "<CR>",
+      },
+    }
+  }
+})
+```
+
+## 🔧 Language Support
+
+### 🟢 Currently Supported (have only tested JavaScript/TypeScript/React)
 
 | Language         | Environment Access & Autocompletion trigger | Description                                                      |
 | ---------------- | ------------------------------------------- | ---------------------------------------------------------------- |
@@ -243,7 +253,7 @@ Files are loaded in the following priority order:
 | Go               | `os.Getenv()`                               | Go standard library environment access                           |
 | Rust             | `std::env::var()`<br>`env::var()`           | Rust standard library environment access                         |
 
-#### 🚧 Coming Soon
+### 🚧 Coming Soon
 
 | Language | Planned Support                        | Status         |
 | -------- | -------------------------------------- | -------------- |
@@ -491,6 +501,54 @@ Open the environment variables picker:
 All keymaps are customizable through the configuration.
 
 ## 🛡 Ecolog Types
+
+Ecolog includes a flexible type system for environment variables with built-in types and custom type support.
+
+### Type Configuration
+
+You can configure which types are enabled through the `types` option in setup:
+
+```lua
+require('ecolog').setup({
+  types = {
+    -- Network types
+    url = true,          -- URLs (http/https)
+    localhost = true,    -- Localhost URLs
+    ipv4 = true,        -- IPv4 addresses
+    database_url = true, -- Database connection strings
+    
+    -- Data types
+    number = true,       -- Integers and decimals
+    boolean = true,      -- true/false/yes/no/1/0
+    json = true,         -- JSON objects and arrays
+    
+    -- Date and time
+    iso_date = true,     -- ISO 8601 dates (YYYY-MM-DD)
+    iso_time = true,     -- ISO 8601 times (HH:MM:SS)
+    
+    -- Visual
+    hex_color = true,    -- Hex color codes (#RGB or #RRGGBB)
+  }
+})
+```
+
+You can also:
+- Enable all built-in types: `types = true`
+- Disable all built-in types: `types = false`
+- Enable specific types only:
+```lua
+require('ecolog').setup({
+  types = {
+    url = true,
+    number = true,
+    -- other types will be disabled
+  }
+})
+```
+
+Note: Custom types (configured via `custom_types`) are independent of this configuration and will remain active regardless of built-in type settings.
+
+### Custom Types
 
 Ecolog allows you to define your own custom types for environment variables. This feature enables you to add specialized validation and transformation for your specific needs.
 

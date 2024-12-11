@@ -63,15 +63,20 @@ local function extract_variable(line, word_end, available_providers, var_name)
 end
 
 -- Create peek window content
-local function create_peek_content(var_name, var_info)
-	local value = shelter.mask_value(var_info.value, "peek")
+local function create_peek_content(var_name, var_info, types)
+	-- Re-detect type to ensure accuracy
+	local type_name, value = types.detect_type(var_info.value)
+	
+	-- Use the re-detected type and value, or fall back to stored ones
+	local display_type = type_name or var_info.type
+	local display_value = shelter.mask_value(value or var_info.value, "peek")
 	local source = fn.fnamemodify(var_info.source, ":t")
 
 	local lines = {
 		"Name    : " .. var_name,
-		"Type    : " .. var_info.type,
+		"Type    : " .. display_type,
 		"Source  : " .. source,
-		"Value   : " .. value,
+		"Value   : " .. display_value,
 	}
 
 	local label_width = 10 -- 8 chars for label + 2 chars for ":"
@@ -79,15 +84,15 @@ local function create_peek_content(var_name, var_info)
 	local highlights = {
 		{ "EcologTitle", 0, 0, -1 },
 		{ "EcologVariable", 0, label_width, label_width + #var_name },
-		{ "EcologType", 1, label_width, label_width + #var_info.type },
+		{ "EcologType", 1, label_width, label_width + #display_type },
 		{ "EcologSource", 2, label_width, label_width + #source },
-		{ "EcologValue", 3, label_width, label_width + #value },
+		{ "EcologValue", 3, label_width, label_width + #display_value },
 	}
 
 	-- Add comment line if comment exists
 	if var_info.comment then
 		table.insert(lines, "Comment : " .. var_info.comment)
-		table.insert(highlights, { "Comment", #lines - 1, label_width, -1 })
+			table.insert(highlights, { "Comment", #lines - 1, label_width, -1 })
 	end
 
 	return {
@@ -123,6 +128,7 @@ end
 function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
 	local filetype = vim.bo.filetype
 	local available_providers = providers.get_providers(filetype)
+	local types = require("ecolog.types")
 
 	if #available_providers == 0 then
 		notify("EcologPeek is not available for " .. filetype .. " files", vim.log.levels.WARN)
@@ -159,8 +165,8 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
 		return
 	end
 
-	-- Create peek window content
-	local content = create_peek_content(extracted_var, var)
+	-- Create peek window content with types module
+	local content = create_peek_content(extracted_var, var, types)
 	local curbuf = api.nvim_get_current_buf()
 
 	-- Create peek window

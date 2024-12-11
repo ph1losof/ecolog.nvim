@@ -148,6 +148,7 @@ Ecolog is designed with performance in mind:
 - Automatic type inference
 - Type validation and checking
 - Smart type suggestions
+- Custom type definitions
 - Context-based type detection
 
 ## 🚀 Usage
@@ -435,7 +436,131 @@ Open the environment variables picker:
 
 All keymaps are customizable through the configuration.
 
-### 💡 Tips
+## 🛡 Ecolog Types
+
+Ecolog allows you to define your own custom types for environment variables. This feature enables you to add specialized validation and transformation for your specific needs.
+
+### Built-in Types
+
+Ecolog includes several built-in types:
+
+- `string` (default)
+- `number`
+- `boolean` (true/false/yes/no/1/0)
+- `ipv4`
+- `url`
+- `localhost`
+- `database_url`
+- `iso_date`
+- `iso_time`
+- `json`
+- `hex_color`
+
+### Example: Adding Custom Types
+
+```lua
+require('ecolog').setup({
+    -- ... other options ...
+    types = {
+        -- Semantic Version type
+        semver = {
+            pattern = "^v?(%d+)%.(%d+)%.(%d+)([%-+].+)?$",
+            validate = function(value)
+                local major, minor, patch = value:match("^v?(%d+)%.(%d+)%.(%d+)")
+                return major and minor and patch
+            end,
+            transform = function(value)
+                -- Remove 'v' prefix if present
+                return value:gsub("^v", "")
+            end
+        },
+
+        -- AWS Region type
+        aws_region = {
+            pattern = "^[a-z]{2}%-[a-z]+%-[0-9]$",
+            validate = function(value)
+                -- List of valid AWS regions
+                local valid_regions = {
+                    ["us-east-1"] = true,
+                    ["us-west-2"] = true,
+                    -- ... etc
+                }
+                return valid_regions[value] == true
+            end
+        },
+
+        -- JWT Token type
+        jwt = {
+            pattern = "^[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+$",
+            validate = function(value)
+                -- Check if it has three parts separated by dots
+                local parts = vim.split(value, ".", { plain = true })
+                return #parts == 3
+            end
+        }
+    }
+})
+```
+
+### Custom Type Configuration
+
+Each custom type can have the following components:
+
+1. **`pattern`** (required): A Lua pattern string for initial matching
+
+   - Must be a valid Lua pattern
+   - Used for first-pass validation
+
+2. **`validate`** (optional): A function for additional validation
+
+   ```lua
+   validate = function(value)
+       -- Return true if valid, false if not
+       return is_valid
+   end
+   ```
+
+   - Receives the raw value as argument
+   - Should return `true` for valid values, `false` otherwise
+   - Can implement complex validation logic
+
+3. **`transform`** (optional): A function to transform the value
+   ```lua
+   transform = function(value)
+       -- Return the transformed value
+       return transformed_value
+   end
+   ```
+   - Receives the raw value as argument
+   - Returns the transformed value
+   - Useful for normalization or formatting
+
+### Usage in .env Files
+
+Once custom types are defined, they will be automatically detected in your .env files:
+
+```env
+# These will be recognized by the custom types above
+VERSION=v1.2.3                  # type: semver
+REGION=us-east-1               # type: aws_region
+AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # type: jwt
+```
+
+### Type Detection
+
+Types are automatically detected when environment variables are loaded. You can check a variable's type using the `:EcologPeek` command or use cmp feature.
+
+### Disabling Types
+
+If you don't need type checking, you can disable it:
+
+```lua
+require('ecolog').setup({
+    types = false
+})
+```
+
+## 💡 Tips
 
 1. **Selective Protection**: Enable shelter mode only for sensitive environments:
 

@@ -61,40 +61,6 @@ require('cmp').setup({
 })
 ```
 
-### Telescope Integration
-
-First, load the extension:
-
-```lua
-require('telescope').load_extension('ecolog')
-```
-
-Then configure it in your Telescope setup (optional):
-
-```lua
-require('telescope').setup({
-  extensions = {
-    ecolog = {
-      shelter = {
-        -- Whether to show masked values when copying to clipboard
-        mask_on_copy = false,
-      },
-      -- Default keybindings
-      mappings = {
-        -- Key to copy value to clipboard
-        copy_value = "<C-y>",
-        -- Key to copy name to clipboard
-        copy_name = "<C-n>",
-        -- Key to append value to buffer
-        append_value = "<C-a>",
-        -- Key to append name to buffer (defaults to <CR>)
-        append_name = "<CR>",
-      },
-    }
-  }
-})
-```
-
 ## LSP Integration (Experimental)
 
 > ⚠️ **Warning**: The LSP integration is currently experimental and may interfere with your existing LSP setup. Use with caution.
@@ -103,6 +69,8 @@ Ecolog provides optional LSP integration that enhances the hover and definition 
 
 - Show environment variable values when hovering over them
 - Jump to environment variable definitions using goto-definition
+
+meaning you dont need any custom keymaps
 
 ### Setup
 
@@ -146,6 +114,40 @@ If you experience issues with LSP functionality:
 1. Try disabling the LSP integration
 2. Check for conflicts with other LSP-related plugins
 3. Report issues on our GitHub repository
+
+## Telescope Integration
+
+First, load the extension:
+
+```lua
+require('telescope').load_extension('ecolog')
+```
+
+Then configure it in your Telescope setup (optional):
+
+```lua
+require('telescope').setup({
+  extensions = {
+    ecolog = {
+      shelter = {
+        -- Whether to show masked values when copying to clipboard
+        mask_on_copy = false,
+      },
+      -- Default keybindings
+      mappings = {
+        -- Key to copy value to clipboard
+        copy_value = "<C-y>",
+        -- Key to copy name to clipboard
+        copy_name = "<C-n>",
+        -- Key to append value to buffer
+        append_value = "<C-a>",
+        -- Key to append name to buffer (defaults to <CR>)
+        append_name = "<CR>",
+      },
+    }
+  }
+})
+```
 
 ## ⚡ Performance
 

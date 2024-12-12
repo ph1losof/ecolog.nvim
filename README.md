@@ -235,17 +235,22 @@ require('telescope').setup({
 
 ## 🔧 Language Support
 
-### 🟢 Currently Supported (have only tested JavaScript/TypeScript/React)
+### 🟢 Currently Supported and Tested
 
 | Language         | Environment Access & Autocompletion trigger | Description                                                      |
 | ---------------- | ------------------------------------------- | ---------------------------------------------------------------- |
 | TypeScript/React | `process.env.*`<br>`import.meta.env.*`      | Full support for Node.js, Vite environment variables             |
 | JavaScript/React | `process.env.*`<br>`import.meta.env.*`      | Complete support for both Node.js and modern frontend frameworks |
-| Python           | `os.environ.get()`                          | Native Python environment variable access                        |
-| PHP              | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access                |
-| Lua              | `os.getenv()`                               | Native Lua environment variable access                           |
-| Go               | `os.Getenv()`                               | Go standard library environment access                           |
-| Rust             | `std::env::var()`<br>`env::var()`           | Rust standard library environment access                         |
+
+### 🟡 Supported but Not Thoroughly Tested
+
+| Language | Environment Access & Autocompletion trigger | Description                                       |
+| -------- | ------------------------------------------ | ------------------------------------------------- |
+| Python   | `os.environ.get()`                         | Native Python environment variable access          |
+| PHP      | `getenv()`<br>`_ENV[]`                    | Support for both modern and legacy PHP env access  |
+| Lua      | `os.getenv()`                             | Native Lua environment variable access             |
+| Go       | `os.Getenv()`                             | Go standard library environment access             |
+| Rust     | `std::env::var()`<br>`env::var()`         | Rust standard library environment access          |
 
 ### 🚧 Coming Soon
 

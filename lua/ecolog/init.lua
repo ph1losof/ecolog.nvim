@@ -22,6 +22,7 @@
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
+---@field lspsaga boolean Enable LSP Saga integration
 
 local M = {}
 local api = vim.api
@@ -407,6 +408,7 @@ function M.setup(opts)
     },
     integrations = {
       lsp = false,
+      lspsaga = false,
     },
     types = true, -- Enable all types by default
     custom_types = {}, -- Custom types configuration
@@ -430,7 +432,14 @@ function M.setup(opts)
 
   -- Set up LSP integration if enabled
   if opts.integrations.lsp then
-    require("ecolog.lsp").setup()
+    local lsp = require_on_demand("ecolog.integrations.lsp")
+    lsp.setup()
+  end
+
+  -- Set up LSP Saga integration if enabled
+  if opts.integrations.lspsaga then
+    local lspsaga = require_on_demand("ecolog.integrations.lspsaga")
+    lspsaga.setup()
   end
 
   -- Lazy load providers only when needed
@@ -674,5 +683,8 @@ function M.setup(opts)
     })
   end
 end
+
+-- Add find_word_boundaries to the module's return table
+M.find_word_boundaries = find_word_boundaries
 
 return M

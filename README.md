@@ -16,6 +16,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Usage](#-usage)
 - [Integrations](#-integrations)
   - [LSP Integration (Very convenient just check it out)](#lsp-integration-experimental)
+  - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
   - [Completion Integration](#completion-setup)
 - [Language Support](#-language-support)
@@ -182,7 +183,7 @@ require('ecolog').setup({
 #### Known Limitations
 
 1. The integration overrides the default LSP hover and definition handlers
-2. May conflict with other plugins that modify LSP hover behavior (lsp-saga for example, working on it btw)
+2. May conflict with other plugins that modify LSP hover behavior
 3. Performance impact on LSP operations (though optimized and should be unnoticable)
 
 #### Disabling LSP Integration
@@ -198,6 +199,64 @@ require('ecolog').setup({
 ```
 
 Please report such issues on our GitHub repository
+
+### LSP Saga Integration
+
+Ecolog provides integration with [lspsaga.nvim](https://github.com/nvimdev/lspsaga.nvim) that enhances hover and goto-definition functionality for environment variables while preserving Saga's features for other code elements.
+
+#### Setup
+
+To enable LSP Saga integration, add this to your configuration:
+
+```lua
+require('ecolog').setup({
+    integrations = {
+        lspsaga = true,
+    }
+})
+```
+
+#### Features
+
+The integration adds two commands that intelligently handle both environment variables and regular code:
+
+1. **EcologSagaHover**: 
+   - Shows environment variable value when hovering over env vars
+   - Falls back to Saga's hover for other code elements
+   - Recommended keymap: `vim.keymap.set('n', 'K', '<cmd>EcologSagaHover<CR>')`
+
+2. **EcologSagaGD** (Goto Definition):
+   - Jumps to environment variable definition in .env file
+   - Uses Saga's goto definition for other code elements
+   - Recommended keymap: `vim.keymap.set('n', 'gd', '<cmd>EcologSagaGD<CR>')`
+
+#### Example Configuration
+
+```lua
+{
+  'philosofonusus/ecolog.nvim',
+  dependencies = {
+    'nvimdev/lspsaga.nvim',
+    'hrsh7th/nvim-cmp',
+  },
+  opts = {
+    integrations = {
+      lspsaga = true,
+    }
+  },
+  keys = {
+    -- Regular ecolog keymaps
+    { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
+    { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
+    { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
+    -- LSP Saga integration keymaps
+    { 'K', '<cmd>EcologSagaHover<CR>', desc = 'Hover Documentation' },
+    { 'gd', '<cmd>EcologSagaGD<CR>', desc = 'Goto Definition' },
+  },
+}
+```
+
+> 💡 **Note**: The LSP Saga integration provides a smoother experience than the experimental LSP integration if you're already using Saga in your setup.
 
 ### Telescope Integration
 

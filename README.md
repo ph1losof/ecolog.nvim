@@ -220,7 +220,8 @@ require('ecolog').setup({
 
 The integration adds two commands that intelligently handle both environment variables and regular code:
 
-1. **EcologSagaHover**: 
+1. **EcologSagaHover**:
+
    - Shows environment variable value when hovering over env vars
    - Falls back to Saga's hover for other code elements
    - Automatically replaces existing Saga hover keymaps
@@ -245,16 +246,6 @@ The integration adds two commands that intelligently handle both environment var
     integrations = {
       lspsaga = true,
     }
-  },
-  -- Optional: Manual keymap configuration if you prefer
-  keys = {
-    -- Regular ecolog keymaps
-    { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
-    { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
-    { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
-    -- LSP Saga integration keymaps (only needed if not using automatic replacement)
-    { 'K', '<cmd>EcologSagaHover<CR>', desc = 'Hover Documentation' },
-    { 'gd', '<cmd>EcologSagaGD<CR>', desc = 'Goto Definition' },
   },
 }
 ```
@@ -307,12 +298,12 @@ require('telescope').setup({
 ### 🟡 Supported but Not Thoroughly Tested
 
 | Language | Environment Access & Autocompletion trigger | Description                                       |
-| -------- | ------------------------------------------ | ------------------------------------------------- |
-| Python   | `os.environ.get()`                         | Native Python environment variable access          |
-| PHP      | `getenv()`<br>`_ENV[]`                    | Support for both modern and legacy PHP env access  |
-| Lua      | `os.getenv()`                             | Native Lua environment variable access             |
-| Go       | `os.Getenv()`                             | Go standard library environment access             |
-| Rust     | `std::env::var()`<br>`env::var()`         | Rust standard library environment access          |
+| -------- | ------------------------------------------- | ------------------------------------------------- |
+| Python   | `os.environ.get()`                          | Native Python environment variable access         |
+| PHP      | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access |
+| Lua      | `os.getenv()`                               | Native Lua environment variable access            |
+| Go       | `os.Getenv()`                               | Go standard library environment access            |
+| Rust     | `std::env::var()`<br>`env::var()`           | Rust standard library environment access          |
 
 ### 🚧 Coming Soon
 

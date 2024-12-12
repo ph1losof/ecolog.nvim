@@ -68,7 +68,7 @@ M.PATTERNS = {
   boolean = "^(true|false|yes|no|1|0)$",
   -- Network types
   ipv4 = "^(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)$",
-  url = "^https?://[%w%-%.]+%.[%w%-%.]+[%w%-%./:]*$", -- Simplified URL pattern for common cases
+  url = "^https?://[%w%-%.]+%.[%w%-%.]+[%w%-%./:?=&]*$", -- Updated pattern to include query params
   localhost = "^https?://(localhost|127%.0%.0%.1)(:%d+)?[%w%-%./:]*$", -- Localhost URLs
   -- Database URLs
   database_url = "^([%w+]+)://([^:/@]+:[^@]*@)?([^/:]+)(:%d+)?(/[^?]*)?(%?.*)?$",
@@ -110,82 +110,8 @@ local function is_valid_ipv4(matches)
 end
 
 local function is_valid_url(url)
-  -- Extract URL components
-  local scheme, authority, path, query, fragment = url:match(M.PATTERNS.url)
-  if not scheme or not authority then
-    return false
-  end
-
-  -- Validate scheme
-  local valid_schemes = {
-    ["http"] = true,
-    ["https"] = true,
-    ["ftp"] = true,
-    ["sftp"] = true,
-    ["ws"] = true,
-    ["wss"] = true,
-    ["git"] = true,
-    ["ssh"] = true,
-    ["file"] = true,
-  }
-
-  if not valid_schemes[scheme:lower()] then
-    return false
-  end
-
-  -- Validate authority (host[:port])
-  local host, port = authority:match("^([^:]+)(:%d+)?$")
-  if not host then
-    return false
-  end
-
-  -- Check for valid hostname patterns
-  local is_valid_hostname = host:match("^[%w%-%.]+$")
-    and not host:match("^%.") -- doesn't start with dot
-    and not host:match("%.$") -- doesn't end with dot
-    and not host:match("%.%.") -- no consecutive dots
-    and host:find("%.") ~= nil -- has at least one dot
-
-  local is_valid_ip = host:match("^%d+%.%d+%.%d+%.%d+$")
-    and is_valid_ipv4({ host:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$") })
-
-  if not (is_valid_hostname or is_valid_ip) then
-    return false
-  end
-
-  -- Validate port if present
-  if port then
-    local port_num = tonumber(port:sub(2))
-    if not port_num or port_num < 1 or port_num > 65535 then
-      return false
-    end
-  end
-
-  -- Path validation (if present)
-  if path and path ~= "" then
-    -- Path should only contain valid characters
-    if path:match("[^%w%-_%./%~]") then
-      return false
-    end
-  end
-
-  -- Query validation (if present)
-  if query then
-    -- Query should start with ? and contain valid characters
-    if not query:match("^%?[%w%-_%.%~=&%%]*$") then
-      return false
-    end
-  end
-
-  -- Fragment validation (if present)
-  if fragment then
-    -- Fragment should start with # and contain valid characters
-    if not fragment:match("^#[%w%-_%.%~%%]*$") then
-      return false
-    end
-  end
-
-  return true
+  -- Basic URL validation that matches common REST API URLs
+  return url:match("^https?://[%w%-%.]+%.[%w%-%.]+[%w%-%./:?=&]*$") ~= nil
 end
 
 local function is_valid_localhost(url)
@@ -320,8 +246,15 @@ end
 
 -- Type detection function
 function M.detect_type(value)
-  -- Check enabled built-in types
-  if config.built_in_types.url and value:match(M.PATTERNS.url) and is_valid_url(value) then
+  -- Check for database URLs first (must start with a database protocol)
+  local protocol = value:match("^([%w+]+)://")
+  if protocol and DB_PROTOCOLS[protocol:lower()] then
+    return "database_url", value
+  end
+  
+  -- Check for regular URLs - ensure type is enabled and validation passes
+  if config.built_in_types.url and value:match("^https?://[%w%-%.]+%.[%w%-%.]+[%w%-%./:]*$") then
+    -- Simplified URL validation for common cases
     return "url", value
   end
   

@@ -298,7 +298,7 @@ require('telescope').setup({
 | TypeScript/React | `process.env.*`<br>`import.meta.env.*`      | Full support for Node.js, Vite environment variables             |
 | JavaScript/React | `process.env.*`<br>`import.meta.env.*`      | Complete support for both Node.js and modern frontend frameworks |
 
-### 🟡 Supported but Not Thoroughly Tested
+### 🔴 Supported but Not Thoroughly Tested (may be broken)
 
 | Language | Environment Access & Autocompletion trigger | Description                                       |
 | -------- | ------------------------------------------- | ------------------------------------------------- |

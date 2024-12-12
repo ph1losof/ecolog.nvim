@@ -125,6 +125,10 @@ local function setup_peek_autocommands(curbuf)
   })
 end
 
+---@class PeekContent
+---@field lines string[] Lines of content to display
+---@field highlights table[] Highlight definitions
+
 function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
   local filetype = vim.bo.filetype
   local available_providers = providers.get_providers(filetype)

@@ -3,6 +3,10 @@ local win = require("ecolog.win")
 
 local M = {}
 
+---@class SelectOptions
+---@field path? string Path to search for env files
+---@field active_file? string Currently active env file
+
 function M.select_env_file(opts, callback)
   local env_files = vim.fn.globpath(opts.path or vim.fn.getcwd(), ".env*", false, true)
 

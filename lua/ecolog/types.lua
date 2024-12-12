@@ -1,6 +1,16 @@
+---@class TypeDefinition
+---@field pattern string Lua pattern for matching
+---@field validate? fun(value: string): boolean Function for additional validation
+---@field transform? fun(value: string): string Function to transform the value
+
+---@class TypesConfig
+---@field types boolean|table<string, boolean|TypeDefinition> Type configuration
+---@field custom_types? table<string, TypeDefinition> Custom type definitions
+
 local M = {}
 
 -- Configuration state
+---@type table<string, boolean>
 local config = {
   built_in_types = {
     -- Network types

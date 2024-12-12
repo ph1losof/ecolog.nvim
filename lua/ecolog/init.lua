@@ -1,3 +1,28 @@
+---@class EcologConfig
+---@field path string Path to search for .env files
+---@field shelter ShelterConfig Shelter mode configuration
+---@field integrations IntegrationsConfig Integration settings
+---@field types boolean|table Enable all types or specific type configuration
+---@field custom_types table Custom type definitions
+---@field preferred_environment string Preferred environment name
+
+---@class ShelterConfig
+---@field configuration ShelterConfiguration Configuration for shelter mode
+---@field modules ShelterModules Module-specific shelter settings
+
+---@class ShelterConfiguration
+---@field partial_mode boolean|table Partial masking configuration
+---@field mask_char string Character used for masking
+
+---@class ShelterModules
+---@field cmp boolean Mask values in completion
+---@field peek boolean Mask values in peek view
+---@field files boolean Mask values in files
+---@field telescope boolean Mask values in telescope
+
+---@class IntegrationsConfig
+---@field lsp boolean Enable LSP integration
+
 local M = {}
 local api = vim.api
 local fn = vim.fn
@@ -364,6 +389,7 @@ function M.get_env_vars()
 end
 
 -- Setup function
+---@param opts? EcologConfig
 function M.setup(opts)
   opts = vim.tbl_deep_extend("force", {
     path = vim.fn.getcwd(),

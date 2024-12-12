@@ -131,6 +131,10 @@ local function setup_file_shelter()
   })
 end
 
+---@class ShelterSetupOptions
+---@field config? ShelterConfiguration
+---@field partial? table<string, boolean>
+
 -- Initialize shelter mode settings
 function M.setup(opts)
   opts = opts or {}

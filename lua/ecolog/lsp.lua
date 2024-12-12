@@ -1,3 +1,7 @@
+---@class LspConfig
+---@field on_hover? fun(result: table) Custom hover handler
+---@field on_definition? fun(result: table) Custom definition handler
+
 local M = {}
 
 -- Cache vim functions and APIs
@@ -120,7 +124,7 @@ local function handle_definition(err, result, ctx, config, providers, ecolog)
 end
 
 -- Set up LSP integration (optimized)
-function M.setup()
+function M.setup(opts)
   local providers = require("ecolog.providers")
   local ecolog = require("ecolog")
 

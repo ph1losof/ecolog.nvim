@@ -38,9 +38,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 {
   'philosofonusus/ecolog.nvim',
   dependencies = {
-    'hrsh7th/nvim-cmp', -- Optional, for autocompletion support
+    'hrsh7th/nvim-cmp', -- Optional: for autocompletion support (recommended)
   },
-  -- Optionally reccommend adding keybinds (lsp integration supposed to handle some of them automatically so please check it out)
+  -- Optional: you can add some keybindings
+  -- (I personally use lspsaga so check out lspsaga integration or lsp integration for a smoother experience without separate keybindings)
   keys = {
     { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
@@ -51,7 +52,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Enables shelter mode for sensitive values
     shelter = {
         configuration = {
-            partial_mode = false, -- Disables partial mode see shelter configuration below
+            partial_mode = false, -- false by default, disables partial mode, for more control check out shelter partial mode
             mask_char = "*",   -- Character used for masking
         },
         modules = {
@@ -61,6 +62,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             telescope = false  -- Mask values in telescope
         }
     },
+    -- true by default, enables built-in types (database_url, url, etc.)
+    types = true,
     path = vim.fn.getcwd(), -- Path to search for .env files
     preferred_environment = "development", -- Optional: prioritize specific env files
   },

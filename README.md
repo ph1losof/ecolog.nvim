@@ -223,12 +223,14 @@ The integration adds two commands that intelligently handle both environment var
 1. **EcologSagaHover**: 
    - Shows environment variable value when hovering over env vars
    - Falls back to Saga's hover for other code elements
-   - Recommended keymap: `vim.keymap.set('n', 'K', '<cmd>EcologSagaHover<CR>')`
+   - Automatically replaces existing Saga hover keymaps
 
 2. **EcologSagaGD** (Goto Definition):
    - Jumps to environment variable definition in .env file
    - Uses Saga's goto definition for other code elements
-   - Recommended keymap: `vim.keymap.set('n', 'gd', '<cmd>EcologSagaGD<CR>')`
+   - Automatically replaces existing Saga goto-definition keymaps
+
+> 💡 **Note**: When enabled, the integration automatically detects and updates your existing Lspsaga keymaps to use Ecolog's enhanced functionality. No manual keymap configuration required!
 
 #### Example Configuration
 
@@ -244,12 +246,13 @@ The integration adds two commands that intelligently handle both environment var
       lspsaga = true,
     }
   },
+  -- Optional: Manual keymap configuration if you prefer
   keys = {
     -- Regular ecolog keymaps
     { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
     { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
-    -- LSP Saga integration keymaps
+    -- LSP Saga integration keymaps (only needed if not using automatic replacement)
     { 'K', '<cmd>EcologSagaHover<CR>', desc = 'Hover Documentation' },
     { 'gd', '<cmd>EcologSagaGD<CR>', desc = 'Goto Definition' },
   },

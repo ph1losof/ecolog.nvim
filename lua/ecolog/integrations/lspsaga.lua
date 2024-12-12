@@ -30,6 +30,38 @@ local function handle_goto_definition()
   cmd(is_env_var(word) and ("EcologGotoVar " .. word) or "Lspsaga goto_definition")
 end
 
+-- Find and replace existing Saga keymaps
+local function replace_saga_keymaps()
+  local modes = { "n", "v" }
+  local saga_commands = {
+    ["Lspsaga hover_doc"] = "EcologSagaHover",
+    ["Lspsaga goto_definition"] = "EcologSagaGD"
+  }
+
+  for _, mode in ipairs(modes) do
+    local keymaps = api.nvim_get_keymap(mode)
+    for _, keymap in ipairs(keymaps) do
+      for saga_cmd, ecolog_cmd in pairs(saga_commands) do
+        if keymap.rhs and keymap.rhs:match(saga_cmd) then
+          -- Store original keymap attributes
+          local opts = {
+            silent = keymap.silent == 1,
+            noremap = keymap.noremap == 1,
+            expr = keymap.expr == 1,
+            desc = keymap.desc or ("Ecolog " .. saga_cmd:gsub("Lspsaga ", "")),
+          }
+          
+          -- Delete existing keymap
+          pcall(api.nvim_del_keymap, mode, keymap.lhs)
+          
+          -- Create new keymap with ecolog command
+          api.nvim_set_keymap(mode, keymap.lhs, "<cmd>" .. ecolog_cmd .. "<CR>", opts)
+        end
+      end
+    end
+  end
+end
+
 function M.setup()
   -- Cache ecolog module
   if not ecolog then
@@ -45,6 +77,9 @@ function M.setup()
   -- Create commands
   api.nvim_create_user_command("EcologSagaHover", handle_hover, {})
   api.nvim_create_user_command("EcologSagaGD", handle_goto_definition, {})
+
+  -- Replace existing Saga keymaps
+  replace_saga_keymaps()
 end
 
 return M

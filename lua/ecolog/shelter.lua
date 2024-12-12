@@ -170,6 +170,37 @@ function M.setup(opts)
   end
 end
 
+-- Apply partial masking to a value based on configuration
+local function apply_partial_masking(value)
+  if not config.partial_mode then
+    return string.rep(config.mask_char, #value)
+  end
+
+  -- Get settings from config
+  local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
+  local show_start = settings.show_start
+  local show_end = settings.show_end
+  local min_mask = settings.min_mask
+
+  -- If value is too short for partial masking, mask everything
+  if #value <= (show_start + show_end) or #value <= min_mask then
+    return string.rep(config.mask_char, #value)
+  end
+
+  -- Calculate mask length
+  local mask_length = #value - show_start - show_end
+
+  -- If mask length would be less than min_mask, mask everything
+  if mask_length < min_mask then
+    return string.rep(config.mask_char, #value)
+  end
+
+  -- Return partially masked value
+  return value:sub(1, show_start) .. 
+         string.rep(config.mask_char, mask_length) .. 
+         value:sub(-show_end)
+end
+
 -- Mask a value based on shelter settings
 function M.mask_value(value, context)
   if not M.is_enabled(context) then
@@ -177,19 +208,19 @@ function M.mask_value(value, context)
   end
 
   -- Check if value has an inline comment
-  local quote, content = value:match(PATTERNS.quoted_with_comment)
+  local quote, content, comment = value:match(PATTERNS.quoted_with_comment)
   if quote and content then
     -- If there's an inline comment, only mask the content and preserve the comment
-    local masked = M.mask_value(quote .. content .. quote, context)
-    return masked .. " " .. value:match(PATTERNS.quoted_with_comment):sub(3)
+    local masked = apply_partial_masking(content)
+    return quote .. masked .. quote .. " " .. comment
   end
 
-  -- Check if value is quoted (without comment) and extract content if it is
+  -- Check if value is quoted (without comment)
   quote, content = value:match(PATTERNS.quoted)
   if quote and content then
     -- For quoted values, mask everything inside quotes but preserve trailing spaces
     local trailing_spaces = value:match(quote .. content .. quote .. "(%s*)$") or ""
-    local masked = string.rep(config.mask_char, #content)
+    local masked = apply_partial_masking(content)
     return quote .. masked .. quote .. trailing_spaces
   end
 
@@ -197,17 +228,17 @@ function M.mask_value(value, context)
   local first_word, rest = value:match(PATTERNS.unquoted_with_spaces)
   if first_word and rest then
     -- Mask only the first word, preserve the rest
-    return string.rep(config.mask_char, #first_word) .. " " .. rest
+    return apply_partial_masking(first_word) .. " " .. rest
   end
 
   -- For single words or other cases, preserve trailing spaces
   local word, spaces = value:match("^(%S+)(%s*)$")
   if word then
-    return string.rep(config.mask_char, #word) .. spaces
+    return apply_partial_masking(word) .. spaces
   end
 
   -- Default case: mask everything
-  return string.rep(config.mask_char, #value)
+  return apply_partial_masking(value)
 end
 
 -- Get current state for a feature

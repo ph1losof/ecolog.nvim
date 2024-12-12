@@ -307,17 +307,17 @@ require('telescope').setup({
 | Lua      | `os.getenv()`                               | Native Lua environment variable access            |
 | Go       | `os.Getenv()`                               | Go standard library environment access            |
 | Rust     | `std::env::var()`<br>`env::var()`           | Rust standard library environment access          |
+| Deno     | `Deno.env.get()`                            | Deno runtime environment variable access          |
+| Bun      | `Bun.env.*`                                 | Bun runtime environment variable access           |
+| Docker   | `ARG`<br>`ENV`                              | Dockerfile environment and build arguments        |
 
 ### 🚧 Coming Soon
 
-| Language | Planned Support                        | Status         |
-| -------- | -------------------------------------- | -------------- |
-| Deno     | `Deno.env.get()`                       | In Development |
-| Ruby     | `ENV[]`                                | Planned        |
-| C#       | `Environment.GetEnvironmentVariable()` | Planned        |
-| Shell    | `$VAR`, `${VAR}`                       | Planned        |
-| Docker   | `ARG`, `ENV`                           | Planned        |
-| Kotlin   | `System.getenv()`                      | Planned        |
+| Language | Planned Support                        | Status  |
+| -------- | -------------------------------------- | ------- |
+| C#       | `Environment.GetEnvironmentVariable()` | Planned |
+| Shell    | `$VAR`, `${VAR}`                       | Planned |
+| Ruby     | `ENV[]`<br>`ENV.fetch()`               | Planned |
 
 > 💡 **Want support for another language?**  
 > Feel free to contribute by adding a new provider! Or just check out the [Custom Providers](#-custom-providers) section.

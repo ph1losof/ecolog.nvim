@@ -1,4 +1,4 @@
-# 🌲 ecolog.nvim (WIP)
+# 🌲 ecolog.nvim (Alpha)
 
 <div align="center">
 
@@ -27,6 +27,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Type System](#-ecolog-types)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
+- [Author Setup](#️-personal-setup)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -713,6 +714,45 @@ The plugin seamlessly integrates with your current colorscheme:
 | Types          | `Type`       |
 | Values         | `String`     |
 | Sources        | `Directory`  |
+
+## 🛠️ Author Setup
+
+It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
+
+```lua
+return {
+  {
+    'philosofonusus/ecolog.nvim',
+    keys = {
+      { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
+      { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
+      { '<leader>eS', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
+    },
+    dependencies = { 'nvim-telescope/telescope.nvim' },
+    lazy = false,
+    opts = {
+      preferred_environment = 'local',
+      types = true,
+      integrations = {
+        lspsaga = true, -- if you don't use lspsaga replace this line with lsp = true,
+      },
+      shelter = {
+        configuration = {
+          partial_mode = true,
+          mask_char = '*',
+        },
+        modules = {
+          files = true,
+          peek = false,
+          telescope = false,
+          cmp = true,
+        },
+      },
+      path = vim.fn.getcwd(),
+    },
+  },
+}
+```
 
 ## 🤝 Contributing
 

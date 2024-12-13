@@ -300,16 +300,15 @@ require('telescope').setup({
 | Deno             | `Deno.env.get("*`                           | Deno runtime environment variable access                         |
 | Bun              | `Bun.env.*`                                 | Bun runtime environment variable access                          |
 | Python           | `os.environ.get('*`<br>`os.environ['*`      | Native Python environment variable access                        |
+| Lua              | `os.getenv("*`                              | Native Lua environment variable access                           |
 
 ### 🔴 Supported but Not Thoroughly Tested (may be broken)
 
 | Language | Environment Access & Autocompletion trigger | Description                                       |
 | -------- | ------------------------------------------- | ------------------------------------------------- |
 | PHP      | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access |
-| Lua      | `os.getenv()`                               | Native Lua environment variable access            |
 | Go       | `os.Getenv("*`                              | Go standard library environment access            |
 | Rust     | `std::env::var()`<br>`env::var()`           | Rust standard library environment access          |
-| Docker   | `ARG`<br>`ENV`                              | Dockerfile environment and build arguments        |
 
 ### 🚧 Coming Soon
 
@@ -318,6 +317,7 @@ require('telescope').setup({
 | C#       | `Environment.GetEnvironmentVariable()` | Planned |
 | Shell    | `$VAR`, `${VAR}`                       | Planned |
 | Ruby     | `ENV[]`<br>`ENV.fetch()`               | Planned |
+| Docker   | `ARG *`<br>`ENV *`<br>`${*`            | Planned |
 
 > 💡 **Want support for another language?**  
 > Feel free to contribute by adding a new provider! Or just check out the [Custom Providers](#-custom-providers) section.

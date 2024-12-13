@@ -23,6 +23,7 @@
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
 ---@field lspsaga boolean Enable LSP Saga integration
+---@field nvim_cmp boolean Enable nvim-cmp integration
 
 local M = {}
 local api = vim.api
@@ -300,87 +301,6 @@ function M.refresh_env_vars(opts)
   parse_env_file(opts, true)
 end
 
--- Create completion source
-local function setup_completion(cmp)
-  -- Create highlight groups for cmp
-  api.nvim_set_hl(0, "CmpItemKindEcolog", { link = "EcologVariable" })
-  api.nvim_set_hl(0, "CmpItemAbbrMatchEcolog", { link = "EcologVariable" })
-  api.nvim_set_hl(0, "CmpItemAbbrMatchFuzzyEcolog", { link = "EcologVariable" })
-  api.nvim_set_hl(0, "CmpItemMenuEcolog", { link = "EcologSource" })
-
-  -- Register completion source
-  cmp.register_source("ecolog", {
-    get_trigger_characters = function()
-      return { ".", "'" }
-    end,
-
-    complete = function(self, request, callback)
-      local filetype = vim.bo.filetype
-      local available_providers = providers.get_providers(filetype)
-
-      -- Check if we have a selected file
-      if not selected_env_file then
-        callback({ items = {}, isIncomplete = false })
-        return
-      end
-
-      -- Force parse env files to ensure we have the latest from selected file
-      parse_env_file(nil, true)
-
-      -- Check completion trigger
-      local should_complete = false
-      local line = request.context.cursor_before_line
-
-      for _, provider in ipairs(available_providers) do
-        if provider.get_completion_trigger then
-          local trigger = provider.get_completion_trigger()
-          local parts = vim.split(trigger, ".", { plain = true })
-          local pattern = table.concat(
-            vim.tbl_map(function(part)
-              return pesc(part)
-            end, parts),
-            "%."
-          )
-
-          if line:match(pattern .. "$") then
-            should_complete = true
-            break
-          end
-        end
-      end
-
-      if not should_complete then
-        callback({ items = {}, isIncomplete = false })
-        return
-      end
-
-      local items = {}
-      for var_name, var_info in pairs(env_vars) do
-        -- Only include variables from the selected file
-        if var_info.source == selected_env_file then
-          -- Re-detect type for accurate display
-          local type_name, _ = types.detect_type(var_info.value)
-          local doc_value = shelter.mask_value(var_info.value, "cmp")
-          table.insert(items, {
-            label = var_name,
-            kind = cmp.lsp.CompletionItemKind.Variable,
-            detail = fn.fnamemodify(var_info.source, ":t"),
-            documentation = {
-              kind = "markdown",
-              value = string.format("**Type:** `%s`\n**Value:** `%s`", type_name, doc_value),
-            },
-            kind_hl_group = "CmpItemKindEcolog",
-            menu_hl_group = "CmpItemMenuEcolog",
-            abbr_hl_group = "CmpItemAbbrMatchEcolog",
-          })
-        end
-      end
-
-      callback({ items = items, isIncomplete = false })
-    end,
-  })
-end
-
 -- Get environment variables (for telescope integration)
 function M.get_env_vars()
   if next(env_vars) == nil then
@@ -409,6 +329,7 @@ function M.setup(opts)
     integrations = {
       lsp = false,
       lspsaga = false,
+      nvim_cmp = true, -- Enable nvim-cmp integration by default
     },
     types = true, -- Enable all types by default
     custom_types = {}, -- Custom types configuration
@@ -440,6 +361,12 @@ function M.setup(opts)
   if opts.integrations.lspsaga then
     local lspsaga = require_on_demand("ecolog.integrations.lspsaga")
     lspsaga.setup()
+  end
+
+  -- Set up nvim-cmp integration if enabled
+  if opts.integrations.nvim_cmp then
+    local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
+    nvim_cmp.setup(opts, env_vars, providers, shelter, types, selected_env_file)
   end
 
   -- Lazy load providers only when needed
@@ -511,21 +438,6 @@ function M.setup(opts)
 
   -- Set up file watchers
   setup_file_watcher(opts)
-
-  -- Set up lazy loading for cmp
-  vim.api.nvim_create_autocmd("InsertEnter", {
-    callback = function()
-      local has_cmp, cmp = pcall(require, "cmp")
-      if has_cmp and not M._cmp_loaded then
-        -- Load providers first
-        load_providers()
-        -- Then set up completion
-        setup_completion(cmp)
-        M._cmp_loaded = true
-      end
-    end,
-    once = true,
-  })
 
   -- Create commands
   local commands = {

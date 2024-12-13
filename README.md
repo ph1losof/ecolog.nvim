@@ -293,14 +293,14 @@ require('telescope').setup({
 
 ### 🟢 Currently Supported and Tested
 
-| Language         | Environment Access & Autocompletion trigger | Description                                                      |
-| ---------------- | ------------------------------------------- | ---------------------------------------------------------------- |
-| TypeScript/React | `process.env.*`<br>`import.meta.env.*`      | Full support for Node.js, Vite environment variables             |
-| JavaScript/React | `process.env.*`<br>`import.meta.env.*`      | Complete support for both Node.js and modern frontend frameworks |
-| Deno             | `Deno.env.get("*`                           | Deno runtime environment variable access                         |
-| Bun              | `Bun.env.*`                                 | Bun runtime environment variable access                          |
-| Python           | `os.environ.get('*`<br>`os.environ['*`      | Native Python environment variable access                        |
-| Lua              | `os.getenv("*`                              | Native Lua environment variable access                           |
+| Language                    | Environment Access & Autocompletion trigger                                          | Description                                          |
+| --------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| Javascript/TypeScript/React | `import.meta.env['*`<br>`process.env[*'`<br>`import.meta.env["*`<br>`process.env[*"` | Full support for Node.js, Vite environment variables |
+| JavaScript/Typescript/React | `process.env.*`<br>`import.meta.env.*`                                               | Complete support for both types of annotations       |
+| Deno                        | `Deno.env.get("*`<br>`Deno.env.get('`                                                | Deno runtime environment variable access             |
+| Bun                         | `Bun.env.*`<br>`Bun.env["*`<br>`Bun.env['`                                           | Bun runtime environment variable access              |
+| Python                      | `os.environ.get('*`<br>`os.environ['*`<br>`os.environ["*`                            | Native Python environment variable access            |
+| Lua                         | `os.getenv("*`<br>`os.getenv('*`                                                     | Native Lua environment variable access               |
 
 ### 🔴 Supported but Not Thoroughly Tested (may be broken)
 

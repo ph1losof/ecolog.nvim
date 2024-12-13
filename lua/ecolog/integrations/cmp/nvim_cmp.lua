@@ -2,8 +2,9 @@ local M = {}
 local api = vim.api
 local fn = vim.fn
 
--- Store providers reference
+-- Store module references
 local _providers = nil
+local _shelter = nil
 
 -- Create completion source
 local function setup_completion(cmp, opts, providers)
@@ -83,6 +84,11 @@ local function setup_completion(cmp, opts, providers)
 
       local items = {}
       for var_name, var_info in pairs(env_vars) do
+        -- Get masked value if shelter is enabled
+        local display_value = _shelter.is_enabled("cmp") 
+          and _shelter.mask_value(var_info.value, "cmp")
+          or var_info.value
+
         -- Create base completion item
         local item = {
           label = var_name,
@@ -90,7 +96,7 @@ local function setup_completion(cmp, opts, providers)
           detail = fn.fnamemodify(var_info.source, ":t"),
           documentation = {
             kind = "markdown",
-            value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, var_info.value),
+            value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value),
           },
           kind_hl_group = "CmpItemKindEcolog",
           menu_hl_group = "CmpItemMenuEcolog",
@@ -111,8 +117,9 @@ local function setup_completion(cmp, opts, providers)
 end
 
 function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
-  -- Store providers reference
+  -- Store module references
   _providers = providers
+  _shelter = shelter
   
   -- Set up lazy loading for cmp
   vim.api.nvim_create_autocmd("InsertEnter", {

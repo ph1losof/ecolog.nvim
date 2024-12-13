@@ -180,6 +180,8 @@ require('ecolog').setup({
 })
 ```
 
+PS: If you're using lspsaga, please see section [LSP Saga Integration](#lsp-saga-integration) don't use lsp integration use one or the other.
+
 #### Features
 
 - **Hover Preview**: When you hover (K) over an environment variable, it will show the value and metadata in a floating window
@@ -220,6 +222,8 @@ require('ecolog').setup({
     }
 })
 ```
+
+PS: If you're using lspsaga then don't use lsp integration use one or the other.
 
 #### Features
 

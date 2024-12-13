@@ -12,6 +12,30 @@ M.providers = {
       return "process.env."
     end,
   },
+  -- process.env square brackets with double quotes
+  {
+    pattern = 'process%.env%["%w*$',
+    filetype = { "typescript", "typescriptreact" },
+    extract_var = function(line, col)
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match('process%.env%["([%w_]*)$')
+    end,
+    get_completion_trigger = function()
+      return 'process.env["'
+    end,
+  },
+  -- process.env square brackets with single quotes
+  {
+    pattern = "process%.env%['%w*$",
+    filetype = { "typescript", "typescriptreact" },
+    extract_var = function(line, col)
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match("process%.env%['([%w_]*)$")
+    end,
+    get_completion_trigger = function()
+      return "process.env['"
+    end,
+  },
   {
     pattern = "import%.meta%.env%.%w*$",
     filetype = { "typescript", "typescriptreact" },
@@ -21,6 +45,30 @@ M.providers = {
     end,
     get_completion_trigger = function()
       return "import.meta.env."
+    end,
+  },
+  -- import.meta.env square brackets with double quotes
+  {
+    pattern = 'import%.meta%.env%["%w*$',
+    filetype = { "typescript", "typescriptreact" },
+    extract_var = function(line, col)
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match('import%.meta%.env%["([%w_]*)$')
+    end,
+    get_completion_trigger = function()
+      return 'import.meta.env["'
+    end,
+  },
+  -- import.meta.env square brackets with single quotes
+  {
+    pattern = "import%.meta%.env%['%w*$",
+    filetype = { "typescript", "typescriptreact" },
+    extract_var = function(line, col)
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match("import%.meta%.env%['([%w_]*)$")
+    end,
+    get_completion_trigger = function()
+      return "import.meta.env['"
     end,
   },
   {
@@ -33,6 +81,30 @@ M.providers = {
     end,
     get_completion_trigger = function()
       return "Bun.env."
+    end,
+  },
+  -- Bun.env square brackets with double quotes
+  {
+    pattern = 'Bun%.env%["%w*$',
+    filetype = { "typescript", "javascript" },
+    extract_var = function(line, col)
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match('Bun%.env%["([%w_]*)$')
+    end,
+    get_completion_trigger = function()
+      return 'Bun.env["'
+    end,
+  },
+  -- Bun.env square brackets with single quotes
+  {
+    pattern = "Bun%.env%['%w*$",
+    filetype = { "typescript", "javascript" },
+    extract_var = function(line, col)
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match("Bun%.env%['([%w_]*)$")
+    end,
+    get_completion_trigger = function()
+      return "Bun.env['"
     end,
   },
   -- Deno double quotes completion

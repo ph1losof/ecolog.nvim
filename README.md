@@ -17,10 +17,10 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Features](#-features)
 - [Usage](#-usage)
 - [Integrations](#-integrations)
-  - [LSP Integration (Very convenient just check it out)](#lsp-integration-experimental)
+  - [Nvim-cmp (Completion) Integration (Highly recomended)](#nvim-cmp-integration)
+  - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
-  - [Completion Integration](#completion-setup)
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#-shelter-mode)
@@ -70,19 +70,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     preferred_environment = "development", -- Optional: prioritize specific env files
   },
 }
-```
-
-### Completion Setup (Recommended)
-
-Add `ecolog` to your nvim-cmp sources:
-
-```lua
-require('cmp').setup({
-  sources = {
-    { name = 'ecolog' },
-    -- your other sources...
-  },
-})
 ```
 
 ## ✨ Features
@@ -156,6 +143,19 @@ Files are loaded in the following priority order:
 3. Other `.env.*` files (alphabetically)
 
 ## 🔌 Integrations
+
+### Nvim-cmp Integration
+
+Add `ecolog` to your nvim-cmp sources:
+
+```lua
+require('cmp').setup({
+  sources = {
+    { name = 'ecolog' },
+    -- your other sources...
+  },
+})
+```
 
 ### LSP Integration (Experimental)
 

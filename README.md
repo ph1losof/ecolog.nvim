@@ -18,6 +18,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Usage](#-usage)
 - [Integrations](#-integrations)
   - [Nvim-cmp (Completion) Integration (Highly recomended)](#nvim-cmp-integration)
+  - [Blink CMP (Experimental)](#blink-cmp-experimental)
   - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
@@ -157,6 +158,41 @@ require('cmp').setup({
   },
 })
 ```
+
+### Blink CMP (Experimental)
+
+Ecolog provides an experimental integration with [blink.cmp](https://github.com/saghen/blink.cmp) for environment variable completions. To enable it:
+
+1. Enable the integration in your Ecolog setup:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    blink_cmp = true,
+    nvim_cmp = false,
+  },
+})
+```
+
+2. Configure Blink CMP to use the Ecolog source:
+
+```lua
+{
+  "saghen/blink.cmp",
+  opts = {
+    sources = {
+      completion = {
+        enabled_providers = { 'ecolog', 'lsp', 'path', 'snippets', 'buffer' },
+      },
+      providers = {
+        ecolog = { name = 'ecolog', module = 'ecolog.integrations.cmp.blink_cmp' },
+      },
+    },
+  },
+}
+```
+
+> ⚠️ **Note**: This integration is experimental and may have issues or limitations. Please report any problems you encounter.
 
 ### LSP Integration (Experimental)
 

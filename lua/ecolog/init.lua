@@ -24,6 +24,7 @@
 ---@field lsp boolean Enable LSP integration
 ---@field lspsaga boolean Enable LSP Saga integration
 ---@field nvim_cmp boolean Enable nvim-cmp integration
+---@field blink_cmp boolean Enable Blink CMP integration
 
 local M = {}
 local api = vim.api
@@ -330,6 +331,7 @@ function M.setup(opts)
       lsp = false,
       lspsaga = false,
       nvim_cmp = true, -- Enable nvim-cmp integration by default
+      blink_cmp = false, -- Disable Blink CMP integration by default
     },
     types = true, -- Enable all types by default
     custom_types = {}, -- Custom types configuration
@@ -367,6 +369,13 @@ function M.setup(opts)
   if opts.integrations.nvim_cmp then
     local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
     nvim_cmp.setup(opts, env_vars, providers, shelter, types, selected_env_file)
+  end
+
+  -- Set up Blink CMP integration if enabled
+  if opts.integrations.blink_cmp then
+    local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
+    blink_cmp.setup(opts, env_vars, providers, shelter, types, selected_env_file)
+    -- No need to do anything else since Blink will create instances using Source.new()
   end
 
   -- Lazy load providers only when needed

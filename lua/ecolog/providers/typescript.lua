@@ -36,11 +36,11 @@ M.providers = {
     end,
   },
   {
-    pattern = "Deno%.env%.get%([\"]%w*$",
+    pattern = "Deno%.env%.get%(['\"]%w*['\"]?%s*%)$",
     filetype = "typescript",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col + 1)
-      return before_cursor:match('Deno%.env%.get%(["\']([%w_]*)$')
+      return before_cursor:match('Deno%.env%.get%([\'"]([%w_]*)[\'"]?%s*%)$')
     end,
     get_completion_trigger = function()
       return 'Deno.env.get("'

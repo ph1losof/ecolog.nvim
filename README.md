@@ -297,18 +297,18 @@ require('telescope').setup({
 | ---------------- | ------------------------------------------- | ---------------------------------------------------------------- |
 | TypeScript/React | `process.env.*`<br>`import.meta.env.*`      | Full support for Node.js, Vite environment variables             |
 | JavaScript/React | `process.env.*`<br>`import.meta.env.*`      | Complete support for both Node.js and modern frontend frameworks |
+| Deno             | `Deno.env.get("*`                           | Deno runtime environment variable access                         |
+| Bun              | `Bun.env.*`                                 | Bun runtime environment variable access                          |
+| Python           | `os.environ.get('*`<br>`os.environ['*`      | Native Python environment variable access                        |
 
 ### 🔴 Supported but Not Thoroughly Tested (may be broken)
 
 | Language | Environment Access & Autocompletion trigger | Description                                       |
 | -------- | ------------------------------------------- | ------------------------------------------------- |
-| Python   | `os.environ.get()`                          | Native Python environment variable access         |
 | PHP      | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access |
 | Lua      | `os.getenv()`                               | Native Lua environment variable access            |
 | Go       | `os.Getenv()`                               | Go standard library environment access            |
 | Rust     | `std::env::var()`<br>`env::var()`           | Rust standard library environment access          |
-| Deno     | `Deno.env.get()`                            | Deno runtime environment variable access          |
-| Bun      | `Bun.env.*`                                 | Bun runtime environment variable access           |
 | Docker   | `ARG`<br>`ENV`                              | Dockerfile environment and build arguments        |
 
 ### 🚧 Coming Soon

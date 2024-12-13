@@ -307,7 +307,7 @@ require('telescope').setup({
 | -------- | ------------------------------------------- | ------------------------------------------------- |
 | PHP      | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access |
 | Lua      | `os.getenv()`                               | Native Lua environment variable access            |
-| Go       | `os.Getenv()`                               | Go standard library environment access            |
+| Go       | `os.Getenv("*`                              | Go standard library environment access            |
 | Rust     | `std::env::var()`<br>`env::var()`           | Rust standard library environment access          |
 | Docker   | `ARG`<br>`ENV`                              | Dockerfile environment and build arguments        |
 

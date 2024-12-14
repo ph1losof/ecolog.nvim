@@ -18,7 +18,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Usage](#-usage)
 - [Integrations](#-integrations)
   - [Nvim-cmp (Completion) Integration (Highly recomended)](#nvim-cmp-integration)
-  - [Blink CMP (Experimental)](#blink-cmp-experimental)
+  - [Blink CMP Integration](#blink-cmp-integration)
   - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
@@ -54,6 +54,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   -- Lazy loading is done internally
   lazy = false,
   opts = {
+    integrations = {
+        nvim_cmp = true, -- If you dont plan to use nvim_cmp set to false, enabled by default
+        -- If you are planning to use blink cmp uncomment this line
+        -- blink_cmp = true,
+    },
     -- Enables shelter mode for sensitive values
     shelter = {
         configuration = {
@@ -163,11 +168,23 @@ require('cmp').setup({
 })
 ```
 
+Nvim-cmp integration is enabled by default. To disable it:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    nvim_cmp = false,
+  },
+})
+```
+
 ### Blink-cmp Integration
 
-Ecolog provides an integration with [blink.cmp](https://github.com/saghen/blink.cmp) for environment variable completions. To enable it:
-
 > ⚠️ **Known Issue**: While the integration is functional, there's a timing issue with completions. The completion menu appears before the trigger characters (quotes) are fully typed, which can result in environment variable names being inserted without the required quotes. For example, when typing `process.env[`, completions appear before you type the quote, potentially resulting in `process.env[MY_VAR]` instead of the correct `process.env["MY_VAR"]`. I'm working on a fix.
+
+PS: When blink_cmp is enabled, nvim_cmp is disabled by default.
+
+Ecolog provides an integration with [blink.cmp](https://github.com/saghen/blink.cmp) for environment variable completions. To enable it:
 
 1. Enable the integration in your Ecolog setup:
 
@@ -175,7 +192,6 @@ Ecolog provides an integration with [blink.cmp](https://github.com/saghen/blink.
 require('ecolog').setup({
   integrations = {
     blink_cmp = true,
-    nvim_cmp = false,
   },
 })
 ```

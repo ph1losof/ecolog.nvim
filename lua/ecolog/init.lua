@@ -338,6 +338,11 @@ function M.setup(opts)
     preferred_environment = "", -- Add this default
   }, opts or {})
 
+  -- If blink_cmp is enabled, disable nvim_cmp to avoid conflicts
+  if opts.integrations.blink_cmp then
+    opts.integrations.nvim_cmp = false
+  end
+
   -- Initialize highlights first
   require("ecolog.highlights").setup()
 

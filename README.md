@@ -51,6 +51,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     { '<leader>ep', '<cmd>EcologPeek<cr>', desc = 'Ecolog peek variable' },
     { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
   },
+  -- Lazy loading is done internally
   lazy = false,
   opts = {
     -- Enables shelter mode for sensitive values
@@ -159,9 +160,11 @@ require('cmp').setup({
 })
 ```
 
-### Blink CMP (Experimental)
+### Blink-cmp Integration
 
-Ecolog provides an experimental integration with [blink.cmp](https://github.com/saghen/blink.cmp) for environment variable completions. To enable it:
+Ecolog provides an integration with [blink.cmp](https://github.com/saghen/blink.cmp) for environment variable completions. To enable it:
+
+> ⚠️ **Known Issue**: While the integration is functional, there's a timing issue with completions. The completion menu appears before the trigger characters (quotes) are fully typed, which can result in environment variable names being inserted without the required quotes. For example, when typing `process.env[`, completions appear before you type the quote, potentially resulting in `process.env[MY_VAR]` instead of the correct `process.env["MY_VAR"]`. I'm working on a fix.
 
 1. Enable the integration in your Ecolog setup:
 
@@ -191,8 +194,6 @@ require('ecolog').setup({
   },
 }
 ```
-
-> ⚠️ **Note**: This integration is experimental and may have issues or limitations. Please report any problems you encounter.
 
 ### LSP Integration (Experimental)
 

@@ -44,9 +44,11 @@ local function env_picker(opts)
   opts = vim.tbl_deep_extend("force", {
     layout_strategy = "vertical",
     layout_config = {
-      width = 0.8,
-      height = 0.8,
-      preview_height = 0.6,
+      vertical = {
+        width = 0.8,
+        height = 0.8,
+        preview_height = 0.6,
+      },
     },
   }, opts)
 

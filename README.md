@@ -125,6 +125,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### Available Commands
 
+### Available Commands
+
 | Command                                    | Description                                                               |
 | ------------------------------------------ | ------------------------------------------------------------------------- |
 | `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                           |
@@ -136,6 +138,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 | `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor |
 | `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                         |
 | `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                      |
+| `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
 
 ### 📝 Environment File Priority
 

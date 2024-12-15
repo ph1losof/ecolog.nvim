@@ -4,8 +4,6 @@ local M = {}
 -- Store module references
 local _providers = nil
 local _shelter = nil
-local _env_vars = nil
-local _ecolog = nil
 
 function M.new()
   return setmetatable({}, { __index = M })
@@ -34,42 +32,30 @@ function M:enabled()
 end
 
 function M:get_completions(ctx, callback)
-  -- Get fresh env vars on each completion request
-  if not _ecolog then
-    local ok
-    ok, _ecolog = pcall(require, "ecolog")
-    if not ok then
-      callback({
-        context = ctx,
-        is_incomplete_forward = false,
-        is_incomplete_backward = false,
-        items = {},
-      })
-      return function() end
-    end
+  -- Get current env vars directly from ecolog
+  local ok, ecolog = pcall(require, "ecolog")
+  if not ok then
+    callback({ context = ctx, items = {} })
+    return function() end
   end
-  
-  _env_vars = _ecolog.get_env_vars()
-  
-  if vim.tbl_count(_env_vars) == 0 then
-    callback({
-      context = ctx,
-      is_incomplete_forward = false,
-      is_incomplete_backward = false,
-      items = {},
-    })
+
+  local env_vars = ecolog.get_env_vars()
+  if vim.tbl_count(env_vars) == 0 then
+    callback({ context = ctx, items = {} })
     return function() end
   end
 
   local filetype = vim.bo.filetype
   local available_providers = _providers.get_providers(filetype)
+  local cursor = ctx.cursor[2]
   local line = ctx.line
+  local before_line = string.sub(line, 1, cursor)
   local should_complete = false
   local matched_provider
 
   -- Check completion triggers from all providers
   for _, provider in ipairs(available_providers) do
-    if provider.pattern and line:match(provider.pattern) then
+    if provider.pattern and before_line:match(provider.pattern) then
       should_complete = true
       matched_provider = provider
       break
@@ -77,7 +63,14 @@ function M:get_completions(ctx, callback)
     
     if provider.get_completion_trigger then
       local trigger = provider.get_completion_trigger()
-      if line:match(vim.pesc(trigger) .. "$") then
+      local parts = vim.split(trigger, ".", { plain = true })
+      local pattern = table.concat(
+        vim.tbl_map(function(part)
+          return vim.pesc(part)
+        end, parts),
+        "%."
+      )
+      if before_line:match(pattern .. "$") then
         should_complete = true
         matched_provider = provider
         break
@@ -86,17 +79,12 @@ function M:get_completions(ctx, callback)
   end
 
   if not should_complete then
-    callback({
-      context = ctx,
-      is_incomplete_forward = false,
-      is_incomplete_backward = false,
-      items = {},
-    })
+    callback({ context = ctx, items = {} })
     return function() end
   end
 
   local items = {}
-  for var_name, var_info in pairs(_env_vars) do
+  for var_name, var_info in pairs(env_vars) do
     local display_value = _shelter.is_enabled("cmp") 
       and _shelter.mask_value(var_info.value, "cmp")
       or var_info.value
@@ -122,20 +110,13 @@ function M:get_completions(ctx, callback)
     table.insert(items, item)
   end
 
-  callback({
-    context = ctx,
-    is_incomplete_forward = false,
-    is_incomplete_backward = false,
-    items = items,
-  })
+  callback({ context = ctx, items = items })
   return function() end
 end
 
--- Setup function to initialize module references
-M.setup = function(opts, env_vars, providers, shelter)
+M.setup = function(opts, _, providers, shelter)
   _providers = providers
   _shelter = shelter
-  _env_vars = env_vars
   providers.load_providers()
 end
 

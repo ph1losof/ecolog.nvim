@@ -17,8 +17,8 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Features](#-features)
 - [Usage](#-usage)
 - [Integrations](#-integrations)
-  - [Nvim-cmp (Completion) Integration (Highly recomended)](#nvim-cmp-integration)
-  - [Blink CMP Integration](#blink-cmp-integration)
+  - [Nvim-cmp Integration](#nvim-cmp-integration)
+  - [Blink-cmp Integration](#blink-cmp-integration)
   - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
@@ -55,6 +55,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   lazy = false,
   opts = {
     integrations = {
+        -- WARNING: for both cmp integrations see readme section below
         nvim_cmp = true, -- If you dont plan to use nvim_cmp set to false, enabled by default
         -- If you are planning to use blink cmp uncomment this line
         -- blink_cmp = true,
@@ -79,6 +80,18 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   },
 }
 ```
+
+Setup auto-completion with `nvim-cmp`:
+
+```lua
+require('cmp').setup({
+  sources = {
+    { name = 'ecolog' },
+    -- your other sources...
+  },
+```
+
+If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
 ## ✨ Features
 
@@ -165,8 +178,9 @@ require('cmp').setup({
     { name = 'ecolog' },
     -- your other sources...
   },
-})
 ```
+
+})
 
 Nvim-cmp integration is enabled by default. To disable it:
 

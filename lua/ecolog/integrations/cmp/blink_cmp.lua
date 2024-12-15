@@ -12,7 +12,7 @@ end
 function M:get_trigger_characters()
   local triggers = {}
   local available_providers = _providers.get_providers(vim.bo.filetype)
-  
+
   for _, provider in ipairs(available_providers) do
     if provider.get_completion_trigger then
       local trigger = provider.get_completion_trigger()
@@ -23,7 +23,7 @@ function M:get_trigger_characters()
       end
     end
   end
-  
+
   return triggers
 end
 
@@ -60,7 +60,7 @@ function M:get_completions(ctx, callback)
       matched_provider = provider
       break
     end
-    
+
     if provider.get_completion_trigger then
       local trigger = provider.get_completion_trigger()
       local parts = vim.split(trigger, ".", { plain = true })
@@ -85,9 +85,7 @@ function M:get_completions(ctx, callback)
 
   local items = {}
   for var_name, var_info in pairs(env_vars) do
-    local display_value = _shelter.is_enabled("cmp") 
-      and _shelter.mask_value(var_info.value, "cmp")
-      or var_info.value
+    local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp") or var_info.value
 
     local item = {
       label = var_name,

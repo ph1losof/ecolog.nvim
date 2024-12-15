@@ -180,8 +180,6 @@ require('ecolog').setup({
 
 ### Blink-cmp Integration
 
-> ⚠️ **Known Issue**: While the integration is functional, there's a timing issue with completions. The completion menu appears before the trigger characters (quotes) are fully typed, which can result in environment variable names being inserted without the required quotes. For example, when typing `process.env[`, completions appear before you type the quote, potentially resulting in `process.env[MY_VAR]` instead of the correct `process.env["MY_VAR"]`. I'm working on a fix.
-
 PS: When blink_cmp is enabled, nvim_cmp is disabled by default.
 
 Ecolog provides an integration with [blink.cmp](https://github.com/saghen/blink.cmp) for environment variable completions. To enable it:

@@ -1,34 +1,23 @@
----@module 'ecolog.integrations.cmp.blink_cmp'
+--- @type blink.cmp.Source
+local M = {}
 
----@class ecolog.BlinkSource
----@field get_trigger_characters fun(): string[]
----@field enabled fun(): boolean
----@field get_completions fun(self: table, context: table, callback: function)
-local Source = {}
-Source.__index = Source
+-- Store module references
+local _providers = nil
+local _shelter = nil
+local _env_vars = nil
+local _ecolog = nil
 
--- Store module references as class fields
-Source._providers = nil
-Source._shelter = nil
-
-function Source.new()
-  local self = setmetatable({}, Source)
-  return self
+function M.new()
+  return setmetatable({}, { __index = M })
 end
 
-function Source:get_trigger_characters()
+function M:get_trigger_characters()
   local triggers = {}
-  if not Source._providers then
-    return triggers
-  end
-
-  local available_providers = Source._providers.get_providers(vim.bo.filetype)
+  local available_providers = _providers.get_providers(vim.bo.filetype)
   
-  -- Collect unique trigger characters from all providers
   for _, provider in ipairs(available_providers) do
     if provider.get_completion_trigger then
       local trigger = provider.get_completion_trigger()
-      -- Split trigger into characters and add them
       for char in trigger:gmatch(".") do
         if not vim.tbl_contains(triggers, char) then
           table.insert(triggers, char)
@@ -40,79 +29,114 @@ function Source:get_trigger_characters()
   return triggers
 end
 
-function Source:enabled()
+function M:enabled()
   return true
 end
 
-function Source:get_completions(context, callback)
-  -- Get current env vars directly from ecolog
-  local has_ecolog, ecolog = pcall(require, "ecolog")
-  if not has_ecolog then
+function M:get_completions(ctx, callback)
+  -- Get fresh env vars on each completion request
+  if not _ecolog then
+    local ok
+    ok, _ecolog = pcall(require, "ecolog")
+    if not ok then
+      callback({
+        context = ctx,
+        is_incomplete_forward = false,
+        is_incomplete_backward = false,
+        items = {},
+      })
+      return function() end
+    end
+  end
+  
+  _env_vars = _ecolog.get_env_vars()
+  
+  if vim.tbl_count(_env_vars) == 0 then
     callback({
-      context = context,
+      context = ctx,
       is_incomplete_forward = false,
       is_incomplete_backward = false,
       items = {},
     })
-    return
+    return function() end
   end
 
-  local env_vars = ecolog.get_env_vars()
-  if vim.tbl_count(env_vars) == 0 then
+  local filetype = vim.bo.filetype
+  local available_providers = _providers.get_providers(filetype)
+  local line = ctx.line
+  local should_complete = false
+  local matched_provider
+
+  -- Check completion triggers from all providers
+  for _, provider in ipairs(available_providers) do
+    if provider.pattern and line:match(provider.pattern) then
+      should_complete = true
+      matched_provider = provider
+      break
+    end
+    
+    if provider.get_completion_trigger then
+      local trigger = provider.get_completion_trigger()
+      if line:match(vim.pesc(trigger) .. "$") then
+        should_complete = true
+        matched_provider = provider
+        break
+      end
+    end
+  end
+
+  if not should_complete then
     callback({
-      context = context,
+      context = ctx,
       is_incomplete_forward = false,
       is_incomplete_backward = false,
       items = {},
     })
-    return
+    return function() end
   end
 
   local items = {}
-  for var_name, var_info in pairs(env_vars) do
-    -- Get masked value if shelter is enabled
-    local display_value = Source._shelter and Source._shelter.is_enabled("cmp") 
-      and Source._shelter.mask_value(var_info.value, "cmp")
+  for var_name, var_info in pairs(_env_vars) do
+    local display_value = _shelter.is_enabled("cmp") 
+      and _shelter.mask_value(var_info.value, "cmp")
       or var_info.value
 
-    -- Create base completion item
     local item = {
       label = var_name,
+      kind = vim.lsp.protocol.CompletionItemKind.Variable,
+      insertTextFormat = vim.lsp.protocol.InsertTextFormat.PlainText,
       insertText = var_name,
       detail = vim.fn.fnamemodify(var_info.source, ":t"),
       documentation = {
-        kind = "markdown",
+        kind = vim.lsp.protocol.MarkupKind.Markdown,
         value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value),
       },
+      score = 1,
+      source_name = "ecolog",
     }
+
+    if matched_provider and matched_provider.format_completion then
+      item = matched_provider.format_completion(item, var_name, var_info)
+    end
 
     table.insert(items, item)
   end
 
   callback({
-    context = context,
+    context = ctx,
     is_incomplete_forward = false,
     is_incomplete_backward = false,
     items = items,
   })
+  return function() end
 end
 
----@param opts table
----@param env_vars table
----@param providers table
----@param shelter table
----@param types table
----@param selected_env_file string
-function Source.setup(opts, env_vars, providers, shelter, types, selected_env_file)
-  -- Store module references
-  Source._providers = providers
-  Source._shelter = shelter
-
-  -- Create highlight groups
-  vim.api.nvim_set_hl(0, "CmpItemKindEcolog", { link = "EcologVariable" })
-  vim.api.nvim_set_hl(0, "CmpItemAbbrMatchEcolog", { link = "EcologVariable" })
-  vim.api.nvim_set_hl(0, "CmpItemAbbrMatchFuzzyEcolog", { link = "EcologVariable" })
-  vim.api.nvim_set_hl(0, "CmpItemMenuEcolog", { link = "EcologSource" })
+-- Setup function to initialize module references
+M.setup = function(opts, env_vars, providers, shelter)
+  _providers = providers
+  _shelter = shelter
+  _env_vars = env_vars
+  providers.load_providers()
 end
 
-return Source 
+return M

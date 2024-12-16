@@ -5,6 +5,7 @@
 ---@field types boolean|table Enable all types or specific type configuration
 ---@field custom_types table Custom type definitions
 ---@field preferred_environment string Preferred environment name
+---@field load_shell LoadShellConfig Shell variables loading configuration
 
 ---@class ShelterConfig
 ---@field configuration ShelterConfiguration Configuration for shelter mode
@@ -25,6 +26,12 @@
 ---@field lspsaga boolean Enable LSP Saga integration
 ---@field nvim_cmp boolean Enable nvim-cmp integration
 ---@field blink_cmp boolean Enable Blink CMP integration
+
+---@class LoadShellConfig
+---@field enabled boolean Enable loading shell variables
+---@field override boolean Override .env file variables with shell variables
+---@field filter? function Optional function to filter shell variables
+---@field transform? function Optional function to transform shell variables
 
 local M = {}
 local api = vim.api
@@ -207,6 +214,46 @@ local function parse_env_file(opts, force)
     return
   end
 
+  -- Clear existing env vars
+  env_vars = {}
+
+  -- Load shell variables if enabled
+  if opts.load_shell and opts.load_shell.enabled then
+    local shell_vars = vim.fn.environ()
+    
+    -- Apply filter if provided
+    if opts.load_shell.filter then
+      local filtered_vars = {}
+      for key, value in pairs(shell_vars) do
+        if opts.load_shell.filter(key, value) then
+          filtered_vars[key] = value
+        end
+      end
+      shell_vars = filtered_vars
+    end
+
+    -- Process shell variables
+    for key, value in pairs(shell_vars) do
+      -- Apply transform if provided
+      if opts.load_shell.transform then
+        value = opts.load_shell.transform(key, value)
+      end
+
+      -- Get types module
+      local types = require("ecolog.types")
+      -- Detect type and possibly transform value
+      local type_name, transformed_value = types.detect_type(value)
+
+      env_vars[key] = {
+        value = transformed_value or value,
+        type = type_name,
+        raw_value = value,
+        source = "shell",
+        comment = nil,
+      }
+    end
+  end
+
   -- Only find files if we don't have a selected file
   if not selected_env_file then
     local env_files = find_env_files(opts)
@@ -215,16 +262,17 @@ local function parse_env_file(opts, force)
     end
   end
 
-  env_vars = {}
-
-  -- Only parse the selected file
+  -- Parse selected env file
   if selected_env_file then
     local env_file = io.open(selected_env_file, "r")
     if env_file then
       for line in env_file:lines() do
         local key, var_info = parse_env_line(line, selected_env_file)
         if key then
-          env_vars[key] = var_info
+          -- Only override shell vars if configured to do so
+          if not env_vars[key] or (opts.load_shell and opts.load_shell.override) then
+            env_vars[key] = var_info
+          end
         end
       end
       env_file:close()
@@ -332,6 +380,12 @@ function M.setup(opts)
     types = true, -- Enable all types by default
     custom_types = {}, -- Custom types configuration
     preferred_environment = "", -- Add this default
+    load_shell = {
+      enabled = false,
+      override = false,
+      filter = nil,
+      transform = nil,
+    },
   }, opts or {})
 
   -- If blink_cmp is enabled, disable nvim_cmp to avoid conflicts

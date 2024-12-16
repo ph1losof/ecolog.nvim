@@ -715,6 +715,26 @@ Configure types through the `types` option in setup:
 
 ```lua
 require('ecolog').setup({
+  custom_types = {
+      semver = {
+        pattern = "^v?%d+%.%d+%.%d+%-?[%w]*$",
+        validate = function(value)
+          local major, minor, patch = value:match("^v?(%d+)%.(%d+)%.(%d+)")
+          return major and minor and patch
+        end,
+      },
+     aws_region = {
+      pattern = "^[a-z]{2}%-[a-z]+%-[0-9]$",
+      validate = function(value)
+        local valid_regions = {
+          ["us-east-1"] = true,
+          ["us-west-2"] = true,
+          -- ... etc
+        }
+        return valid_regions[value] == true
+      end
+    }
+  },
   types = {
     -- Built-in types
     url = true,          -- URLs (http/https)
@@ -727,30 +747,6 @@ require('ecolog').setup({
     iso_date = true,     -- ISO 8601 dates (YYYY-MM-DD)
     iso_time = true,     -- ISO 8601 times (HH:MM:SS)
     hex_color = true,    -- Hex color codes (#RGB or #RRGGBB)
-
-    -- Custom types
-    semver = {
-      pattern = "^v?(%d+)%.(%d+)%.(%d+)([%-+].+)?$",
-      validate = function(value)
-        local major, minor, patch = value:match("^v?(%d+)%.(%d+)%.(%d+)")
-        return major and minor and patch
-      end,
-      transform = function(value)
-        return value:gsub("^v", "")
-      end
-    },
-
-    aws_region = {
-      pattern = "^[a-z]{2}%-[a-z]+%-[0-9]$",
-      validate = function(value)
-        local valid_regions = {
-          ["us-east-1"] = true,
-          ["us-west-2"] = true,
-          -- ... etc
-        }
-        return valid_regions[value] == true
-      end
-    }
   }
 })
 ```

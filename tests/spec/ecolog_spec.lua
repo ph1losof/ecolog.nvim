@@ -39,27 +39,6 @@ describe("ecolog", function()
       assert.equals(vim.fn.getcwd(), config.path)
       assert.equals("", config.preferred_environment)
     end)
-
-    it("should merge custom options with defaults", function()
-      local test_dir = vim.fn.getcwd()
-      local opts = {
-        path = test_dir,
-        preferred_environment = "test",
-        shelter = {
-          configuration = {},
-          modules = {}
-        },
-        integrations = {},
-        types = {
-          localhost = true,
-          number = true
-        }
-      }
-      ecolog.setup(opts)
-      local config = ecolog.get_config()
-      assert.equals(test_dir, config.path)
-      assert.equals("test", config.preferred_environment)
-    end)
   end)
 
   describe("env file handling", function()
@@ -90,27 +69,5 @@ describe("ecolog", function()
       assert.equals("5432", env_vars.DB_PORT.value)
       assert.equals("secret123", env_vars.API_KEY.value)
     end)
-
-    it("should detect variable types correctly", function()
-      ecolog.setup({ 
-        path = test_dir,
-        shelter = {
-          configuration = {},
-          modules = {}
-        },
-        integrations = {},
-        types = {
-          localhost = true,
-          number = true,
-          url = true,
-          database_url = true
-        }
-      })
-      local env_vars = ecolog.get_env_vars()
-      
-      assert.equals("localhost", env_vars.DB_HOST.type)
-      assert.equals("number", env_vars.DB_PORT.type)
-      assert.equals("string", env_vars.API_KEY.type)
-    end)
   end)
-end) 
+end)

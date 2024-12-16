@@ -218,14 +218,18 @@ local function parse_env_file(opts, force)
   env_vars = {}
 
   -- Load shell variables if enabled
-  if opts.load_shell and opts.load_shell.enabled then
+  if opts.load_shell and (
+    (type(opts.load_shell) == "boolean" and opts.load_shell) or 
+    (type(opts.load_shell) == "table" and opts.load_shell.enabled)
+  ) then
     local shell_vars = vim.fn.environ()
+    local shell_config = type(opts.load_shell) == "table" and opts.load_shell or DEFAULT_SHELL_CONFIG
     
     -- Apply filter if provided
-    if opts.load_shell.filter then
+    if shell_config.filter then
       local filtered_vars = {}
       for key, value in pairs(shell_vars) do
-        if opts.load_shell.filter(key, value) then
+        if shell_config.filter(key, value) then
           filtered_vars[key] = value
         end
       end
@@ -235,8 +239,8 @@ local function parse_env_file(opts, force)
     -- Process shell variables
     for key, value in pairs(shell_vars) do
       -- Apply transform if provided
-      if opts.load_shell.transform then
-        value = opts.load_shell.transform(key, value)
+      if shell_config.transform then
+        value = shell_config.transform(key, value)
       end
 
       -- Get types module

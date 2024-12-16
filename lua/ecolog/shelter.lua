@@ -1,12 +1,25 @@
 local M = {}
+-- Cache frequently used functions and APIs
 local api = vim.api
 local notify = vim.notify
 local utils = require("ecolog.utils")
+local string_rep = string.rep
+local string_sub = string.sub
+local string_match = string.match
+local string_find = string.find
+local tbl_contains = vim.tbl_contains
+local tbl_deep_extend = vim.tbl_deep_extend
 
--- Use utils patterns
-local PATTERNS = utils.PATTERNS
+-- Pre-compile patterns for better performance
+local PATTERNS = {
+  comment = "^%s*#",
+  empty = "^%s*$",
+  key_value = "^([^#=]+)=(.+)$",
+  quoted = '^%s*(["\'])(.*)["\']%s*$',
+  unquoted = "^%s*([^%s#]+)",
+}
 
--- Create namespace for virtual text
+-- Create namespace once
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 
 -- Features list for iteration
@@ -40,25 +53,25 @@ local function determine_masked_value(value, show_start, show_end, min_mask)
   
   local len = #value
   if not config.partial_mode then
-    return string.rep(config.mask_char, len)
+    return string_rep(config.mask_char, len)
   end
 
   if len <= (show_start + show_end) then
-    return string.rep(config.mask_char, len)
+    return string_rep(config.mask_char, len)
   end
 
-  return string.sub(value, 1, show_start) ..
-         string.rep(config.mask_char, math.max(min_mask, len - show_start - show_end)) ..
-         string.sub(value, -show_end)
+  return string_sub(value, 1, show_start) ..
+         string_rep(config.mask_char, math.max(min_mask, len - show_start - show_end)) ..
+         string_sub(value, -show_end)
 end
 
--- Clear shelter from buffer
+-- Optimized buffer clearing
 local function unshelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
-  state.revealed_lines = {} -- Clear revealed lines state
+  state.revealed_lines = {}
 end
 
--- Apply shelter to buffer
+-- Optimized shelter buffer function
 local function shelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
   
@@ -66,27 +79,31 @@ local function shelter_buffer()
   local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
   
   for i, line in ipairs(lines) do
-    if line:match("^%s*#") or line:match("^%s*$") then goto continue end
+    -- Use pre-compiled patterns and combine checks
+    if string_match(line, PATTERNS.comment) or string_match(line, PATTERNS.empty) then 
+      goto continue 
+    end
 
-    local key, value = line:match("^([^#=]+)=(.+)$")
+    local key, value = string_match(line, PATTERNS.key_value)
     if not (key and value) then goto continue end
 
     local actual_value, quote_char
-    local quote_start = value:match('^%s*(["\'])')
+    local quote_start = string_match(value, '^%s*(["\'])')
     
     if quote_start then
-      actual_value = value:match('^%s*' .. quote_start .. '(.-[^\\])' .. quote_start)
-      if actual_value then
+      local _, content = string_match(value, PATTERNS.quoted)
+      if content then
+        actual_value = content
         quote_char = quote_start
       end
     end
 
     if not actual_value then
-      actual_value = value:match("^%s*([^%s#]+)")
+      actual_value = string_match(value, PATTERNS.unquoted)
     end
 
     if actual_value then
-      local value_start = line:find("=") + 1
+      local value_start = string_find(line, "=") + 1
       local masked_value = state.revealed_lines[i] and actual_value or 
                           determine_masked_value(actual_value, settings.show_start, settings.show_end, settings.min_mask)
 
@@ -177,7 +194,7 @@ function M.setup(opts)
     if type(opts.config.partial_mode) == "boolean" then
       config.partial_mode = opts.config.partial_mode and DEFAULT_PARTIAL_MODE or false
     elseif type(opts.config.partial_mode) == "table" then
-      config.partial_mode = vim.tbl_deep_extend("force", DEFAULT_PARTIAL_MODE, opts.config.partial_mode)
+      config.partial_mode = tbl_deep_extend("force", DEFAULT_PARTIAL_MODE, opts.config.partial_mode)
     else
       config.partial_mode = false
     end
@@ -208,7 +225,7 @@ local function apply_partial_masking(value)
   if not value then return "" end
   
   if not config.partial_mode then
-    return string.rep(config.mask_char, #value)
+    return string_rep(config.mask_char, #value)
   end
 
   -- Get settings from config
@@ -220,12 +237,12 @@ local function apply_partial_masking(value)
   -- Calculate lengths
   local value_len = #value
   if value_len <= (show_start + show_end) then
-    return string.rep(config.mask_char, value_len)
+    return string_rep(config.mask_char, value_len)
   end
 
   -- Build masked value
   return value:sub(1, show_start) ..
-         string.rep(config.mask_char, math.max(min_mask, value_len - show_start - show_end)) ..
+         string_rep(config.mask_char, math.max(min_mask, value_len - show_start - show_end)) ..
          value:sub(-show_end)
 end
 
@@ -281,7 +298,7 @@ function M.set_state(command, feature)
   local should_enable = command == "enable"
 
   if feature then
-    if not vim.tbl_contains(FEATURES, feature) then
+    if not tbl_contains(FEATURES, feature) then
       notify("Invalid feature. Use 'cmp', 'peek', 'files', or 'telescope'", vim.log.levels.ERROR)
       return
     end

@@ -29,6 +29,11 @@ function M.setup()
   api.nvim_set_hl(0, "EcologValue", { fg = cached_colors.value })
   api.nvim_set_hl(0, "EcologVariable", { fg = cached_colors.variable, bold = true })
 
+  -- Set up completion highlight links
+  api.nvim_set_hl(0, "CmpItemKindEcolog", { link = "EcologVariable" })
+  api.nvim_set_hl(0, "CmpItemAbbrMatchEcolog", { link = "EcologVariable" })
+  api.nvim_set_hl(0, "CmpItemMenuEcolog", { link = "EcologSource" })
+
   return cached_colors
 end
 

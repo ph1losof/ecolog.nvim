@@ -78,23 +78,29 @@ function M.select_env_file(opts, callback)
   local original_guicursor = vim.opt.guicursor:get()
 
   -- Create floating window
-  local bufnr, winid = utils
-    :new_float(float_opts, true)
-    :setlines(get_content())
-    :bufopt({
-      ["buftype"] = "nofile",
-      ["bufhidden"] = "wipe",
-      ["modifiable"] = false,
-      ["filetype"] = "ecolog",
-    })
-    :winopt({
-      ["conceallevel"] = 2,
-      ["concealcursor"] = "niv",
-      ["cursorline"] = true,
-    })
-    :winhl("EcologNormal", "EcologBorder")
-    :wininfo()
-
+  local bufnr = api.nvim_create_buf(false, true)
+  
+  -- Set buffer options
+  api.nvim_buf_set_option(bufnr, "buftype", "nofile")
+  api.nvim_buf_set_option(bufnr, "bufhidden", "wipe")
+  api.nvim_buf_set_option(bufnr, "modifiable", true)
+  api.nvim_buf_set_option(bufnr, "filetype", "ecolog")
+  
+  -- Set initial content
+  api.nvim_buf_set_lines(bufnr, 0, -1, false, get_content())
+  api.nvim_buf_set_option(bufnr, "modifiable", false)
+  
+  -- Create window
+  local winid = api.nvim_open_win(bufnr, true, float_opts)
+  
+  -- Set window options
+  api.nvim_win_set_option(winid, "conceallevel", 2)
+  api.nvim_win_set_option(winid, "concealcursor", "niv")
+  api.nvim_win_set_option(winid, "cursorline", true)
+  
+  -- Set window highlights
+  api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+  
   -- Set initial cursor position and highlight
   update_buffer(bufnr, winid)
 

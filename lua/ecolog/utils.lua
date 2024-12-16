@@ -1,6 +1,4 @@
 local M = {}
-local api = vim.api
-local fn = vim.fn
 
 -- Pre-compile patterns for better performance
 M.PATTERNS = {
@@ -11,7 +9,7 @@ M.PATTERNS = {
   quoted = "^['\"](.*)['\"]$",
   trim = "^%s*(.-)%s*$",
   word = "[%w_]",
-  env_var = "^[%w_]+$"
+  env_var = "^[%w_]+$",
 }
 
 -- Find word boundaries around cursor position
@@ -90,4 +88,5 @@ function M.minimal_restore()
   end
 end
 
-return M 
+return M
+

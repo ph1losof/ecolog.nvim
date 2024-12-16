@@ -135,7 +135,7 @@ local function find_env_files(opts)
   table.sort(files, function(a, b)
     -- If preferred environment is specified, prioritize it
     if opts.preferred_environment ~= "" then
-      local pref_pattern = "%.env%." .. pesc(opts.preferred_environment) .. "$"
+      local pref_pattern = "%.env%." .. vim.pesc(opts.preferred_environment) .. "$"
       local a_is_preferred = a:match(pref_pattern) ~= nil
       local b_is_preferred = b:match(pref_pattern) ~= nil
       if a_is_preferred ~= b_is_preferred then
@@ -666,5 +666,39 @@ end
 
 -- Add find_word_boundaries to the module's return table
 M.find_word_boundaries = find_word_boundaries
+
+-- Add this function to the module
+function M.get_config()
+  return {
+    path = vim.fn.getcwd(),
+    shelter = {
+      configuration = {
+        partial_mode = false,
+        mask_char = "*",
+      },
+      modules = {
+        cmp = false,
+        peek = false,
+        files = false,
+        telescope = false,
+      },
+    },
+    integrations = {
+      lsp = false,
+      lspsaga = false,
+      nvim_cmp = true,
+      blink_cmp = false,
+    },
+    types = true,
+    custom_types = {},
+    preferred_environment = "",
+    load_shell = {
+      enabled = false,
+      override = false,
+      filter = nil,
+      transform = nil,
+    },
+  }
+end
 
 return M

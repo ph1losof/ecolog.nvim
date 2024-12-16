@@ -31,10 +31,22 @@ local api = vim.api
 local fn = vim.fn
 local notify = vim.notify
 
+-- Import utils
+local utils = require("ecolog.utils")
+
+-- Use utils modules
+local providers = utils.get_module("ecolog.providers")
+local select = utils.get_module("ecolog.select")
+local peek = utils.get_module("ecolog.peek")
+local shelter = utils.get_module("ecolog.shelter")
+local types = utils.get_module("ecolog.types")
+
+-- Use utils patterns
+local PATTERNS = utils.PATTERNS
+
 -- Cache frequently used functions
 local tbl_extend = vim.tbl_deep_extend
 local schedule = vim.schedule
-local pesc = vim.pesc
 
 -- Lazy load modules with caching
 local _cached_modules = {}
@@ -53,22 +65,6 @@ local function get_module(name)
     end,
   })
 end
-
-local providers = get_module("ecolog.providers")
-local select = get_module("ecolog.select")
-local peek = get_module("ecolog.peek")
-local shelter = get_module("ecolog.shelter")
-local types = get_module("ecolog.types")
-
--- Pre-compile patterns for better performance
-local PATTERNS = {
-  env_file = "^.+/%.env$",
-  env_with_suffix = "^.+/%.env%.[^.]+$",
-  env_line = "^[^#](.+)$",
-  key_value = "([^=]+)=(.+)",
-  quoted = "^['\"](.*)['\"]$",
-  trim = "^%s*(.-)%s*$",
-}
 
 -- Find word boundaries around cursor position
 local function find_word_boundaries(line, col)

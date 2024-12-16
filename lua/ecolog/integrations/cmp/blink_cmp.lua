@@ -5,26 +5,33 @@ local M = {}
 local _providers = nil
 local _shelter = nil
 
+-- Cache trigger patterns
+local trigger_patterns = {}
+
 function M.new()
   return setmetatable({}, { __index = M })
 end
 
 function M:get_trigger_characters()
-  local triggers = {}
-  local available_providers = _providers.get_providers(vim.bo.filetype)
-
-  for _, provider in ipairs(available_providers) do
+  local ft = vim.bo.filetype
+  if trigger_patterns[ft] then return trigger_patterns[ft] end
+  
+  local chars = {}
+  local seen = {}
+  for _, provider in ipairs(_providers.get_providers(ft)) do
     if provider.get_completion_trigger then
       local trigger = provider.get_completion_trigger()
       for char in trigger:gmatch(".") do
-        if not vim.tbl_contains(triggers, char) then
-          table.insert(triggers, char)
+        if not seen[char] then
+          seen[char] = true
+          table.insert(chars, char)
         end
       end
     end
   end
-
-  return triggers
+  
+  trigger_patterns[ft] = chars
+  return chars
 end
 
 function M:enabled()

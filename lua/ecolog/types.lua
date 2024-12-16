@@ -98,6 +98,19 @@ local DB_PROTOCOLS = {
 -- Store custom types
 M.custom_types = {}
 
+-- Cache compiled patterns
+local compiled_patterns = {}
+
+local function get_compiled_pattern(pattern)
+  if not compiled_patterns[pattern] then
+    compiled_patterns[pattern] = {
+      match = string.match,
+      pattern = pattern
+    }
+  end
+  return compiled_patterns[pattern]
+end
+
 -- Validation functions
 local function is_valid_ipv4(matches)
   for i = 1, 4 do
@@ -348,6 +361,15 @@ function M.register_custom_types(types)
       )
     end
   end
+end
+
+-- Optimize type validation
+function M.validate_type(value, type_name)
+  local pattern = M.PATTERNS[type_name]
+  if not pattern then return false end
+  
+  local compiled = get_compiled_pattern(pattern)
+  return compiled.match(value, compiled.pattern) ~= nil
 end
 
 return M

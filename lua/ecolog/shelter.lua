@@ -1,31 +1,25 @@
 local M = {}
 local api = vim.api
 local notify = vim.notify
+local utils = require("ecolog.utils")
+
+-- Use utils patterns
+local PATTERNS = utils.PATTERNS
 
 -- Create namespace for virtual text
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 
--- Cached patterns
-local PATTERNS = {
-  env_line = "^([^#%s][^=]+)=(.+)$",
-  quoted = "^(['\"])(.*[^%s])['\"]%s*", -- Updated to match quotes with optional trailing spaces
-  quoted_with_comment = "^(['\"])(.*[^%s])['\"]%s+(.+)$", -- New pattern for quoted values with comments
-  unquoted_with_spaces = "^(%S+)%s+(%S.*)$", -- New pattern to match unquoted values with spaces
-}
-
 -- Features list for iteration
 local FEATURES = { "cmp", "peek", "files", "telescope" }
 
--- State management
+-- Use local cache for frequently accessed values
 local state = {
+  enabled = {},
+  mask_char = "*",
+  revealed = {},
+  revealed_lines = {},
+  current = {},
   initial_settings = {},
-  current = {
-    cmp = false,
-    peek = false,
-    files = false,
-  },
-  char = "*",
-  revealed_lines = {}, -- Track lines that should show actual values
 }
 
 -- Default partial mode settings
@@ -36,7 +30,7 @@ local DEFAULT_PARTIAL_MODE = {
 }
 
 local config = {
-  partial_mode = false, -- Disabled by default
+  partial_mode = false,
   mask_char = "*",
 }
 
@@ -172,6 +166,8 @@ end
 
 -- Apply partial masking to a value based on configuration
 local function apply_partial_masking(value)
+  if not value then return "" end
+  
   if not config.partial_mode then
     return string.rep(config.mask_char, #value)
   end
@@ -182,62 +178,23 @@ local function apply_partial_masking(value)
   local show_end = settings.show_end
   local min_mask = settings.min_mask
 
-  -- If value is too short for partial masking, mask everything
-  if #value <= (show_start + show_end) or #value <= min_mask then
-    return string.rep(config.mask_char, #value)
+  -- Calculate lengths
+  local value_len = #value
+  if value_len <= (show_start + show_end) then
+    return string.rep(config.mask_char, value_len)
   end
 
-  -- Calculate mask length
-  local mask_length = #value - show_start - show_end
-
-  -- If mask length would be less than min_mask, mask everything
-  if mask_length < min_mask then
-    return string.rep(config.mask_char, #value)
-  end
-
-  -- Return partially masked value
-  return value:sub(1, show_start) .. 
-         string.rep(config.mask_char, mask_length) .. 
+  -- Build masked value
+  return value:sub(1, show_start) ..
+         string.rep(config.mask_char, math.max(min_mask, value_len - show_start - show_end)) ..
          value:sub(-show_end)
 end
 
--- Mask a value based on shelter settings
-function M.mask_value(value, context)
-  if not M.is_enabled(context) then
-    return value
-  end
-
-  -- Check if value has an inline comment
-  local quote, content, comment = value:match(PATTERNS.quoted_with_comment)
-  if quote and content then
-    -- If there's an inline comment, only mask the content and preserve the comment
-    local masked = apply_partial_masking(content)
-    return quote .. masked .. quote .. " " .. comment
-  end
-
-  -- Check if value is quoted (without comment)
-  quote, content = value:match(PATTERNS.quoted)
-  if quote and content then
-    -- For quoted values, mask everything inside quotes but preserve trailing spaces
-    local trailing_spaces = value:match(quote .. content .. quote .. "(%s*)$") or ""
-    local masked = apply_partial_masking(content)
-    return quote .. masked .. quote .. trailing_spaces
-  end
-
-  -- Handle unquoted values with spaces
-  local first_word, rest = value:match(PATTERNS.unquoted_with_spaces)
-  if first_word and rest then
-    -- Mask only the first word, preserve the rest
-    return apply_partial_masking(first_word) .. " " .. rest
-  end
-
-  -- For single words or other cases, preserve trailing spaces
-  local word, spaces = value:match("^(%S+)(%s*)$")
-  if word then
-    return apply_partial_masking(word) .. spaces
-  end
-
-  -- Default case: mask everything
+-- Mask value with proper checks
+function M.mask_value(value, feature)
+  if not value then return "" end
+  if not state.current[feature] then return value end
+  
   return apply_partial_masking(value)
 end
 

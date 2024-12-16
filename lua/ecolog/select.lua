@@ -1,5 +1,5 @@
 local api = vim.api
-local win = require("ecolog.win")
+local utils = require("ecolog.utils")
 
 local M = {}
 
@@ -72,22 +72,13 @@ function M.select_env_file(opts, callback)
   local screen_width = vim.o.columns
   local screen_height = vim.o.lines
 
-  local float_opts = {
-    height = height,
-    width = width,
-    relative = "editor",
-    row = math.floor((screen_height - height) / 2),
-    col = math.floor((screen_width - width) / 2),
-    border = "rounded",
-    style = "minimal",
-    focusable = true,
-  }
+  local float_opts = utils.create_minimal_win_opts(60, #env_files)
 
   -- Store original guicursor value
   local original_guicursor = vim.opt.guicursor:get()
 
   -- Create floating window
-  local bufnr, winid = win
+  local bufnr, winid = utils
     :new_float(float_opts, true)
     :setlines(get_content())
     :bufopt({

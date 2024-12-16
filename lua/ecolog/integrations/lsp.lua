@@ -5,12 +5,16 @@
 local M = {}
 
 -- Cache vim functions and APIs
-local api = vim.api
-local lsp = vim.lsp
-local cmd = vim.cmd
-local bo = vim.bo
-local match = string.match
-local sub = string.sub
+local api, lsp, cmd, bo = vim.api, vim.lsp, vim.cmd, vim.bo
+local match, sub = string.match, string.sub
+local tbl_extend = vim.tbl_deep_extend
+local utils = require("ecolog.utils")
+
+-- Pre-compile patterns
+local PATTERNS = {
+  word = "[%w_]",
+  env_var = "^[%w_]+$"
+}
 
 -- Cache original LSP handlers
 local original_handlers = {
@@ -18,39 +22,9 @@ local original_handlers = {
   definition = nil,
 }
 
--- Pattern for word boundaries (cached)
-local WORD_PATTERN = "[%w_]"
-
--- Find word boundaries around cursor position (optimized)
-local function find_word_boundaries(line, col)
-  local len = #line
-  local word_start = col
-  local word_end = col
-  
-  -- Find start (unrolled loop)
-  while word_start > 0 do
-    if not match(sub(line, word_start, word_start), WORD_PATTERN) then
-      break
-    end
-    word_start = word_start - 1
-  end
-
-  -- Find end (unrolled loop)
-  while word_end <= len do
-    local next_char = sub(line, word_end + 1, word_end + 1)
-    if not next_char or not match(next_char, WORD_PATTERN) then
-      break
-    end
-    word_end = word_end + 1
-  end
-
-  return word_start + 1, word_end
-end
-
 -- Check if a word matches an environment variable (optimized)
 local function matches_env_var(word, line, col, available_providers, env_vars)
-  -- First check if the word itself is an env var (faster check first)
-  if env_vars[word] then
+  if word:match(utils.PATTERNS.env_var) and env_vars[word] then
     return word
   end
 
@@ -72,7 +46,7 @@ local function handle_hover(err, result, ctx, config, providers, ecolog)
   -- Get cursor context (optimized)
   local line = api.nvim_get_current_line()
   local cursor = api.nvim_win_get_cursor(0)
-  local word_start, word_end = find_word_boundaries(line, cursor[2])
+  local word_start, word_end = utils.find_word_boundaries(line, cursor[2])
   
   -- Get available providers
   local available_providers = providers.get_providers(bo[0].filetype)
@@ -101,7 +75,7 @@ local function handle_definition(err, result, ctx, config, providers, ecolog)
   -- Get cursor context (optimized)
   local line = api.nvim_get_current_line()
   local cursor = api.nvim_win_get_cursor(0)
-  local word_start, word_end = find_word_boundaries(line, cursor[2])
+  local word_start, word_end = utils.find_word_boundaries(line, cursor[2])
   
   -- Get available providers
   local available_providers = providers.get_providers(bo[0].filetype)

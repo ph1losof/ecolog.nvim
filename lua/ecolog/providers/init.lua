@@ -1,18 +1,18 @@
 local M = {}
+local utils = require("ecolog.utils")
 
--- Cache vim functions
-local type = type
-local error = error
-local ipairs = ipairs
-local tinsert = table.insert
-
--- Optimize provider storage
+-- Use utils lazy loading
 M.providers = setmetatable({}, {
   __index = function(t, k)
     t[k] = {}
     return t[k]
   end,
 })
+
+-- Use utils require_on_demand instead of local providers_cache
+local function load_provider(name)
+  return utils.require_on_demand("ecolog.providers." .. name)
+end
 
 -- Load providers
 function M.load_providers()
@@ -50,14 +50,14 @@ end
 
 -- Optimized register function
 function M.register(provider)
-  if not (provider.pattern and provider.filetype and provider.extract_var) then
-    error("Provider must have pattern, filetype, and extract_var fields")
+  if not provider.pattern or not provider.filetype or not provider.extract_var then
+    return
   end
-
-  local filetypes = type(provider.filetype) == "string" and { provider.filetype } or provider.filetype
-
+  
+  local filetypes = type(provider.filetype) == "string" and {provider.filetype} or provider.filetype
   for _, ft in ipairs(filetypes) do
-    tinsert(M.providers[ft], provider)
+    M.providers[ft] = M.providers[ft] or {}
+    table.insert(M.providers[ft], provider)
   end
 end
 

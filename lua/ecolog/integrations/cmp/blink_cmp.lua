@@ -94,6 +94,12 @@ function M:get_completions(ctx, callback)
   for var_name, var_info in pairs(env_vars) do
     local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp") or var_info.value
 
+    -- Create documentation string with comment if available
+    local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
+    if var_info.comment then
+      doc_value = doc_value .. string.format("\n\n**Comment:** %s", var_info.comment)
+    end
+
     local item = {
       label = var_name,
       kind = vim.lsp.protocol.CompletionItemKind.Variable,
@@ -102,7 +108,7 @@ function M:get_completions(ctx, callback)
       detail = vim.fn.fnamemodify(var_info.source, ":t"),
       documentation = {
         kind = vim.lsp.protocol.MarkupKind.Markdown,
-        value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value),
+        value = doc_value,
       },
       score = 1,
       source_name = "ecolog",

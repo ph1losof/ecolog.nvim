@@ -89,6 +89,12 @@ local function setup_completion(cmp, opts, providers)
           and _shelter.mask_value(var_info.value, "cmp")
           or var_info.value
 
+        -- Create documentation string with comment if available
+        local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
+        if var_info.comment then
+          doc_value = doc_value .. string.format("\n\n**Comment:** %s", var_info.comment)
+        end
+
         -- Create base completion item
         local item = {
           label = var_name,
@@ -96,7 +102,7 @@ local function setup_completion(cmp, opts, providers)
           detail = fn.fnamemodify(var_info.source, ":t"),
           documentation = {
             kind = "markdown",
-            value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value),
+            value = doc_value,
           },
           kind_hl_group = "CmpItemKindEcolog",
           menu_hl_group = "CmpItemMenuEcolog",

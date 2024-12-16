@@ -34,6 +34,24 @@ local config = {
   mask_char = "*",
 }
 
+-- Optimized masking function
+local function determine_masked_value(value, show_start, show_end, min_mask)
+  if not value then return "" end
+  
+  local len = #value
+  if not config.partial_mode then
+    return string.rep(config.mask_char, len)
+  end
+
+  if len <= (show_start + show_end) then
+    return string.rep(config.mask_char, len)
+  end
+
+  return string.sub(value, 1, show_start) ..
+         string.rep(config.mask_char, math.max(min_mask, len - show_start - show_end)) ..
+         string.sub(value, -show_end)
+end
+
 -- Clear shelter from buffer
 local function unshelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
@@ -42,29 +60,49 @@ end
 
 -- Apply shelter to buffer
 local function shelter_buffer()
-  -- Clear existing shelter
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
-
-  -- Get all lines at once
+  
   local lines = api.nvim_buf_get_lines(0, 0, -1, false)
-
+  local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
+  
   for i, line in ipairs(lines) do
-    -- Match key=value pattern, excluding comments and empty lines
-    local key, value = line:match(PATTERNS.env_line)
-    if key and value then
-      -- Find the start position of the value (after =)
-      local value_start = line:find("=") + 1
+    if line:match("^%s*#") or line:match("^%s*$") then goto continue end
 
-      -- Use M.mask_value instead of create_masked_value
-      local masked_value = state.revealed_lines[i] and value or M.mask_value(value, "files")
+    local key, value = line:match("^([^#=]+)=(.+)$")
+    if not (key and value) then goto continue end
 
-      -- Set virtual text overlay
-      api.nvim_buf_set_extmark(0, namespace, i - 1, value_start - 1, {
-        virt_text = { { masked_value, state.revealed_lines[i] and "String" or "Comment" } },
-        virt_text_pos = "overlay",
-        hl_mode = "combine",
-      })
+    local actual_value, quote_char
+    local quote_start = value:match('^%s*(["\'])')
+    
+    if quote_start then
+      actual_value = value:match('^%s*' .. quote_start .. '(.-[^\\])' .. quote_start)
+      if actual_value then
+        quote_char = quote_start
+      end
     end
+
+    if not actual_value then
+      actual_value = value:match("^%s*([^%s#]+)")
+    end
+
+    if actual_value then
+      local value_start = line:find("=") + 1
+      local masked_value = state.revealed_lines[i] and actual_value or 
+                          determine_masked_value(actual_value, settings.show_start, settings.show_end, settings.min_mask)
+
+      if masked_value and #masked_value > 0 then
+        if quote_char then
+          masked_value = quote_char .. masked_value .. quote_char
+        end
+
+        api.nvim_buf_set_extmark(0, namespace, i - 1, value_start - 1, {
+          virt_text = { { masked_value, state.revealed_lines[i] and "String" or "Comment" } },
+          virt_text_pos = "overlay",
+          hl_mode = "combine",
+        })
+      end
+    end
+    ::continue::
   end
 end
 
@@ -156,7 +194,8 @@ function M.setup(opts)
     state.current[feature] = value
   end
 
-  state.char = config.mask_char
+  -- Update state mask_char to match config
+  state.mask_char = config.mask_char
 
   -- Set up autocommands for file sheltering if needed
   if state.current.files then

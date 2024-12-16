@@ -16,6 +16,8 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Installation](#-installation)
 - [Features](#-features)
 - [Usage](#-usage)
+- [Environment File Priority](#-environment-file-priority)
+- [Shell Variables Integration](#shell-variables-integration)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
@@ -166,7 +168,80 @@ Files are loaded in the following priority order:
 2. `.env`
 3. Other `.env.*` files (alphabetically)
 
-## 🔌 Integrations
+## 🔌 Environment File Priority
+
+Files are loaded in the following priority order:
+
+1. `.env.{preferred_environment}` (if preferred_environment is set)
+2. `.env`
+3. Other `.env.*` files (alphabetically)
+
+## 🔌 Shell Variables Integration
+
+Ecolog can load environment variables directly from your shell environment. This is useful when you want to:
+
+- Access system environment variables
+- Work with variables set by your shell profile
+- Handle dynamic environment variables
+
+#### Basic Usage
+
+Enable shell variable loading with default settings:
+
+```lua
+require('ecolog').setup({
+  load_shell = true
+})
+```
+
+#### Advanced Configuration
+
+For more control over shell variable handling:
+
+```lua
+require('ecolog').setup({
+  load_shell = {
+    enabled = true,     -- Enable shell variable loading
+    override = false,   -- When false, .env files take precedence over shell variables
+    -- Optional: filter specific shell variables
+    filter = function(key, value)
+      -- Example: only load specific variables
+      return key:match("^(PATH|HOME|USER)$") ~= nil
+    end,
+    -- Optional: transform shell variables before loading
+    transform = function(key, value)
+      -- Example: prefix shell variables for clarity
+      return "[shell] " .. value
+    end
+  }
+})
+```
+
+#### Configuration Options
+
+| Option      | Type          | Default | Description                                                |
+| ----------- | ------------- | ------- | ---------------------------------------------------------- |
+| `enabled`   | boolean       | `false` | Enable/disable shell variable loading                      |
+| `override`  | boolean       | `false` | When true, shell variables take precedence over .env files |
+| `filter`    | function\|nil | `nil`   | Optional function to filter which shell variables to load  |
+| `transform` | function\|nil | `nil`   | Optional function to transform shell variable values       |
+
+#### Features
+
+- Full integration with all Ecolog features (completion, peek, shelter mode)
+- Shell variables are marked with "shell" as their source
+- Configurable precedence between shell and .env file variables
+- Optional filtering and transformation of shell variables
+- Type detection and value transformation support
+
+#### Best Practices
+
+1. Use `filter` to limit which shell variables are loaded to avoid cluttering
+2. Consider using `transform` to clearly mark shell-sourced variables
+3. Be mindful of the `override` setting when working with both shell and .env variables
+4. Apply shelter mode settings to shell variables containing sensitive data
+
+## 💡 Integrations
 
 ### Nvim-cmp Integration
 

@@ -15,14 +15,14 @@ describe("shelter", function()
 
     -- Mock the shelter module with required functions
     shelter.mask_value = function(value, opts)
+      if not value then return "" end
+      
       opts = opts or {}
-      -- Use either passed opts or config's partial_mode
       local partial_mode = opts.partial_mode or shelter._config.partial_mode
       
       if not partial_mode then
         return string.rep(shelter._config.mask_char, #value)
       else
-        -- Get settings from either opts or config
         local settings = type(partial_mode) == "table" and partial_mode or {
           show_start = 2,
           show_end = 2,
@@ -31,16 +31,23 @@ describe("shelter", function()
         
         local show_start = settings.show_start
         local show_end = settings.show_end
+        local min_mask = settings.min_mask
         
-        -- Apply masking with configured settings
+        -- Handle short values
+        if #value <= (show_start + show_end) then
+          return string.rep(shelter._config.mask_char, #value)
+        end
+        
+        -- Apply masking with min_mask requirement
+        local mask_length = math.max(min_mask, #value - show_start - show_end)
         return string.sub(value, 1, show_start) ..
-               string.rep(shelter._config.mask_char, #value - show_start - show_end) ..
+               string.rep(shelter._config.mask_char, mask_length) ..
                string.sub(value, -show_end)
       end
     end
 
     shelter.is_enabled = function(feature)
-      return shelter._state[feature]
+      return shelter._state[feature] or false
     end
 
     shelter.set_state = function(command, feature)
@@ -224,6 +231,118 @@ describe("shelter", function()
 
       shelter.set_state("enable", "invalid_feature")
       assert.is_true(notify_called)
+
+      vim.notify = original_notify
+    end)
+  end)
+
+  describe("masking configuration", function()
+    it("should handle empty values", function()
+      assert.equals("", shelter.mask_value(""))
+      assert.equals("", shelter.mask_value(nil))
+    end)
+
+    it("should respect min_mask setting", function()
+      shelter.setup({
+        config = {
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 5
+          },
+          mask_char = "*"
+        },
+        modules = {}
+      })
+      
+      local value = "abc123"  -- 6 chars
+      local masked = shelter.mask_value(value)
+      assert.equals("******", masked)
+    end)
+
+    it("should handle short values in partial mode", function()
+      shelter.setup({
+        config = {
+          partial_mode = {
+            show_start = 3,
+            show_end = 3,
+            min_mask = 2
+          },
+          mask_char = "*"
+        },
+        modules = {}
+      })
+      
+      local value = "12345" -- Value shorter than show_start + show_end
+      local masked = shelter.mask_value(value)
+      assert.equals("*****", masked)
+    end)
+  end)
+
+  describe("state management", function()
+    it("should handle multiple state changes", function()
+      -- Enable multiple features
+      shelter.set_state("enable", "cmp")
+      shelter.set_state("enable", "peek")
+      assert.is_true(shelter.is_enabled("cmp"))
+      assert.is_true(shelter.is_enabled("peek"))
+      
+      -- Disable one feature
+      shelter.set_state("disable", "cmp")
+      assert.is_false(shelter.is_enabled("cmp"))
+      assert.is_true(shelter.is_enabled("peek"))
+      
+      -- Toggle all should affect both
+      shelter.toggle_all()
+      assert.is_false(shelter.is_enabled("cmp"))
+      assert.is_false(shelter.is_enabled("peek"))
+    end)
+
+    it("should maintain state independence between features", function()
+      shelter.set_state("enable", "cmp")
+      shelter.set_state("enable", "peek")
+      
+      -- Disable one feature shouldn't affect others
+      shelter.set_state("disable", "cmp")
+      assert.is_false(shelter.is_enabled("cmp"))
+      assert.is_true(shelter.is_enabled("peek"))
+      
+      -- Re-enable shouldn't affect others
+      shelter.set_state("enable", "cmp")
+      assert.is_true(shelter.is_enabled("cmp"))
+      assert.is_true(shelter.is_enabled("peek"))
+    end)
+  end)
+
+  describe("feature validation", function()
+    it("should reject unknown features", function()
+      local notify_called = false
+      local original_notify = vim.notify
+      vim.notify = function(msg, level)
+        if msg:match("Invalid feature") then
+          notify_called = true
+        end
+      end
+
+      shelter.set_state("enable", "unknown_feature")
+      assert.is_true(notify_called)
+      assert.is_false(shelter.is_enabled("unknown_feature"))
+
+      vim.notify = original_notify
+    end)
+
+    it("should handle multiple invalid operations", function()
+      local notify_count = 0
+      local original_notify = vim.notify
+      vim.notify = function(msg, level)
+        if msg:match("Invalid feature") then
+          notify_count = notify_count + 1
+        end
+      end
+
+      shelter.set_state("enable", "invalid1")
+      shelter.set_state("enable", "invalid2")
+      assert.equals(2, notify_count)
 
       vim.notify = original_notify
     end)

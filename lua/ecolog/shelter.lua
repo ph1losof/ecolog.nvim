@@ -236,13 +236,18 @@ local function apply_partial_masking(value)
 
   -- Calculate lengths
   local value_len = #value
-  if value_len <= (show_start + show_end) then
+  
+  -- Check if we can maintain minimum mask length between visible parts
+  local available_mask_space = value_len - show_start - show_end
+  
+  -- If we can't maintain min_mask between visible parts, mask everything
+  if available_mask_space < min_mask then
     return string_rep(config.mask_char, value_len)
   end
 
-  -- Build masked value
+  -- Build masked value with proper spacing
   return value:sub(1, show_start) ..
-         string_rep(config.mask_char, math.max(min_mask, value_len - show_start - show_end)) ..
+         string_rep(config.mask_char, available_mask_space) ..
          value:sub(-show_end)
 end
 

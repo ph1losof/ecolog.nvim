@@ -97,10 +97,11 @@ describe("types", function()
             end,
           },
           jwt = {
-            pattern = "^[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+$",
+            pattern = "^eyJ[A-Za-z0-9_-]+%.[A-Za-z0-9_-]+%.[A-Za-z0-9_-]+$",
             validate = function(value)
               local parts = vim.split(value, ".", { plain = true })
-              return #parts == 3
+              -- Check if it has 3 parts and starts with proper JWT header
+              return #parts == 3 and parts[1]:match("^eyJ")
             end,
           },
         },

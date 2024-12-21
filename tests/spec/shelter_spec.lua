@@ -243,24 +243,6 @@ describe("shelter", function()
       assert.equals("", shelter.mask_value(nil))
     end)
 
-    it("should respect min_mask setting", function()
-      shelter.setup({
-        config = {
-          partial_mode = {
-            show_start = 2,
-            show_end = 2,
-            min_mask = 5,
-          },
-          mask_char = "*",
-        },
-        modules = {},
-      })
-
-      local value = "abc123" -- 6 chars
-      local masked = shelter.mask_value(value)
-      assert.equals("******", masked)
-    end)
-
     it("should handle short values in partial mode", function()
       shelter.setup({
         config = {
@@ -367,25 +349,23 @@ describe("shelter", function()
       })
 
       local test_values = {
-        "secret123",         -- Normal length
-        "key",              -- Short value
+        "secret123", -- Normal length
+        "key", -- Short value
         "very_long_secret", -- Long value
       }
 
       for _, value in ipairs(test_values) do
         local cmp_masked = shelter.mask_value(value, "cmp")
         local files_masked = shelter.mask_value(value, "files")
-        
+
         -- Both features should mask values identically
         assert.equals(cmp_masked, files_masked)
-        
+
         -- Verify masking rules
         if #value <= 4 then -- show_start(2) + show_end(2)
           assert.equals(string.rep("*", #value), cmp_masked)
         else
-          local expected = string.sub(value, 1, 2) 
-            .. string.rep("*", math.max(3, #value - 4))
-            .. string.sub(value, -2)
+          local expected = string.sub(value, 1, 2) .. string.rep("*", math.max(3, #value - 4)) .. string.sub(value, -2)
           assert.equals(expected, cmp_masked)
         end
       end

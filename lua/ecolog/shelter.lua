@@ -47,26 +47,33 @@ local config = {
 }
 
 -- Optimized masking function
-local function determine_masked_value(value, show_start, show_end, min_mask)
+local function determine_masked_value(value, opts)
   if not value then
     return ""
   end
 
-  local len = #value
-  if not config.partial_mode then
-    return string_rep(config.mask_char, len)
+  opts = opts or {}
+  local partial_mode = opts.partial_mode or config.partial_mode
+
+  if not partial_mode then
+    return string_rep(config.mask_char, #value)
   end
 
-  -- If total length is less than or equal to (show_start + show_end + min_mask),
-  -- mask the entire value since we can't meet minimum requirements
-  if len < (show_start + show_end + min_mask) then
-    return string_rep(config.mask_char, len)
+  -- Get settings from partial mode config
+  local settings = type(partial_mode) == "table" and partial_mode or DEFAULT_PARTIAL_MODE
+  local show_start = math.max(0, settings.show_start or 0)
+  local show_end = math.max(0, settings.show_end or 0)
+  local min_mask = math.max(1, settings.min_mask or 1)
+
+  -- If value is too short for partial masking, mask everything
+  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
+    return string_rep(config.mask_char, #value)
   end
 
-  -- We have enough space for partial masking
-  return string_sub(value, 1, show_start)
-    .. string_rep(config.mask_char, math.max(min_mask, len - show_start - show_end))
-    .. string_sub(value, -show_end)
+  -- Calculate mask length ensuring min_mask requirement
+  local mask_length = math.max(min_mask, #value - show_start - show_end)
+
+  return string_sub(value, 1, show_start) .. string_rep(config.mask_char, mask_length) .. string_sub(value, -show_end)
 end
 
 -- Optimized buffer clearing
@@ -111,7 +118,9 @@ local function shelter_buffer()
     if actual_value then
       local value_start = string_find(line, "=") + 1
       local masked_value = state.revealed_lines[i] and actual_value
-        or determine_masked_value(actual_value, settings.show_start, settings.show_end, settings.min_mask)
+        or determine_masked_value(actual_value, {
+          partial_mode = config.partial_mode,
+        })
 
       if masked_value and #masked_value > 0 then
         if quote_char then
@@ -226,49 +235,6 @@ function M.setup(opts)
   end
 end
 
-local function apply_partial_masking(value)
-  if not value then
-    return ""
-  end
-
-  if not config.partial_mode then
-    return string_rep(config.mask_char, #value)
-  end
-
-  -- Get settings from config
-  local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
-  local show_start = math.max(0, settings.show_start or 0)
-  local show_end = math.max(0, settings.show_end or 0)
-  local min_mask = math.max(1, settings.min_mask or 1)
-
-  -- Calculate lengths
-  local value_len = #value
-
-  -- If value is too short to show both ends and maintain min_mask, mask everything
-  if value_len <= (show_start + show_end) or value_len <= (show_start + show_end + min_mask) then
-    return string_rep(config.mask_char, value_len)
-  end
-
-  -- Calculate actual mask length
-  local mask_length = value_len - show_start - show_end
-
-  -- Build masked value ensuring min_mask requirement
-  if mask_length < min_mask then
-    -- If we can't maintain min_mask, show less of start/end
-    local available_space = value_len - min_mask
-    local adjusted_show = math.floor(available_space / 2)
-
-    if adjusted_show <= 0 then
-      return string_rep(config.mask_char, value_len)
-    end
-
-    return value:sub(1, adjusted_show) .. string_rep(config.mask_char, min_mask) .. value:sub(-adjusted_show)
-  end
-
-  -- Normal case - enough space for everything
-  return value:sub(1, show_start) .. string_rep(config.mask_char, mask_length) .. value:sub(-show_end)
-end
-
 -- Mask value with proper checks
 function M.mask_value(value, feature)
   if not value then
@@ -278,7 +244,9 @@ function M.mask_value(value, feature)
     return value
   end
 
-  return apply_partial_masking(value)
+  return determine_masked_value(value, {
+    partial_mode = config.partial_mode,
+  })
 end
 
 -- Get current state for a feature

@@ -30,7 +30,7 @@ function M.load_providers()
     rust = "ecolog.providers.rust",
   }
 
-  for name, module_path in pairs(providers_list) do
+  for _, module_path in pairs(providers_list) do
     local ok, provider = pcall(require, module_path)
     if ok then
       if type(provider) == "table" then
@@ -53,8 +53,8 @@ function M.register(provider)
   if not provider.pattern or not provider.filetype or not provider.extract_var then
     return
   end
-  
-  local filetypes = type(provider.filetype) == "string" and {provider.filetype} or provider.filetype
+
+  local filetypes = type(provider.filetype) == "string" and { provider.filetype } or provider.filetype
   for _, ft in ipairs(filetypes) do
     M.providers[ft] = M.providers[ft] or {}
     table.insert(M.providers[ft], provider)

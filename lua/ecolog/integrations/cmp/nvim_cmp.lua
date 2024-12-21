@@ -3,7 +3,6 @@ local api = vim.api
 local fn = vim.fn
 
 -- Store module references
-local _providers = nil
 local _shelter = nil
 
 -- Create completion source
@@ -19,7 +18,7 @@ local function setup_completion(cmp, opts, providers)
     get_trigger_characters = function()
       local triggers = {}
       local available_providers = providers.get_providers(vim.bo.filetype)
-      
+
       -- Collect unique trigger characters from all providers
       for _, provider in ipairs(available_providers) do
         if provider.get_completion_trigger then
@@ -32,7 +31,7 @@ local function setup_completion(cmp, opts, providers)
           end
         end
       end
-      
+
       return triggers
     end,
 
@@ -85,8 +84,7 @@ local function setup_completion(cmp, opts, providers)
       local items = {}
       for var_name, var_info in pairs(env_vars) do
         -- Get masked value if shelter is enabled
-        local display_value = _shelter.is_enabled("cmp") 
-          and _shelter.mask_value(var_info.value, "cmp")
+        local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp")
           or var_info.value
 
         -- Create documentation string with comment if available
@@ -124,9 +122,8 @@ end
 
 function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
   -- Store module references
-  _providers = providers
   _shelter = shelter
-  
+
   -- Set up lazy loading for cmp
   vim.api.nvim_create_autocmd("InsertEnter", {
     callback = function()
@@ -143,4 +140,5 @@ function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
   })
 end
 
-return M 
+return M
+

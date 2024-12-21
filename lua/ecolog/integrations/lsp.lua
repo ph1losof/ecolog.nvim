@@ -6,14 +6,13 @@ local M = {}
 
 -- Cache vim functions and APIs
 local api, lsp, cmd, bo = vim.api, vim.lsp, vim.cmd, vim.bo
-local match, sub = string.match, string.sub
-local tbl_extend = vim.tbl_deep_extend
+local sub = string.sub
 local utils = require("ecolog.utils")
 
 -- Pre-compile patterns
 local PATTERNS = {
   word = "[%w_]",
-  env_var = "^[%w_]+$"
+  env_var = "^[%w_]+$",
 }
 
 -- Cache original LSP handlers
@@ -41,24 +40,21 @@ end
 
 -- Handle hover request (optimized)
 local function handle_hover(err, result, ctx, config, providers, ecolog)
-  if err then return original_handlers.hover(err, result, ctx, config) end
+  if err then
+    return original_handlers.hover(err, result, ctx, config)
+  end
 
   -- Get cursor context (optimized)
   local line = api.nvim_get_current_line()
   local cursor = api.nvim_win_get_cursor(0)
   local word_start, word_end = utils.find_word_boundaries(line, cursor[2])
-  
+
   -- Get available providers
   local available_providers = providers.get_providers(bo[0].filetype)
-  
+
   -- Check for env var match
-  local env_var = matches_env_var(
-    sub(line, word_start, word_end),
-    line,
-    word_end,
-    available_providers,
-    ecolog.get_env_vars()
-  )
+  local env_var =
+    matches_env_var(sub(line, word_start, word_end), line, word_end, available_providers, ecolog.get_env_vars())
 
   if env_var then
     cmd("EcologPeek " .. env_var)
@@ -70,24 +66,21 @@ end
 
 -- Handle definition request (optimized)
 local function handle_definition(err, result, ctx, config, providers, ecolog)
-  if err then return original_handlers.definition(err, result, ctx, config) end
+  if err then
+    return original_handlers.definition(err, result, ctx, config)
+  end
 
   -- Get cursor context (optimized)
   local line = api.nvim_get_current_line()
   local cursor = api.nvim_win_get_cursor(0)
   local word_start, word_end = utils.find_word_boundaries(line, cursor[2])
-  
+
   -- Get available providers
   local available_providers = providers.get_providers(bo[0].filetype)
-  
+
   -- Check for env var match
-  local env_var = matches_env_var(
-    sub(line, word_start, word_end),
-    line,
-    word_end,
-    available_providers,
-    ecolog.get_env_vars()
-  )
+  local env_var =
+    matches_env_var(sub(line, word_start, word_end), line, word_end, available_providers, ecolog.get_env_vars())
 
   if env_var then
     cmd("EcologGotoVar " .. env_var)
@@ -98,7 +91,7 @@ local function handle_definition(err, result, ctx, config, providers, ecolog)
 end
 
 -- Set up LSP integration (optimized)
-function M.setup(opts)
+function M.setup()
   local providers = require("ecolog.providers")
   local ecolog = require("ecolog")
 
@@ -129,4 +122,5 @@ function M.restore()
   end
 end
 
-return M 
+return M
+

@@ -64,15 +64,6 @@ local function require_on_demand(name)
   return _cached_modules[name]
 end
 
--- Lazy load modules only when needed
-local function get_module(name)
-  return setmetatable({}, {
-    __index = function(_, key)
-      return require_on_demand(name)[key]
-    end,
-  })
-end
-
 -- Find word boundaries around cursor position
 local function find_word_boundaries(line, col)
   local word_start = col
@@ -218,13 +209,16 @@ local function parse_env_file(opts, force)
   env_vars = {}
 
   -- Load shell variables if enabled
-  if opts.load_shell and (
-    (type(opts.load_shell) == "boolean" and opts.load_shell) or 
-    (type(opts.load_shell) == "table" and opts.load_shell.enabled)
-  ) then
+  if
+    opts.load_shell
+    and (
+      (type(opts.load_shell) == "boolean" and opts.load_shell)
+      or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
+    )
+  then
     local shell_vars = vim.fn.environ()
-    local shell_config = type(opts.load_shell) == "table" and opts.load_shell or DEFAULT_SHELL_CONFIG
-    
+    local shell_config = type(opts.load_shell) == "table" and opts.load_shell
+
     -- Apply filter if provided
     if shell_config.filter then
       local filtered_vars = {}

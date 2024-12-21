@@ -14,8 +14,10 @@ end
 
 function M:get_trigger_characters()
   local ft = vim.bo.filetype
-  if trigger_patterns[ft] then return trigger_patterns[ft] end
-  
+  if trigger_patterns[ft] then
+    return trigger_patterns[ft]
+  end
+
   local chars = {}
   local seen = {}
   for _, provider in ipairs(_providers.get_providers(ft)) do
@@ -29,7 +31,7 @@ function M:get_trigger_characters()
       end
     end
   end
-  
+
   trigger_patterns[ft] = chars
   return chars
 end
@@ -94,7 +96,6 @@ function M:get_completions(ctx, callback)
   for var_name, var_info in pairs(env_vars) do
     local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp") or var_info.value
 
-    -- Create documentation string with comment if available
     local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
     if var_info.comment then
       doc_value = doc_value .. string.format("\n\n**Comment:** %s", var_info.comment)

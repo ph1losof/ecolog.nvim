@@ -2,7 +2,6 @@ local M = {}
 -- Cache frequently used functions and APIs
 local api = vim.api
 local notify = vim.notify
-local utils = require("ecolog.utils")
 local string_rep = string.rep
 local string_sub = string.sub
 local string_match = string.match
@@ -15,7 +14,7 @@ local PATTERNS = {
   comment = "^%s*#",
   empty = "^%s*$",
   key_value = "^([^#=]+)=(.+)$",
-  quoted = '^%s*(["\'])(.*)["\']%s*$',
+  quoted = "^%s*([\"'])(.*)[\"']%s*$",
   unquoted = "^%s*([^%s#]+)",
 }
 
@@ -49,20 +48,25 @@ local config = {
 
 -- Optimized masking function
 local function determine_masked_value(value, show_start, show_end, min_mask)
-  if not value then return "" end
-  
+  if not value then
+    return ""
+  end
+
   local len = #value
   if not config.partial_mode then
     return string_rep(config.mask_char, len)
   end
 
-  if len <= (show_start + show_end) then
+  -- If total length is less than or equal to (show_start + show_end + min_mask),
+  -- mask the entire value since we can't meet minimum requirements
+  if len < (show_start + show_end + min_mask) then
     return string_rep(config.mask_char, len)
   end
 
-  return string_sub(value, 1, show_start) ..
-         string_rep(config.mask_char, math.max(min_mask, len - show_start - show_end)) ..
-         string_sub(value, -show_end)
+  -- We have enough space for partial masking
+  return string_sub(value, 1, show_start)
+    .. string_rep(config.mask_char, math.max(min_mask, len - show_start - show_end))
+    .. string_sub(value, -show_end)
 end
 
 -- Optimized buffer clearing
@@ -74,22 +78,24 @@ end
 -- Optimized shelter buffer function
 local function shelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
-  
+
   local lines = api.nvim_buf_get_lines(0, 0, -1, false)
   local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
-  
+
   for i, line in ipairs(lines) do
     -- Use pre-compiled patterns and combine checks
-    if string_match(line, PATTERNS.comment) or string_match(line, PATTERNS.empty) then 
-      goto continue 
+    if string_match(line, PATTERNS.comment) or string_match(line, PATTERNS.empty) then
+      goto continue
     end
 
     local key, value = string_match(line, PATTERNS.key_value)
-    if not (key and value) then goto continue end
+    if not (key and value) then
+      goto continue
+    end
 
     local actual_value, quote_char
-    local quote_start = string_match(value, '^%s*(["\'])')
-    
+    local quote_start = string_match(value, "^%s*([\"'])")
+
     if quote_start then
       local _, content = string_match(value, PATTERNS.quoted)
       if content then
@@ -104,8 +110,8 @@ local function shelter_buffer()
 
     if actual_value then
       local value_start = string_find(line, "=") + 1
-      local masked_value = state.revealed_lines[i] and actual_value or 
-                          determine_masked_value(actual_value, settings.show_start, settings.show_end, settings.min_mask)
+      local masked_value = state.revealed_lines[i] and actual_value
+        or determine_masked_value(actual_value, settings.show_start, settings.show_end, settings.min_mask)
 
       if masked_value and #masked_value > 0 then
         if quote_char then
@@ -220,42 +226,58 @@ function M.setup(opts)
   end
 end
 
--- Apply partial masking to a value based on configuration
 local function apply_partial_masking(value)
-  if not value then return "" end
-  
+  if not value then
+    return ""
+  end
+
   if not config.partial_mode then
     return string_rep(config.mask_char, #value)
   end
 
   -- Get settings from config
   local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
-  local show_start = settings.show_start
-  local show_end = settings.show_end
-  local min_mask = settings.min_mask
+  local show_start = math.max(0, settings.show_start or 0)
+  local show_end = math.max(0, settings.show_end or 0)
+  local min_mask = math.max(1, settings.min_mask or 1)
 
   -- Calculate lengths
   local value_len = #value
-  
-  -- Check if we can maintain minimum mask length between visible parts
-  local available_mask_space = value_len - show_start - show_end
-  
-  -- If we can't maintain min_mask between visible parts, mask everything
-  if available_mask_space < min_mask then
+
+  -- If value is too short to show both ends and maintain min_mask, mask everything
+  if value_len <= (show_start + show_end) or value_len <= (show_start + show_end + min_mask) then
     return string_rep(config.mask_char, value_len)
   end
 
-  -- Build masked value with proper spacing
-  return value:sub(1, show_start) ..
-         string_rep(config.mask_char, available_mask_space) ..
-         value:sub(-show_end)
+  -- Calculate actual mask length
+  local mask_length = value_len - show_start - show_end
+
+  -- Build masked value ensuring min_mask requirement
+  if mask_length < min_mask then
+    -- If we can't maintain min_mask, show less of start/end
+    local available_space = value_len - min_mask
+    local adjusted_show = math.floor(available_space / 2)
+
+    if adjusted_show <= 0 then
+      return string_rep(config.mask_char, value_len)
+    end
+
+    return value:sub(1, adjusted_show) .. string_rep(config.mask_char, min_mask) .. value:sub(-adjusted_show)
+  end
+
+  -- Normal case - enough space for everything
+  return value:sub(1, show_start) .. string_rep(config.mask_char, mask_length) .. value:sub(-show_end)
 end
 
 -- Mask value with proper checks
 function M.mask_value(value, feature)
-  if not value then return "" end
-  if not state.current[feature] then return value end
-  
+  if not value then
+    return ""
+  end
+  if not state.current[feature] then
+    return value
+  end
+
   return apply_partial_masking(value)
 end
 

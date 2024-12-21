@@ -64,14 +64,6 @@ function M.select_env_file(opts, callback)
     api.nvim_win_set_cursor(winid, { selected_idx, 4 })
   end
 
-  -- Calculate window dimensions
-  local width = 60
-  local height = #env_files
-
-  -- Get screen dimensions
-  local screen_width = vim.o.columns
-  local screen_height = vim.o.lines
-
   local float_opts = utils.create_minimal_win_opts(60, #env_files)
 
   -- Store original guicursor value
@@ -79,28 +71,28 @@ function M.select_env_file(opts, callback)
 
   -- Create floating window
   local bufnr = api.nvim_create_buf(false, true)
-  
+
   -- Set buffer options
   api.nvim_buf_set_option(bufnr, "buftype", "nofile")
   api.nvim_buf_set_option(bufnr, "bufhidden", "wipe")
   api.nvim_buf_set_option(bufnr, "modifiable", true)
   api.nvim_buf_set_option(bufnr, "filetype", "ecolog")
-  
+
   -- Set initial content
   api.nvim_buf_set_lines(bufnr, 0, -1, false, get_content())
   api.nvim_buf_set_option(bufnr, "modifiable", false)
-  
+
   -- Create window
   local winid = api.nvim_open_win(bufnr, true, float_opts)
-  
+
   -- Set window options
   api.nvim_win_set_option(winid, "conceallevel", 2)
   api.nvim_win_set_option(winid, "concealcursor", "niv")
   api.nvim_win_set_option(winid, "cursorline", true)
-  
+
   -- Set window highlights
   api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
-  
+
   -- Set initial cursor position and highlight
   update_buffer(bufnr, winid)
 
@@ -153,4 +145,3 @@ function M.select_env_file(opts, callback)
 end
 
 return M
-

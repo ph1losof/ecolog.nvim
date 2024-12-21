@@ -34,7 +34,7 @@ M.providers = {
     get_completion_trigger = function()
       return "${"
     end,
-  }
+  },
 }
 
-return M.providers 
+return M.providers

@@ -759,17 +759,18 @@ You can also:
 
 ```lua
 require('ecolog').setup({
-  types = {
-    url = true,
-    number = true,
-    -- Custom type
+  custom_types = {
     jwt = {
       pattern = "^[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+%.[A-Za-z0-9%-_]+$",
       validate = function(value)
         local parts = vim.split(value, ".", { plain = true })
         return #parts == 3
       end
-    }
+    },
+  }
+  types = {
+    url = true,
+    number = true,
   }
 })
 ```

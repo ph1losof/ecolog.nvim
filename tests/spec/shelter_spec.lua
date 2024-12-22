@@ -107,6 +107,33 @@ describe("shelter", function()
       assert.equals(string.rep(shelter._config.mask_char, #value), masked)
     end)
 
+    it("should respect minimum mask length in partial mode", function()
+      local partial_mode_configuration = {
+        show_start = 2,
+        show_end = 2,
+        min_mask = 5,
+      }
+      shelter.setup({
+        config = {
+          partial_mode = partial_mode_configuration,
+          mask_char = "*",
+        },
+      })
+
+      local test_cases = {
+        { input = "short", expected = "*****" },
+        { input = "medium123", expected = "me*****23" },
+        { input = "verylongvalue", expected = "ve*********ue" },
+      }
+
+      for _, case in ipairs(test_cases) do
+        local masked = shelter.determine_masked_value(case.input, {
+          partial_mode = partial_mode_configuration,
+        })
+        assert.equals(case.expected, masked)
+      end
+    end)
+
     it("should apply partial masking when enabled", function()
       local value = "secret123"
       local masked = shelter.mask_value(value, {

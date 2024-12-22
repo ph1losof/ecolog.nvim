@@ -76,6 +76,8 @@ local function determine_masked_value(value, opts)
   return string_sub(value, 1, show_start) .. string_rep(config.mask_char, mask_length) .. string_sub(value, -show_end)
 end
 
+M.determine_masked_value = determine_masked_value
+
 -- Optimized buffer clearing
 local function unshelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
@@ -87,7 +89,6 @@ local function shelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
 
   local lines = api.nvim_buf_get_lines(0, 0, -1, false)
-  local settings = type(config.partial_mode) == "table" and config.partial_mode or DEFAULT_PARTIAL_MODE
 
   for i, line in ipairs(lines) do
     -- Use pre-compiled patterns and combine checks

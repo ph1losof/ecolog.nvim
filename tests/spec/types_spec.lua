@@ -123,7 +123,12 @@ describe("types", function()
       assert.equals("string", types.detect_type("invalid")) -- Wrong format
 
       -- JWT tests
-      assert.equals("jwt", types.detect_type("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"))
+      assert.equals(
+        "jwt",
+        types.detect_type(
+          "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        )
+      )
       assert.equals("string", types.detect_type("invalid.token")) -- Not enough parts
     end)
 
@@ -145,6 +150,115 @@ describe("types", function()
 
       -- Custom types should take precedence
       assert.equals("custom_number", types.detect_type("123"))
+    end)
+  end)
+
+  describe("type transformation", function()
+    it("should transform boolean values consistently", function()
+      types.setup({ types = { boolean = true } })
+
+      local test_cases = {
+        { input = "yes", expected = "true" },
+        { input = "1", expected = "true" },
+        { input = "true", expected = "true" },
+        { input = "no", expected = "false" },
+        { input = "0", expected = "false" },
+        { input = "false", expected = "false" },
+      }
+
+      for _, case in ipairs(test_cases) do
+        local type_name, transformed = types.detect_type(case.input)
+        assert.equals("boolean", type_name)
+        assert.equals(case.expected, transformed)
+      end
+    end)
+
+    it("should handle complex database URLs", function()
+      types.setup({ types = { database_url = true } })
+
+      local valid_urls = {
+        "postgresql://user:pass@localhost:5432/db",
+        "mysql://admin:secret@db.host:3306/mydb",
+        "mongodb://user:pass@cluster:27017/db",
+      }
+
+      local invalid_urls = {
+        "postgresql://localhost:5432/db", -- Missing credentials
+        "invalid://user:pass@host:3306/db", -- Invalid protocol
+        "postgresql://user@localhost:5432/db", -- Missing password
+        "postgresql://user:pass@localhost/db", -- Missing port
+      }
+
+      for _, url in ipairs(valid_urls) do
+        local type_name = types.detect_type(url)
+        assert.equals("database_url", type_name, "Failed for URL: " .. url)
+      end
+
+      for _, url in ipairs(invalid_urls) do
+        local type_name = types.detect_type(url)
+        assert.equals("string", type_name, "Failed for invalid URL: " .. url)
+      end
+    end)
+
+    it("should validate IPv4 address ranges", function()
+      types.setup({ types = { ipv4 = true } })
+
+      local test_cases = {
+        { input = "192.168.1.1", expected = "ipv4" },
+        { input = "10.0.0.0", expected = "ipv4" },
+        { input = "172.16.254.1", expected = "ipv4" },
+        { input = "256.1.2.3", expected = "string" },
+        { input = "1.2.3.4.5", expected = "string" },
+      }
+
+      for _, case in ipairs(test_cases) do
+        local type_name = types.detect_type(case.input)
+        assert.equals(case.expected, type_name, string.format("Failed for input: %s", case.input))
+      end
+    end)
+  end)
+
+  describe("custom type validation", function()
+    it("should handle custom type priority correctly", function()
+      types.setup({
+        types = { url = true },
+        custom_types = {
+          custom_url = {
+            pattern = "^https?://[%w%-%.]+%.[%w%-%.]+",
+            validate = function(value)
+              return value:match("^https?://api%.")
+            end,
+          },
+        },
+      })
+
+      -- Should match custom_url
+      local type1 = types.detect_type("https://api.example.com")
+      assert.equals("custom_url", type1)
+
+      -- Should fall back to built-in url
+      local type2 = types.detect_type("https://regular.example.com")
+      assert.equals("url", type2)
+    end)
+
+    it("should validate custom type with transform", function()
+      types.setup({
+        custom_types = {
+          normalized_path = {
+            pattern = "^/[%w/%-%.]+$",
+            validate = function(value)
+              return not value:match("%.%.")
+            end,
+            transform = function(value)
+              return value:gsub("//+", "/")
+            end,
+          },
+        },
+      })
+
+      local type_name, transformed = types.detect_type("/path//to///file")
+      assert.equals("normalized_path", type_name)
+      assert.equals("/path/to/file", transformed)
     end)
   end)
 end)

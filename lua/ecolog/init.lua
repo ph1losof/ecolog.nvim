@@ -217,7 +217,7 @@ local function parse_env_file(opts, force)
     )
   then
     local shell_vars = vim.fn.environ()
-    local shell_config = type(opts.load_shell) == "table" and opts.load_shell
+    local shell_config = type(opts.load_shell) == "table" and opts.load_shell or { enabled = true }
 
     -- Apply filter if provided
     if shell_config.filter then
@@ -267,8 +267,9 @@ local function parse_env_file(opts, force)
       for line in env_file:lines() do
         local key, var_info = parse_env_line(line, selected_env_file)
         if key then
-          -- Only override shell vars if configured to do so
-          if not env_vars[key] or (opts.load_shell and opts.load_shell.override) then
+          -- Only override shell vars if configured to NOT override
+          -- or if the key doesn't exist yet
+          if not env_vars[key] or (opts.load_shell and not opts.load_shell.override) then
             env_vars[key] = var_info
           end
         end

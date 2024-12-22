@@ -117,4 +117,213 @@ describe("ecolog", function()
       assert.is_true(refresh_called, "Should have called refresh_env_vars")
     end)
   end)
+
+  describe("shell environment handling", function()
+    local original_environ
+    local test_env = {
+      SHELL_VAR = "test_value",
+      API_KEY = "secret123",
+      DEBUG = "true",
+      PORT = "3000",
+    }
+
+    before_each(function()
+      -- Store original environ function
+      original_environ = vim.fn.environ
+      -- Mock environ function
+      _G.vim = vim or {}
+      _G.vim.fn = vim.fn or {}
+      _G.vim.fn.environ = function()
+        return test_env
+      end
+
+      -- Force refresh env vars before each test
+      package.loaded["ecolog"] = nil
+      ecolog = require("ecolog")
+    end)
+
+    after_each(function()
+      -- Restore original environ function
+      _G.vim.fn.environ = original_environ
+    end)
+
+    it("should load basic shell variables", function()
+      ecolog.setup({
+        load_shell = {
+          enabled = true,
+        },
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Force refresh to load shell vars
+      ecolog.refresh_env_vars({
+        load_shell = {
+          enabled = true,
+        },
+        types = true,
+      })
+
+      local env_vars = ecolog.get_env_vars()
+      assert.is_not_nil(env_vars.SHELL_VAR)
+      assert.equals("test_value", env_vars.SHELL_VAR.value)
+      assert.equals("shell", env_vars.SHELL_VAR.source)
+    end)
+
+    it("should apply filter function", function()
+      ecolog.setup({
+        load_shell = {
+          enabled = true,
+          filter = function(key, _)
+            return key:match("^API") ~= nil
+          end,
+        },
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Force refresh with filter
+      ecolog.refresh_env_vars({
+        load_shell = {
+          enabled = true,
+          filter = function(key, _)
+            return key:match("^API") ~= nil
+          end,
+        },
+        types = true,
+      })
+
+      local env_vars = ecolog.get_env_vars()
+      assert.is_nil(env_vars.SHELL_VAR)
+      assert.is_not_nil(env_vars.API_KEY)
+    end)
+
+    it("should apply transform function", function()
+      ecolog.setup({
+        load_shell = {
+          enabled = true,
+          transform = function(_, value)
+            return "[shell] " .. value
+          end,
+        },
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Force refresh with transform
+      ecolog.refresh_env_vars({
+        load_shell = {
+          enabled = true,
+          transform = function(_, value)
+            return "[shell] " .. value
+          end,
+        },
+        types = true,
+      })
+
+      local env_vars = ecolog.get_env_vars()
+      assert.equals("[shell] test_value", env_vars.SHELL_VAR.value)
+    end)
+
+    it("should handle type detection for shell variables", function()
+      ecolog.setup({
+        load_shell = true,
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Force refresh
+      ecolog.refresh_env_vars({
+        load_shell = true,
+        types = true,
+      })
+
+      local env_vars = ecolog.get_env_vars()
+      assert.equals("boolean", env_vars.DEBUG.type)
+      assert.equals("number", env_vars.PORT.type)
+    end)
+
+    it("should respect override setting with .env files", function()
+      -- Create test env file
+      local test_dir = vim.fn.tempname()
+      vim.fn.mkdir(test_dir, "p")
+      local env_content = "SHELL_VAR=env_value"
+      vim.fn.writefile({ env_content }, test_dir .. "/.env")
+
+      -- Test with override = true (shell variables should take precedence)
+      ecolog.setup({
+        path = test_dir,
+        load_shell = {
+          enabled = true,
+          override = true,
+        },
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Force refresh with override
+      ecolog.refresh_env_vars({
+        path = test_dir,
+        load_shell = {
+          enabled = true,
+          override = true,
+        },
+        types = true,
+      })
+
+      local env_vars = ecolog.get_env_vars()
+      assert.equals("test_value", env_vars.SHELL_VAR.value)
+
+      -- Test with override = false (.env files should take precedence)
+      ecolog.setup({
+        path = test_dir,
+        load_shell = {
+          enabled = true,
+          override = false,
+        },
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Force refresh without override
+      ecolog.refresh_env_vars({
+        path = test_dir,
+        load_shell = {
+          enabled = true,
+          override = false,
+        },
+        types = true,
+      })
+
+      env_vars = ecolog.get_env_vars()
+      assert.equals("env_value", env_vars.SHELL_VAR.value)
+
+      -- Cleanup
+      vim.fn.delete(test_dir, "rf")
+    end)
+  end)
 end)

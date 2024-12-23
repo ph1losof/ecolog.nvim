@@ -88,5 +88,49 @@ function M.minimal_restore()
   end
 end
 
+---@param env_file string Path to the .env file
+---@return boolean success
+local function generate_example_file(env_file)
+    local f = io.open(env_file, "r")
+    if not f then
+        vim.notify("Could not open .env file", vim.log.levels.ERROR)
+        return false
+    end
+
+    local example_content = {}
+    for line in f:lines() do
+        -- Skip empty lines and comments
+        if line:match("^%s*$") or line:match("^%s*#") then
+            table.insert(example_content, line)
+        else
+            -- Match variable name and optional comment
+            local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
+            if name then
+                -- Clean up the name and comment
+                name = name:gsub("^%s*(.-)%s*$", "%1")
+                comment = comment:gsub("^%s*(.-)%s*$", "%1")
+                -- Create example entry with placeholder
+                table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+            end
+        end
+    end
+    f:close()
+
+    -- Write the example file
+    local example_file = env_file:gsub("%.env$", "") .. ".env.example"
+    local out = io.open(example_file, "w")
+    if not out then
+        vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
+        return false
+    end
+
+    out:write(table.concat(example_content, "\n"))
+    out:close()
+    vim.notify("Generated " .. example_file, vim.log.levels.INFO)
+    return true
+end
+
+M.generate_example_file = generate_example_file
+
 return M
 

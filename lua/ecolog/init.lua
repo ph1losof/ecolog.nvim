@@ -46,12 +46,12 @@ local function require_module(name)
   if _loaded_modules[name] then
     return _loaded_modules[name]
   end
-  
+
   -- Prevent circular requires
   if _loading[name] then
     error("Circular dependency detected: " .. name)
   end
-  
+
   _loading[name] = true
   local module = require(name)
   _loading[name] = nil
@@ -511,6 +511,17 @@ function M.setup(opts)
       end,
       nargs = "?",
       desc = "Peek at environment variable value",
+    },
+    EcologGenerateExample = {
+      callback = function()
+        if not selected_env_file then
+          notify("No environment file selected. Use :EcologSelect to select one.", vim.log.levels.ERROR)
+          return
+        end
+
+        utils.generate_example_file(selected_env_file)
+      end,
+      desc = "Generate .env.example file from selected .env file",
     },
     EcologShelterToggle = {
       callback = function(args)

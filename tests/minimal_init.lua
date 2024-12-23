@@ -12,4 +12,4 @@ vim.cmd([[set runtimepath+=]] .. plenary_dir)
 vim.cmd([[runtime plugin/plenary.vim]])
 
 vim.o.swapfile = false
-vim.bo.swapfile = false 
+

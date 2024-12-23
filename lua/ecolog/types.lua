@@ -181,8 +181,22 @@ local function init_enabled_types()
   end
 end
 
+-- Pre-compile all patterns for better performance
+local function compile_patterns()
+  for type_name, type_def in pairs(TYPE_DEFINITIONS) do
+    if type_def.pattern then
+      -- Store both Lua pattern and vim.regex pattern
+      type_def._lua_pattern = type_def.pattern
+      -- Convert Lua pattern to vim regex pattern
+      local vim_pattern = type_def.pattern:gsub("%%", "\\")
+      type_def._compiled_pattern = vim.regex(vim_pattern)
+    end
+  end
+end
+
 -- Initialize configuration with defaults
 init_enabled_types()
+compile_patterns()
 
 -- Setup function for types module
 function M.setup(opts)
@@ -213,55 +227,50 @@ function M.setup(opts)
 
   -- Handle custom types
   if opts.custom_types then
-    -- Enable custom types regardless of types setting
     for name, def in pairs(opts.custom_types) do
       if type(def) == "table" and def.pattern then
+        -- Store both Lua pattern and vim.regex pattern
+        def._lua_pattern = def.pattern
+        -- Convert Lua pattern to vim regex pattern
+        local vim_pattern = def.pattern:gsub("%%", "\\")
+        def._compiled_pattern = vim.regex(vim_pattern)
+        
         config.custom_types[name] = {
           pattern = def.pattern,
+          _lua_pattern = def._lua_pattern,
+          _compiled_pattern = def._compiled_pattern,
           validate = def.validate,
           transform = def.transform,
         }
-        -- Always enable custom types, regardless of types setting
+        -- Always enable custom types
         config.enabled_types[name] = true
       end
     end
   end
 end
 
--- Helper function to check key-value pair
-local function check_key_value_pair(value)
-  local key, val = value:match("^([%w_]+)=(.+)$")
-  if not key then
-    return nil
+-- Helper function to check if a value matches a pattern
+local function matches_pattern(value, type_def)
+  -- First try Lua pattern match
+  if type_def._lua_pattern and value:match(type_def._lua_pattern) then
+    return true
   end
-
-  -- Check if the value part is a boolean
-  if config.enabled_types.boolean then
-    local lower = val:lower()
-    if lower == "true" or lower == "yes" or lower == "1" then
-      return "boolean", "true"
-    elseif lower == "false" or lower == "no" or lower == "0" then
-      return "boolean", "false"
-    end
+  -- Then try vim.regex match
+  if type_def._compiled_pattern and type_def._compiled_pattern:match_str(value) then
+    return true
   end
-
-  -- If not a boolean, try to detect other types
-  local type_name, transformed = M.detect_type(val)
-  return type_name, transformed
+  return false
 end
 
--- Type detection function
+-- Optimized type detection function
 function M.detect_type(value)
-  -- First check if it's a key-value pair
-  local key_value_type = check_key_value_pair(value)
-  if key_value_type then
-    return key_value_type
+  if not value then
+    return "string", value
   end
 
   -- Check custom types first
   for type_name, type_def in pairs(config.custom_types) do
-    -- Custom types are always enabled when defined
-    if value:match(type_def.pattern) then
+    if matches_pattern(value, type_def) then
       if not type_def.validate or type_def.validate(value) then
         if type_def.transform then
           value = type_def.transform(value)
@@ -281,23 +290,21 @@ function M.detect_type(value)
 
   -- Check built-in types in specific order
   local type_check_order = {
-    "localhost", -- Check localhost before general URL
+    "localhost",
     "database_url",
     "url",
-    "iso_date", -- Check specific formats before numbers
+    "iso_date",
     "iso_time",
     "hex_color",
     "ipv4",
-    "number", -- Check number last as it's more general
+    "number",
     "json",
   }
 
   for _, type_name in ipairs(type_check_order) do
     local type_def = TYPE_DEFINITIONS[type_name]
     if type_def and config.enabled_types[type_name] then
-      -- For all types, use pattern matching
-      if value:match(type_def.pattern) then
-        -- Check validation if exists
+      if matches_pattern(value, type_def) then
         if type_def.validate then
           local is_valid = type_def.validate(value)
           if not is_valid then
@@ -305,7 +312,6 @@ function M.detect_type(value)
           end
         end
 
-        -- Transform if needed
         if type_def.transform then
           value = type_def.transform(value)
         end

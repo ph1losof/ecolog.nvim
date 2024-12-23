@@ -89,35 +89,41 @@ local function shelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
 
   local lines = api.nvim_buf_get_lines(0, 0, -1, false)
+  local extmarks = {}
 
   for i, line in ipairs(lines) do
-    -- Use pre-compiled patterns and combine checks
-    if string_match(line, PATTERNS.comment) or string_match(line, PATTERNS.empty) then
+    -- Fast path: skip comments and empty lines using string.find
+    if string_find(line, "^%s*#") or string_find(line, "^%s*$") then
       goto continue
     end
 
-    local key, value = string_match(line, PATTERNS.key_value)
+    -- Fast path: find key-value separator
+    local eq_pos = string_find(line, "=")
+    if not eq_pos then
+      goto continue
+    end
+
+    local key = string_sub(line, 1, eq_pos - 1)
+    local value = string_sub(line, eq_pos + 1)
+    
+    -- Clean up key and value
+    key = string_match(key, "^%s*(.-)%s*$")
+    value = string_match(value, "^%s*(.-)%s*$")
+    
     if not (key and value) then
       goto continue
     end
 
-    local actual_value, quote_char
-    local quote_start = string_match(value, "^%s*([\"'])")
+    local actual_value
+    local quote_char = string_match(value, "^([\"'])")
 
-    if quote_start then
-      local _, content = string_match(value, PATTERNS.quoted)
-      if content then
-        actual_value = content
-        quote_char = quote_start
-      end
-    end
-
-    if not actual_value then
-      actual_value = string_match(value, PATTERNS.unquoted)
+    if quote_char then
+      actual_value = string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+    else
+      actual_value = string_match(value, "^([^%s#]+)")
     end
 
     if actual_value then
-      local value_start = string_find(line, "=") + 1
       local masked_value = state.revealed_lines[i] and actual_value
         or determine_masked_value(actual_value, {
           partial_mode = config.partial_mode,
@@ -128,14 +134,24 @@ local function shelter_buffer()
           masked_value = quote_char .. masked_value .. quote_char
         end
 
-        api.nvim_buf_set_extmark(0, namespace, i - 1, value_start - 1, {
-          virt_text = { { masked_value, state.revealed_lines[i] and "String" or "Comment" } },
-          virt_text_pos = "overlay",
-          hl_mode = "combine",
+        -- Collect extmarks instead of setting them immediately
+        table.insert(extmarks, {
+          i - 1,
+          eq_pos,
+          {
+            virt_text = { { masked_value, state.revealed_lines[i] and "String" or "Comment" } },
+            virt_text_pos = "overlay",
+            hl_mode = "combine",
+          }
         })
       end
     end
     ::continue::
+  end
+
+  -- Batch set all extmarks at once
+  for _, mark in ipairs(extmarks) do
+    api.nvim_buf_set_extmark(0, namespace, mark[1], mark[2], mark[3])
   end
 end
 

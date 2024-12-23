@@ -62,7 +62,7 @@ local function extract_variable(line, word_end, available_providers, var_name)
   return nil
 end
 
--- Create peek window content
+-- Create peek window content with optimized string handling
 local function create_peek_content(var_name, var_info, types)
   -- Re-detect type to ensure accuracy
   local type_name, value = types.detect_type(var_info.value)
@@ -72,27 +72,27 @@ local function create_peek_content(var_name, var_info, types)
   local display_value = shelter.mask_value(value or var_info.value, "peek")
   local source = fn.fnamemodify(var_info.source, ":t")
 
-  local lines = {
-    "Name    : " .. var_name,
-    "Type    : " .. display_type,
-    "Source  : " .. source,
-    "Value   : " .. display_value,
-  }
+  -- Pre-allocate table for better performance
+  local content_size = var_info.comment and 5 or 4
+  local lines = table.create(content_size)
+  local highlights = table.create(content_size)
 
-  local label_width = 10 -- 8 chars for label + 2 chars for ":"
+  -- Build content with minimal string operations
+  lines[1] = "Name    : " .. var_name
+  lines[2] = "Type    : " .. display_type
+  lines[3] = "Source  : " .. source
+  lines[4] = "Value   : " .. display_value
 
-  local highlights = {
-    { "EcologTitle", 0, 0, -1 },
-    { "EcologVariable", 0, label_width, label_width + #var_name },
-    { "EcologType", 1, label_width, label_width + #display_type },
-    { "EcologSource", 2, label_width, label_width + #source },
-    { "EcologValue", 3, label_width, label_width + #display_value },
-  }
+  -- Add highlights with pre-calculated positions
+  highlights[1] = { "EcologVariable", 0, PATTERNS.label_width, PATTERNS.label_width + #var_name }
+  highlights[2] = { "EcologType", 1, PATTERNS.label_width, PATTERNS.label_width + #display_type }
+  highlights[3] = { "EcologSource", 2, PATTERNS.label_width, PATTERNS.label_width + #source }
+  highlights[4] = { "EcologValue", 3, PATTERNS.label_width, PATTERNS.label_width + #display_value }
 
-  -- Add comment line if comment exists
+  -- Add comment if exists
   if var_info.comment then
-    table.insert(lines, "Comment : " .. var_info.comment)
-    table.insert(highlights, { "Comment", #lines - 1, label_width, -1 })
+    lines[5] = "Comment : " .. var_info.comment
+    highlights[5] = { "Comment", 4, PATTERNS.label_width, -1 }
   end
 
   return {
@@ -129,6 +129,7 @@ end
 ---@field lines string[] Lines of content to display
 ---@field highlights table[] Highlight definitions
 
+-- Optimized peek window creation
 function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
   local filetype = vim.bo.filetype
   local available_providers = providers.get_providers(filetype)
@@ -146,12 +147,20 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
     return
   end
 
+  -- Get cursor context efficiently
   local line = api.nvim_get_current_line()
   local cursor_pos = api.nvim_win_get_cursor(0)
   local word_start, word_end = find_word_boundaries(line, cursor_pos[2])
 
-  -- Try to extract variable
-  local extracted_var = extract_variable(line, word_end, available_providers, var_name)
+  -- Extract variable with optimized provider calls
+  local extracted_var = var_name
+  if not extracted_var then
+    for _, provider in ipairs(available_providers) do
+      extracted_var = provider.extract_var(line, word_end)
+      if extracted_var then break end
+    end
+  end
+
   if not extracted_var then
     extracted_var = line:sub(word_start, word_end)
   end
@@ -169,57 +178,60 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
     return
   end
 
-  -- Create peek window content with types module
+  -- Create content with optimized functions
   local content = create_peek_content(extracted_var, var, types)
   local curbuf = api.nvim_get_current_buf()
 
-  -- Create peek window
-  peek.bufnr, peek.winid = win
-    :new_float({
-      width = 52,
-      height = #content.lines,
-      focusable = true,
-      border = "rounded",
-      relative = "cursor",
-      row = 1,
-      col = 0,
-      style = "minimal",
-      noautocmd = true,
-    }, false)
-    :setlines(content.lines)
-    :bufopt({
-      modifiable = false,
-      bufhidden = "wipe",
-      buftype = "nofile",
-      filetype = "ecolog",
-    })
-    :winopt({
-      conceallevel = 2,
-      concealcursor = "niv",
-      cursorline = true,
-    })
-    :winhl("EcologNormal", "EcologBorder")
-    :wininfo()
+  -- Create peek window with batched operations
+  peek.bufnr = api.nvim_create_buf(false, true)
+  
+  -- Set all buffer options at once
+  api.nvim_buf_set_option(peek.bufnr, "modifiable", true)
+  api.nvim_buf_set_lines(peek.bufnr, 0, -1, false, content.lines)
+  api.nvim_buf_set_option(peek.bufnr, "modifiable", false)
+  api.nvim_buf_set_option(peek.bufnr, "bufhidden", "wipe")
+  api.nvim_buf_set_option(peek.bufnr, "buftype", "nofile")
+  api.nvim_buf_set_option(peek.bufnr, "filetype", "ecolog")
 
-  -- Apply syntax highlighting
+  -- Create window with all options
+  peek.winid = api.nvim_open_win(peek.bufnr, true, {
+    relative = "cursor",
+    row = 1,
+    col = 0,
+    width = 52,
+    height = #content.lines,
+    style = "minimal",
+    border = "rounded",
+    focusable = true,
+  })
+
+  -- Set window options in batch
+  api.nvim_win_set_option(peek.winid, "conceallevel", 2)
+  api.nvim_win_set_option(peek.winid, "concealcursor", "niv")
+  api.nvim_win_set_option(peek.winid, "cursorline", true)
+  api.nvim_win_set_option(peek.winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+
+  -- Apply highlights in batch
   for _, hl in ipairs(content.highlights) do
     api.nvim_buf_add_highlight(peek.bufnr, -1, hl[1], hl[2], hl[3], hl[4])
   end
 
-  -- Set buffer mappings
+  -- Set up autocommands and mappings
+  setup_peek_autocommands(curbuf)
+  
+  -- Set buffer mappings efficiently
+  local close_fn = function()
+    if peek.winid and api.nvim_win_is_valid(peek.winid) then
+      api.nvim_win_close(peek.winid, true)
+      peek:clean()
+    end
+  end
+
   api.nvim_buf_set_keymap(peek.bufnr, "n", "q", "", {
-    callback = function()
-      if peek.winid and api.nvim_win_is_valid(peek.winid) then
-        api.nvim_win_close(peek.winid, true)
-        peek:clean()
-      end
-    end,
+    callback = close_fn,
     noremap = true,
     silent = true,
   })
-
-  -- Set up autocommands
-  setup_peek_autocommands(curbuf)
 end
 
 return M

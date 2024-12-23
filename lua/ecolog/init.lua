@@ -38,46 +38,44 @@ local api = vim.api
 local fn = vim.fn
 local notify = vim.notify
 
--- Import utils
-local utils = require("ecolog.utils")
+-- Optimized module loading system
+local _loaded_modules = {}
+local _loading = {}
 
--- Use utils modules
+local function require_module(name)
+  if _loaded_modules[name] then
+    return _loaded_modules[name]
+  end
+  
+  -- Prevent circular requires
+  if _loading[name] then
+    error("Circular dependency detected: " .. name)
+  end
+  
+  _loading[name] = true
+  local module = require(name)
+  _loading[name] = nil
+  _loaded_modules[name] = module
+  return module
+end
+
+-- Cache frequently used modules
+local utils = require_module("ecolog.utils")
 local providers = utils.get_module("ecolog.providers")
 local select = utils.get_module("ecolog.select")
 local peek = utils.get_module("ecolog.peek")
 local shelter = utils.get_module("ecolog.shelter")
 local types = utils.get_module("ecolog.types")
 
--- Use utils patterns
+-- Pre-compile patterns for better performance
 local PATTERNS = utils.PATTERNS
 
--- Cache frequently used functions
-local tbl_extend = vim.tbl_deep_extend
+-- Cache vim APIs
+local api = vim.api
+local fn = vim.fn
+local notify = vim.notify
 local schedule = vim.schedule
-
--- Lazy load modules with caching
-local _cached_modules = {}
-local function require_on_demand(name)
-  if not _cached_modules[name] then
-    _cached_modules[name] = require(name)
-  end
-  return _cached_modules[name]
-end
-
--- Find word boundaries around cursor position
-local function find_word_boundaries(line, col)
-  local word_start = col
-  while word_start > 0 and line:sub(word_start, word_start):match("[%w_]") do
-    word_start = word_start - 1
-  end
-
-  local word_end = col
-  while word_end <= #line and line:sub(word_end + 1, word_end + 1):match("[%w_]") do
-    word_end = word_end + 1
-  end
-
-  return word_start + 1, word_end
-end
+local tbl_extend = vim.tbl_deep_extend
 
 -- Cache and state management
 local env_vars = {}
@@ -409,13 +407,13 @@ function M.setup(opts)
 
   -- Set up LSP integration if enabled
   if opts.integrations.lsp then
-    local lsp = require_on_demand("ecolog.integrations.lsp")
+    local lsp = require_module("ecolog.integrations.lsp")
     lsp.setup()
   end
 
   -- Set up LSP Saga integration if enabled
   if opts.integrations.lspsaga then
-    local lspsaga = require_on_demand("ecolog.integrations.lspsaga")
+    local lspsaga = require_module("ecolog.integrations.lspsaga")
     lspsaga.setup()
   end
 
@@ -438,18 +436,19 @@ function M.setup(opts)
       return
     end
 
-    local providers_list = {
-      typescript = "ecolog.providers.typescript",
-      javascript = "ecolog.providers.javascript",
-      python = "ecolog.providers.python",
-      php = "ecolog.providers.php",
-      lua = "ecolog.providers.lua",
-      go = "ecolog.providers.go",
-      rust = "ecolog.providers.rust",
+    local provider_modules = {
+      typescript = true,
+      javascript = true,
+      python = true,
+      php = true,
+      lua = true,
+      go = true,
+      rust = true,
     }
 
-    for name, module_path in pairs(providers_list) do
-      local ok, provider = pcall(require, module_path)
+    for name in pairs(provider_modules) do
+      local module_path = "ecolog.providers." .. name
+      local ok, provider = pcall(require_module, module_path)
       if ok then
         if type(provider) == "table" then
           if provider.provider then

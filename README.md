@@ -145,8 +145,6 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
 ### Available Commands
 
-### Available Commands
-
 | Command                                    | Description                                                               |
 | ------------------------------------------ | ------------------------------------------------------------------------- |
 | `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                           |

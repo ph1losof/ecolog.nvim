@@ -608,7 +608,7 @@ function M.setup(opts)
           local col = cursor_pos[2]
 
           -- Find word boundaries
-          local word_start, word_end = find_word_boundaries(line, col)
+          local word_start, word_end = utils.find_word_boundaries(line, col)
 
           -- Try to extract variable using providers
           for _, provider in ipairs(available_providers) do
@@ -670,7 +670,7 @@ function M.setup(opts)
 end
 
 -- Add find_word_boundaries to the module's return table
-M.find_word_boundaries = find_word_boundaries
+M.find_word_boundaries = utils.find_word_boundaries
 
 -- Add this function to the module
 function M.get_config()

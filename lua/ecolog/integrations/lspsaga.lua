@@ -4,34 +4,74 @@ local M = {}
 local api = vim.api
 local cmd = vim.cmd
 local notify = vim.notify
-local ecolog
+local utils = require("ecolog.utils")
 
 -- Helper function to check if word matches environment variable pattern
-local function is_env_var(word)
-  return ecolog.get_env_vars()[word] ~= nil
-end
-
--- Helper function to get word under cursor
-local function get_word_under_cursor()
-  local line = api.nvim_get_current_line()
-  local col = api.nvim_win_get_cursor(0)[2]
-  local word_start, word_end = ecolog.find_word_boundaries(line, col)
-  return line:sub(word_start, word_end)
+function M.is_env_var(word)
+  if not M._ecolog then
+    M._ecolog = require("ecolog")
+  end
+  return M._ecolog.get_env_vars()[word] ~= nil
 end
 
 -- Create command handler functions
-local function handle_hover()
-  local word = get_word_under_cursor()
-  cmd(is_env_var(word) and ("EcologPeek " .. word) or "Lspsaga hover_doc")
+function M.handle_hover()
+  local word = utils.get_word_under_cursor()
+  if M.is_env_var(word) then
+    -- Try to use the peek API directly if available
+    if M._ecolog.get_opts then
+      local peek = require("ecolog.peek")
+      local opts = M._ecolog.get_opts()
+      local env_vars = M._ecolog.get_env_vars()
+      local providers = require("ecolog.providers")
+      local ok, err = pcall(peek.peek_env_value, word, opts, env_vars, providers, function() end)
+      if not ok then
+        -- If peek fails, try Lspsaga as fallback
+        cmd("Lspsaga hover_doc")
+      end
+    else
+      -- Fall back to using the command
+      cmd("EcologPeek " .. word)
+    end
+  else
+    cmd("Lspsaga hover_doc")
+  end
 end
 
-local function handle_goto_definition()
-  local word = get_word_under_cursor()
-  cmd(is_env_var(word) and ("EcologGotoVar " .. word) or "Lspsaga goto_definition")
+function M.handle_goto_definition()
+  local word = utils.get_word_under_cursor()
+  if M.is_env_var(word) then
+    local env_vars = M._ecolog.get_env_vars()
+    local var = env_vars[word]
+    if not var then
+      notify(string.format("Environment variable '%s' not found", word), vim.log.levels.WARN)
+      return
+    end
+
+    -- Open the file
+    vim.cmd("edit " .. vim.fn.fnameescape(var.source))
+
+    -- Find the line with the variable
+    local lines = api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("^" .. vim.pesc(word) .. "=") then
+        -- Move cursor to the line
+        api.nvim_win_set_cursor(0, { i, 0 })
+        -- Center the screen on the line
+        vim.cmd("normal! zz")
+        break
+      end
+    end
+  else
+    local ok, _ = pcall(cmd, "Lspsaga goto_definition")
+    if not ok then
+      notify("Lspsaga goto_definition command not available", vim.log.levels.WARN)
+    end
+  end
 end
 
 -- Find and replace existing Saga keymaps
-local function replace_saga_keymaps()
+function M.replace_saga_keymaps()
   local modes = { "n", "v" }
   local saga_commands = {
     ["Lspsaga hover_doc"] = "EcologSagaHover",
@@ -64,8 +104,8 @@ end
 
 function M.setup()
   -- Cache ecolog module
-  if not ecolog then
-    ecolog = require("ecolog")
+  if not M._ecolog then
+    M._ecolog = require("ecolog")
   end
 
   -- Check if lspsaga is available
@@ -75,12 +115,15 @@ function M.setup()
   end
 
   -- Create commands
-  api.nvim_create_user_command("EcologSagaHover", handle_hover, {})
-  api.nvim_create_user_command("EcologSagaGD", handle_goto_definition, {})
+  api.nvim_create_user_command("EcologSagaHover", M.handle_hover, {})
+  api.nvim_create_user_command("EcologSagaGD", M.handle_goto_definition, {})
 
   -- Replace existing Saga keymaps
-  replace_saga_keymaps()
+  M.replace_saga_keymaps()
 end
+
+-- Expose get_word_under_cursor for testing
+M.get_word_under_cursor = utils.get_word_under_cursor
 
 return M
 

@@ -15,4 +15,3 @@ M.provider = {
 }
 
 return M
-

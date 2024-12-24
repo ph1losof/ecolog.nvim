@@ -3,12 +3,12 @@ local fn = vim.fn
 local notify = vim.notify
 local win = require("ecolog.win")
 local shelter = require("ecolog.shelter")
+local utils = require("ecolog.utils")
 
 local M = {}
 
 -- Cached patterns
 local PATTERNS = {
-  word = "[%w_]",
   label_width = 10, -- 8 chars for label + 2 chars for ":"
 }
 
@@ -27,21 +27,6 @@ function peek:clean()
   end
   self.bufnr = nil
   self.winid = nil
-end
-
--- Find word boundaries around cursor
-local function find_word_boundaries(line, col)
-  local word_start = col
-  while word_start > 0 and line:sub(word_start, word_start):match(PATTERNS.word) do
-    word_start = word_start - 1
-  end
-
-  local word_end = col
-  while word_end <= #line and line:sub(word_end + 1, word_end + 1):match(PATTERNS.word) do
-    word_end = word_end + 1
-  end
-
-  return word_start + 1, word_end
 end
 
 -- Extract variable using providers
@@ -74,8 +59,8 @@ local function create_peek_content(var_name, var_info, types)
 
   -- Pre-allocate table for better performance
   local content_size = var_info.comment and 5 or 4
-  local lines = table.create(content_size)
-  local highlights = table.create(content_size)
+  local lines = {}
+  local highlights = {}
 
   -- Build content with minimal string operations
   lines[1] = "Name    : " .. var_name
@@ -150,7 +135,7 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
   -- Get cursor context efficiently
   local line = api.nvim_get_current_line()
   local cursor_pos = api.nvim_win_get_cursor(0)
-  local word_start, word_end = find_word_boundaries(line, cursor_pos[2])
+  local word_start, word_end = utils.find_word_boundaries(line, cursor_pos[2])
 
   -- Extract variable with optimized provider calls
   local extracted_var = var_name
@@ -194,7 +179,7 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
   api.nvim_buf_set_option(peek.bufnr, "filetype", "ecolog")
 
   -- Create window with all options
-  peek.winid = api.nvim_open_win(peek.bufnr, true, {
+  peek.winid = api.nvim_open_win(peek.bufnr, false, {
     relative = "cursor",
     row = 1,
     col = 0,

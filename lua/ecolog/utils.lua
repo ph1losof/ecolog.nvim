@@ -14,14 +14,58 @@ M.PATTERNS = {
 
 -- Find word boundaries around cursor position
 function M.find_word_boundaries(line, col)
+  -- Handle empty line
+  if #line == 0 then
+    return nil, nil
+  end
+
+  -- If we're at the end of the line, move back one character
+  if col >= #line then
+    col = #line - 1
+  end
+
+  -- If we're not on a word character, check both directions
+  if not line:sub(col + 1, col + 1):match(M.PATTERNS.word) then
+    -- Try looking backwards first
+    local temp_col = col
+    while temp_col > 0 and not line:sub(temp_col, temp_col):match(M.PATTERNS.word) do
+      temp_col = temp_col - 1
+    end
+    
+    -- If we found a word character going backwards, use that position
+    if temp_col > 0 and line:sub(temp_col, temp_col):match(M.PATTERNS.word) then
+      col = temp_col
+    else
+      -- Otherwise, look forward
+      temp_col = col
+      while temp_col < #line and not line:sub(temp_col + 1, temp_col + 1):match(M.PATTERNS.word) do
+        temp_col = temp_col + 1
+      end
+      -- If we found a word character going forwards, use that position
+      if temp_col < #line and line:sub(temp_col + 1, temp_col + 1):match(M.PATTERNS.word) then
+        col = temp_col
+      else
+        -- No word character found in either direction
+        return nil, nil
+      end
+    end
+  end
+
+  -- Find start of word
   local word_start = col
   while word_start > 0 and line:sub(word_start, word_start):match(M.PATTERNS.word) do
     word_start = word_start - 1
   end
 
+  -- Find end of word
   local word_end = col
-  while word_end <= #line and line:sub(word_end + 1, word_end + 1):match(M.PATTERNS.word) do
+  while word_end < #line and line:sub(word_end + 1, word_end + 1):match(M.PATTERNS.word) do
     word_end = word_end + 1
+  end
+
+  -- If we didn't find a word, return nil positions
+  if not line:sub(word_start + 1, word_end):match(M.PATTERNS.word) then
+    return nil, nil
   end
 
   return word_start + 1, word_end
@@ -131,6 +175,20 @@ local function generate_example_file(env_file)
 end
 
 M.generate_example_file = generate_example_file
+
+-- Get word under cursor using word boundaries
+function M.get_word_under_cursor()
+  local line = vim.api.nvim_get_current_line()
+  local col = vim.api.nvim_win_get_cursor(0)[2]
+  local word_start, word_end = M.find_word_boundaries(line, col)
+  
+  -- Return empty string if no word found
+  if not word_start or not word_end then
+    return ""
+  end
+  
+  return line:sub(word_start, word_end)
+end
 
 return M
 

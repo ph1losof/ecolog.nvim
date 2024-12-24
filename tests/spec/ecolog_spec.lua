@@ -74,28 +74,49 @@ describe("ecolog", function()
   describe("file watcher", function()
     local test_dir = vim.fn.tempname()
     local original_notify
+    local notify_messages = {}
 
     before_each(function()
       vim.fn.mkdir(test_dir, "p")
-      -- Store original notify function
       original_notify = vim.notify
+      notify_messages = {}
+      vim.notify = function(msg, level)
+        table.insert(notify_messages, { msg = msg, level = level })
+      end
     end)
 
     after_each(function()
       vim.fn.delete(test_dir, "rf")
-      -- Restore original notify function
       vim.notify = original_notify
     end)
 
-    it("should watch for changes in selected env file", function()
-      local refresh_called = false
-      ecolog.refresh_env_vars = function()
-        refresh_called = true
-      end
+    it("should detect new env file creation", function()
+      ecolog.setup({
+        path = test_dir,
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
 
-      -- Create and select env file
-      local env_file = test_dir .. "/.env"
-      vim.fn.writefile({ "KEY=value" }, env_file)
+      -- Create new env file
+      local env_content = "NEW_VAR=test_value"
+      vim.fn.writefile({ env_content }, test_dir .. "/.env")
+
+      -- Wait for file watcher to process
+      vim.wait(100)
+
+      local env_vars = ecolog.get_env_vars()
+      assert.is_not_nil(env_vars.NEW_VAR)
+      assert.equals("test_value", env_vars.NEW_VAR.value)
+    end)
+
+    it("should detect env file modifications", function()
+      -- Create initial env file
+      local initial_content = "INITIAL_VAR=old_value"
+      vim.fn.writefile({ initial_content }, test_dir .. "/.env")
 
       ecolog.setup({
         path = test_dir,
@@ -107,14 +128,41 @@ describe("ecolog", function()
         types = true,
       })
 
-      -- Edit the file and trigger write event
-      vim.cmd("edit " .. env_file)
-      vim.cmd("doautocmd BufWritePost")
+      -- Modify env file
+      local new_content = "INITIAL_VAR=new_value\nADDED_VAR=added_value"
+      vim.fn.writefile(vim.split(new_content, "\n"), test_dir .. "/.env")
 
-      -- Give time for async operations
+      -- Wait for file watcher to process
       vim.wait(100)
 
-      assert.is_true(refresh_called, "Should have called refresh_env_vars")
+      local env_vars = ecolog.get_env_vars()
+      assert.equals("new_value", env_vars.INITIAL_VAR.value)
+      assert.equals("added_value", env_vars.ADDED_VAR.value)
+    end)
+
+    it("should handle env file deletion", function()
+      -- Create initial env file
+      local initial_content = "TEST_VAR=value"
+      vim.fn.writefile({ initial_content }, test_dir .. "/.env")
+
+      ecolog.setup({
+        path = test_dir,
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {},
+        types = true,
+      })
+
+      -- Delete env file
+      vim.fn.delete(test_dir .. "/.env")
+
+      -- Wait for file watcher to process
+      vim.wait(100)
+
+      local env_vars = ecolog.get_env_vars()
+      assert.is_nil(env_vars.TEST_VAR)
     end)
   end)
 

@@ -449,6 +449,7 @@ require('telescope').setup({
 | Bun                         | `Bun.env.*`<br>`Bun.env["*`<br>`Bun.env['`                                           | Bun runtime environment variable access              |
 | Python                      | `os.environ.get('*`<br>`os.environ['*`<br>`os.environ["*`                            | Native Python environment variable access            |
 | Lua                         | `os.getenv("*`<br>`os.getenv('*`                                                     | Native Lua environment variable access               |
+| Rust                        | `std::env::var()`<br>`env::var()`                                                    | Rust standard library environment access             |
 
 ### 🔴 Supported but Not Thoroughly Tested (may be broken)
 
@@ -456,7 +457,6 @@ require('telescope').setup({
 | -------- | ------------------------------------------- | ------------------------------------------------- |
 | PHP      | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access |
 | Go       | `os.Getenv("*`                              | Go standard library environment access            |
-| Rust     | `std::env::var()`<br>`env::var()`           | Rust standard library environment access          |
 
 ### 🚧 Coming Soon
 

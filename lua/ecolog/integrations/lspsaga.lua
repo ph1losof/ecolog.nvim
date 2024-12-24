@@ -15,7 +15,7 @@ function M.is_env_var(word)
 end
 
 -- Create command handler functions
-function M.handle_hover()
+function M.handle_hover(args)
   local word = utils.get_word_under_cursor()
   if M.is_env_var(word) then
     -- Try to use the peek API directly if available
@@ -27,18 +27,18 @@ function M.handle_hover()
       local ok, err = pcall(peek.peek_env_value, word, opts, env_vars, providers, function() end)
       if not ok then
         -- If peek fails, try Lspsaga as fallback
-        cmd("Lspsaga hover_doc")
+        require('lspsaga.hover'):render_hover_doc(args)
       end
     else
       -- Fall back to using the command
       cmd("EcologPeek " .. word)
     end
   else
-    cmd("Lspsaga hover_doc")
+    require('lspsaga.hover'):render_hover_doc(args)
   end
 end
 
-function M.handle_goto_definition()
+function M.handle_goto_definition(args)
   local word = utils.get_word_under_cursor()
   if M.is_env_var(word) then
     local env_vars = M._ecolog.get_env_vars()
@@ -63,9 +63,11 @@ function M.handle_goto_definition()
       end
     end
   else
-    local ok, _ = pcall(cmd, "Lspsaga goto_definition")
+    local ok, _ = pcall(function()
+      require('lspsaga.definition'):init(1, 2, args)
+    end)
     if not ok then
-      notify("Lspsaga goto_definition command not available", vim.log.levels.WARN)
+      notify("Lspsaga goto_definition not available", vim.log.levels.WARN)
     end
   end
 end
@@ -114,9 +116,32 @@ function M.setup()
     return
   end
 
-  -- Create commands
+  -- Create our commands
   api.nvim_create_user_command("EcologSagaHover", M.handle_hover, {})
   api.nvim_create_user_command("EcologSagaGD", M.handle_goto_definition, {})
+
+  -- Override Lspsaga's commands to use our handlers
+  api.nvim_create_user_command("Lspsaga", function(opts)
+    local subcmd = opts.args:match("^(%S+)")
+    if subcmd == "hover_doc" then
+      M.handle_hover(opts)
+    elseif subcmd == "goto_definition" then
+      M.handle_goto_definition(opts)
+    else
+      -- For other Lspsaga commands, call the original command
+      cmd("Lspsaga " .. opts.args)
+    end
+  end, {
+    nargs = "*",
+    complete = function(arglead, cmdline, cursorpos)
+      -- Preserve Lspsaga's command completion if possible
+      local saga = require("lspsaga.command")
+      if saga.command_completion then
+        return saga.command_completion(arglead, cmdline, cursorpos)
+      end
+      return {}
+    end
+  })
 
   -- Replace existing Saga keymaps
   M.replace_saga_keymaps()

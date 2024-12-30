@@ -3,116 +3,166 @@ if not has_fzf then
   error("This extension requires fzf-lua (https://github.com/ibhagwan/fzf-lua)")
 end
 
-local shelter = require("ecolog.shelter")
+local utils = require("ecolog.utils")
+local shelter = utils.get_module("ecolog.shelter")
+local api = vim.api
+local fn = vim.fn
 
-local M = {}
+local _cache = {
+  env_vars = nil,
+  ecolog = nil,
+}
 
--- Default configuration
 local config = {
   shelter = {
-    -- Whether to show masked values when copying to clipboard
     mask_on_copy = false,
   },
-  -- Default keybindings
   mappings = {
-    -- Key to copy value to clipboard
     copy_value = "ctrl-y",
-    -- Key to copy name to clipboard
     copy_name = "ctrl-n",
-    -- Key to append value to buffer
     append_value = "ctrl-a",
-    -- Key to append name to buffer (defaults to 'enter')
     append_name = "enter",
   },
 }
 
-function M.get_env_vars()
-  if not M._ecolog then
-    M._ecolog = require("ecolog")
-  end
-  return M._ecolog.get_env_vars()
+local M = {}
+
+local function notify_with_title(msg, level)
+  vim.notify(string.format("Ecolog FZF: %s", msg), level)
 end
 
-local function get_masked_value(value)
-  return shelter.mask_value(value, "telescope")
+local function safe_action(name, _fn)
+  return function(selected)
+    local ok, err = pcall(_fn, selected)
+    if not ok then
+      notify_with_title(string.format("Failed to %s: %s", name, err), vim.log.levels.ERROR)
+    end
+  end
+end
+
+local function memoize(_fn)
+  local cache = {}
+  return function(...)
+    local key = table.concat({ ... }, "\0")
+    if cache[key] == nil then
+      cache[key] = _fn(...)
+    end
+    return cache[key]
+  end
+end
+
+local function clear_cache()
+  _cache.env_vars = nil
+end
+
+local get_env_vars = memoize(function()
+  if not _cache.env_vars then
+    if not _cache.ecolog then
+      _cache.ecolog = require("ecolog")
+    end
+    _cache.env_vars = _cache.ecolog.get_env_vars()
+  end
+  return _cache.env_vars
+end)
+
+local extract_var_name = memoize(utils.extract_var_name)
+
+local function handle_buffer_action(selected, action_fn)
+  local var_name = extract_var_name(selected[1])
+  if not var_name then
+    return
+  end
+
+  local result = action_fn(var_name)
+  if not result then
+    return
+  end
+
+  local cursor = api.nvim_win_get_cursor(0)
+  local line = api.nvim_get_current_line()
+  local new_line = line:sub(1, cursor[2]) .. result .. line:sub(cursor[2] + 1)
+  api.nvim_set_current_line(new_line)
+  api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #result })
 end
 
 function M.actions()
+  local env_vars = get_env_vars()
+
   return {
-    -- Copy value to clipboard
-    [config.mappings.copy_value] = function(selected)
-      local entry_str = selected[1]
-      local var_name = entry_str:match("^(.-)%s*=")
-      local selection = M.get_env_vars()[var_name]
+    [config.mappings.copy_value] = safe_action("copy_value", function(selected)
+      local var_name = extract_var_name(selected[1])
+      local selection = env_vars[var_name]
+      if not selection then
+        return
+      end
 
-      local value = config.shelter.mask_on_copy and get_masked_value(selection.value) or selection.value
-      vim.fn.setreg("+", value)
+      local value = config.shelter.mask_on_copy and shelter.mask_value(selection.value, "fzf") or selection.value
+      fn.setreg("+", value)
+      notify_with_title(string.format("Copied value of '%s' to clipboard", var_name), vim.log.levels.INFO)
+    end),
 
-      vim.notify("Copied value to clipboard", vim.log.levels.INFO)
-    end,
+    [config.mappings.copy_name] = safe_action("copy_name", function(selected)
+      local var_name = extract_var_name(selected[1])
+      if not var_name then
+        return
+      end
+      fn.setreg("+", var_name)
+      notify_with_title(string.format("Copied variable '%s' name to clipboard", var_name), vim.log.levels.INFO)
+    end),
 
-    -- Copy name to clipboard
-    [config.mappings.copy_name] = function(selected)
-      local entry_str = selected[1]
-      local var_name = entry_str:match("^(.-)%s*=")
-
-      vim.fn.setreg("+", var_name)
-      vim.notify("Copied variable name to clipboard", vim.log.levels.INFO)
-    end,
-
-    -- Append environment name to buffer
     [config.mappings.append_name] = function(selected)
-      local entry_str = selected[1]
-      local var_name = entry_str:match("^(.-)%s*=")
-      local selection = M.get_env_vars()[var_name]
-
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local line = vim.api.nvim_get_current_line()
-      local new_line = line:sub(1, cursor[2]) .. selection.name .. line:sub(cursor[2] + 1)
-
-      vim.api.nvim_set_current_line(new_line)
-      vim.api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #selection.name })
-      vim.notify("Appended environment name", vim.log.levels.INFO)
+      handle_buffer_action(selected, function(var_name)
+        return var_name
+      end)
+      notify_with_title("Appended environment name", vim.log.levels.INFO)
     end,
 
-    -- Append environment value to buffer
     [config.mappings.append_value] = function(selected)
-      local entry_str = selected[1]
-      local var_name = entry_str:match("^(.-)%s*=")
-      local selection = M.get_env_vars()[var_name]
-      local value = config.shelter.mask_on_copy and get_masked_value(selection.value) or selection.value
-
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local line = vim.api.nvim_get_current_line()
-      local new_line = line:sub(1, cursor[2]) .. value .. line:sub(cursor[2] + 1)
-      vim.api.nvim_set_current_line(new_line)
-      vim.api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #value })
-
-      vim.notify("Appended environment value", vim.log.levels.INFO)
+      handle_buffer_action(selected, function(var_name)
+        local selection = env_vars[var_name]
+        if not selection then
+          return nil
+        end
+        return config.shelter.mask_on_copy and shelter.mask_value(selection.value, "fzf") or selection.value
+      end)
+      notify_with_title("Appended environment value", vim.log.levels.INFO)
     end,
   }
 end
 
-function M.env_picker(fzf_opts)
+function M.env_picker()
+  local env_vars = get_env_vars()
   local results = {}
-  for var_name, var_info in pairs(M.get_env_vars()) do
-    local display_value = get_masked_value(var_info.value)
-    table.insert(results, string.format("%-30s = %s", var_name, display_value))
+
+  for name, var in pairs(env_vars) do
+    local display_value = shelter.mask_value(var.value, "fzf")
+    table.insert(results, string.format("%-30s = %s", name, display_value))
   end
 
-  local default_opts = {}
-
-  default_opts.previewer = false
-  default_opts.actions = M.actions()
-
-  fzf_opts = vim.tbl_deep_extend("force", default_opts, fzf_opts or {})
-
-  fzf.fzf_exec(results, fzf_opts)
+  fzf.fzf_exec(results, {
+    prompt = "Environment Variables> ",
+    actions = M.actions(),
+  })
 end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
+
   M.fzf = M.env_picker
+
+  local group = api.nvim_create_augroup("EcologFzf", { clear = true })
+
+  api.nvim_create_autocmd({ "BufWritePost" }, {
+    pattern = ".env*",
+    group = group,
+    callback = clear_cache,
+  })
+
+  api.nvim_create_autocmd("User", {
+    pattern = "EcologEnvironmentChanged",
+    group = group,
+    callback = clear_cache,
+  })
 end
 
 return M

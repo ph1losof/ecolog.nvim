@@ -31,7 +31,7 @@ function M.find_word_boundaries(line, col)
     while temp_col > 0 and not line:sub(temp_col, temp_col):match(M.PATTERNS.word) do
       temp_col = temp_col - 1
     end
-    
+
     -- If we found a word character going backwards, use that position
     if temp_col > 0 and line:sub(temp_col, temp_col):match(M.PATTERNS.word) then
       col = temp_col
@@ -135,43 +135,43 @@ end
 ---@param env_file string Path to the .env file
 ---@return boolean success
 local function generate_example_file(env_file)
-    local f = io.open(env_file, "r")
-    if not f then
-        vim.notify("Could not open .env file", vim.log.levels.ERROR)
-        return false
-    end
+  local f = io.open(env_file, "r")
+  if not f then
+    vim.notify("Could not open .env file", vim.log.levels.ERROR)
+    return false
+  end
 
-    local example_content = {}
-    for line in f:lines() do
-        -- Skip empty lines and comments
-        if line:match("^%s*$") or line:match("^%s*#") then
-            table.insert(example_content, line)
-        else
-            -- Match variable name and optional comment
-            local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
-            if name then
-                -- Clean up the name and comment
-                name = name:gsub("^%s*(.-)%s*$", "%1")
-                comment = comment:gsub("^%s*(.-)%s*$", "%1")
-                -- Create example entry with placeholder
-                table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
-            end
-        end
+  local example_content = {}
+  for line in f:lines() do
+    -- Skip empty lines and comments
+    if line:match("^%s*$") or line:match("^%s*#") then
+      table.insert(example_content, line)
+    else
+      -- Match variable name and optional comment
+      local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
+      if name then
+        -- Clean up the name and comment
+        name = name:gsub("^%s*(.-)%s*$", "%1")
+        comment = comment:gsub("^%s*(.-)%s*$", "%1")
+        -- Create example entry with placeholder
+        table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+      end
     end
-    f:close()
+  end
+  f:close()
 
-    -- Write the example file
-    local example_file = env_file:gsub("%.env$", "") .. ".env.example"
-    local out = io.open(example_file, "w")
-    if not out then
-        vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
-        return false
-    end
+  -- Write the example file
+  local example_file = env_file:gsub("%.env$", "") .. ".env.example"
+  local out = io.open(example_file, "w")
+  if not out then
+    vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
+    return false
+  end
 
-    out:write(table.concat(example_content, "\n"))
-    out:close()
-    vim.notify("Generated " .. example_file, vim.log.levels.INFO)
-    return true
+  out:write(table.concat(example_content, "\n"))
+  out:close()
+  vim.notify("Generated " .. example_file, vim.log.levels.INFO)
+  return true
 end
 
 M.generate_example_file = generate_example_file
@@ -181,14 +181,18 @@ function M.get_word_under_cursor()
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2]
   local word_start, word_end = M.find_word_boundaries(line, col)
-  
+
   -- Return empty string if no word found
   if not word_start or not word_end then
     return ""
   end
-  
+
   return line:sub(word_start, word_end)
 end
 
-return M
+-- Add these utility functions
+function M.extract_var_name(line)
+  return line:match("^(.-)%s*=")
+end
 
+return M

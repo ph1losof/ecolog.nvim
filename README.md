@@ -73,7 +73,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             cmp = true,       -- Mask values in completion
             peek = false,      -- Mask values in peek view
             files = false,     -- Mask values in files
-            telescope = false  -- Mask values in telescope
+            telescope = false, -- Mask values in telescope
+            fzf = false       -- Mask values in fzf picker
         }
     },
     -- true by default, enables built-in types (database_url, url, etc.)
@@ -595,7 +596,8 @@ require('ecolog').setup({
             cmp = false,       -- Mask values in completion
             peek = false,      -- Mask values in peek view
             files = false,     -- Mask values in files
-            telescope = false  -- Mask values in telescope
+            telescope = false, -- Mask values in telescope
+            fzf = false       -- Mask values in fzf picker
         }
     },
     path = vim.fn.getcwd(), -- Path to search for .env files

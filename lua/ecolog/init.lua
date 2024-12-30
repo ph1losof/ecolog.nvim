@@ -20,12 +20,14 @@
 ---@field peek boolean Mask values in peek view
 ---@field files boolean Mask values in files
 ---@field telescope boolean Mask values in telescope
+---@field fzf boolean Mask values in fzf
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
 ---@field lspsaga boolean Enable LSP Saga integration
 ---@field nvim_cmp boolean Enable nvim-cmp integration
 ---@field blink_cmp boolean Enable Blink CMP integration
+---@field fzf boolean Enable fzf-lua integration
 
 ---@class LoadShellConfig
 ---@field enabled boolean Enable loading shell variables
@@ -366,6 +368,7 @@ function M.setup(opts)
         peek = false,
         files = false,
         telescope = false,
+        fzf = false,
       },
     },
     integrations = {
@@ -373,6 +376,7 @@ function M.setup(opts)
       lspsaga = false,
       nvim_cmp = true, -- Enable nvim-cmp integration by default
       blink_cmp = false, -- Disable Blink CMP integration by default
+      fzf = false,
     },
     types = true, -- Enable all types by default
     custom_types = {}, -- Custom types configuration
@@ -428,6 +432,12 @@ function M.setup(opts)
     local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
     blink_cmp.setup(opts, env_vars, providers, shelter, types, selected_env_file)
     -- No need to do anything else since Blink will create instances using Source.new()
+  end
+
+  -- Set up fzf-lua integration if enabled
+  if opts.integrations.fzf then
+    local fzf = require("ecolog.integrations.fzf")
+    fzf.setup(opts)
   end
 
   -- Lazy load providers only when needed
@@ -686,6 +696,7 @@ function M.get_config()
         peek = false,
         files = false,
         telescope = false,
+        fzf = false,
       },
     },
     integrations = {
@@ -693,6 +704,7 @@ function M.get_config()
       lspsaga = false,
       nvim_cmp = true,
       blink_cmp = false,
+      fzf = false,
     },
     types = true,
     custom_types = {},

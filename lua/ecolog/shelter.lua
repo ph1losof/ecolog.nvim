@@ -22,7 +22,7 @@ local PATTERNS = {
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 
 -- Features list for iteration
-local FEATURES = { "cmp", "peek", "files", "telescope" }
+local FEATURES = { "cmp", "peek", "files", "telescope", "fzf" }
 
 -- Use local cache for frequently accessed values
 local state = {
@@ -105,11 +105,11 @@ local function shelter_buffer()
 
     local key = string_sub(line, 1, eq_pos - 1)
     local value = string_sub(line, eq_pos + 1)
-    
+
     -- Clean up key and value
     key = string_match(key, "^%s*(.-)%s*$")
     value = string_match(value, "^%s*(.-)%s*$")
-    
+
     if not (key and value) then
       goto continue
     end
@@ -311,7 +311,7 @@ function M.set_state(command, feature)
 
   if feature then
     if not tbl_contains(FEATURES, feature) then
-      notify("Invalid feature. Use 'cmp', 'peek', 'files', or 'telescope'", vim.log.levels.ERROR)
+      notify("Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', or 'fzf'", vim.log.levels.ERROR)
       return
     end
 

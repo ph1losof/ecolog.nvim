@@ -8,11 +8,6 @@ local shelter = utils.get_module("ecolog.shelter")
 local api = vim.api
 local fn = vim.fn
 
-local _cache = {
-  env_vars = nil,
-  ecolog = nil,
-}
-
 local config = {
   shelter = {
     mask_on_copy = false,
@@ -40,35 +35,8 @@ local function safe_action(name, _fn)
   end
 end
 
-local function memoize(_fn)
-  local cache = {}
-  return function(...)
-    local key = table.concat({ ... }, "\0")
-    if cache[key] == nil then
-      cache[key] = _fn(...)
-    end
-    return cache[key]
-  end
-end
-
-local function clear_cache()
-  _cache.env_vars = nil
-end
-
-local get_env_vars = memoize(function()
-  if not _cache.env_vars then
-    if not _cache.ecolog then
-      _cache.ecolog = require("ecolog")
-    end
-    _cache.env_vars = _cache.ecolog.get_env_vars()
-  end
-  return _cache.env_vars
-end)
-
-local extract_var_name = memoize(utils.extract_var_name)
-
 local function handle_buffer_action(selected, action_fn)
-  local var_name = extract_var_name(selected[1])
+  local var_name = utils.extract_var_name(selected[1])
   if not var_name then
     return
   end
@@ -86,11 +54,12 @@ local function handle_buffer_action(selected, action_fn)
 end
 
 function M.actions()
-  local env_vars = get_env_vars()
+  local ecolog = require("ecolog")
+  local env_vars = ecolog.get_env_vars()
 
   return {
     [config.mappings.copy_value] = safe_action("copy_value", function(selected)
-      local var_name = extract_var_name(selected[1])
+      local var_name = utils.extract_var_name(selected[1])
       local selection = env_vars[var_name]
       if not selection then
         return
@@ -102,7 +71,7 @@ function M.actions()
     end),
 
     [config.mappings.copy_name] = safe_action("copy_name", function(selected)
-      local var_name = extract_var_name(selected[1])
+      local var_name = utils.extract_var_name(selected[1])
       if not var_name then
         return
       end
@@ -131,7 +100,8 @@ function M.actions()
 end
 
 function M.env_picker()
-  local env_vars = get_env_vars()
+  local ecolog = require("ecolog")
+  local env_vars = ecolog.get_env_vars()
   local results = {}
 
   for name, var in pairs(env_vars) do
@@ -147,22 +117,7 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
-
   M.fzf = M.env_picker
-
-  local group = api.nvim_create_augroup("EcologFzf", { clear = true })
-
-  api.nvim_create_autocmd({ "BufWritePost" }, {
-    pattern = ".env*",
-    group = group,
-    callback = clear_cache,
-  })
-
-  api.nvim_create_autocmd("User", {
-    pattern = "EcologEnvironmentChanged",
-    group = group,
-    callback = clear_cache,
-  })
 end
 
 return M

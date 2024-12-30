@@ -668,6 +668,17 @@ function M.setup(opts)
       nargs = "?",
       desc = "Go to environment variable definition in file",
     },
+    EcologFzf = {
+      callback = function()
+        local has_fzf, fzf = pcall(require, "ecolog.integrations.fzf")
+        if not has_fzf then
+          notify("FZF integration is not enabled. Enable it in your setup with integrations.fzf = true", vim.log.levels.ERROR)
+          return
+        end
+        fzf.env_picker()
+      end,
+      desc = "Open FZF environment variable picker",
+    },
   }
 
   for name, cmd in pairs(commands) do

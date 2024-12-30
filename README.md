@@ -24,6 +24,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
+  - [FZF Integration](#fzf-integration)
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#-shelter-mode)
@@ -436,6 +437,75 @@ require('telescope').setup({
   }
 })
 ```
+
+### FZF Integration
+
+Ecolog provides integration with [fzf-lua](https://github.com/ibhagwan/fzf-lua) for fuzzy finding environment variables.
+
+#### Setup
+
+Enable the integration in your Ecolog setup:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    fzf = true,
+  },
+})
+```
+
+Then configure it (optional):
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    fzf = {
+      shelter = {
+        -- Whether to show masked values when copying to clipboard
+        mask_on_copy = false,
+      },
+      -- Default keybindings
+      mappings = {
+        -- Key to copy value to clipboard
+        copy_value = "ctrl-y",
+        -- Key to copy name to clipboard
+        copy_name = "ctrl-n",
+        -- Key to append value to buffer
+        append_value = "ctrl-a",
+        -- Key to append name to buffer
+        append_name = "enter",
+      },
+    }
+  }
+})
+```
+
+#### Features
+
+- 🔍 Fuzzy search through environment variables
+- 📋 Copy variable names or values to clipboard
+- ⌨️ Insert variables into your code
+- 🛡️ Integrated with shelter mode for sensitive data protection
+- 🔄 Real-time updates when environment files change
+
+#### Usage
+
+Open the environment variables picker:
+
+```vim
+:EcologFzf
+```
+
+#### Default Keymaps
+
+| Key       | Action                  |
+| --------- | ----------------------- |
+| `<Enter>` | Insert variable name    |
+| `<C-y>`   | Copy value to clipboard |
+| `<C-n>`   | Copy name to clipboard  |
+| `<C-a>`   | Append value to buffer  |
+
+All keymaps are customizable through the configuration.
 
 ## 🔧 Language Support
 

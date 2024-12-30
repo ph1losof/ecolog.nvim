@@ -146,6 +146,7 @@ end
 return telescope.register_extension({
   exports = {
     env = env_picker,
+    env_picker = env_picker,
     setup = setup,
   },
 })

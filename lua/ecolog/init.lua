@@ -36,9 +36,6 @@
 ---@field transform? function Optional function to transform shell variables
 
 local M = {}
-local api = vim.api
-local fn = vim.fn
-local notify = vim.notify
 
 -- Optimized module loading system
 local _loaded_modules = {}
@@ -671,9 +668,17 @@ function M.setup(opts)
     EcologFzf = {
       callback = function()
         local has_fzf, fzf = pcall(require, "ecolog.integrations.fzf")
-        if not has_fzf then
-          notify("FZF integration is not enabled. Enable it in your setup with integrations.fzf = true", vim.log.levels.ERROR)
+        if not has_fzf or not opts.integrations.fzf then
+          notify(
+            "FZF integration is not enabled. Enable it in your setup with integrations.fzf = true",
+            vim.log.levels.ERROR
+          )
           return
+        end
+        -- Initialize FZF if it hasn't been initialized yet
+        if not fzf._initialized then
+          fzf.setup(opts)
+          fzf._initialized = true
         end
         fzf.env_picker()
       end,

@@ -1,8 +1,3 @@
-local has_fzf, fzf = pcall(require, "fzf-lua")
-if not has_fzf then
-  error("This extension requires fzf-lua (https://github.com/ibhagwan/fzf-lua)")
-end
-
 local utils = require("ecolog.utils")
 local shelter = utils.get_module("ecolog.shelter")
 local api = vim.api
@@ -21,6 +16,7 @@ local config = {
 }
 
 local M = {}
+M._initialized = false
 
 local function notify_with_title(msg, level)
   vim.notify(string.format("Ecolog FZF: %s", msg), level)
@@ -100,6 +96,17 @@ function M.actions()
 end
 
 function M.env_picker()
+  local has_fzf, fzf = pcall(require, "fzf-lua")
+  if not has_fzf then
+    vim.notify("This extension requires fzf-lua (https://github.com/ibhagwan/fzf-lua)", vim.log.levels.ERROR)
+    return
+  end
+
+  if not M._initialized then
+    M.setup({})
+    M._initialized = true
+  end
+
   local ecolog = require("ecolog")
   local env_vars = ecolog.get_env_vars()
   local results = {}

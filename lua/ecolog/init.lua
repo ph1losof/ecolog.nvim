@@ -256,12 +256,29 @@ local function setup_file_watcher(opts)
   current_watcher_group = api.nvim_create_augroup("EcologFileWatcher", { clear = true })
 
   -- Create patterns for watching
-  local watch_patterns = {
-    opts.path .. "/.env*",
-    opts.path .. "/*.env*",
-    opts.path .. "/env.*",
-    opts.path .. "/config.env*",
-  }
+  local watch_patterns = {}
+  
+  -- If no custom patterns provided, use default patterns
+  if not opts.env_file_pattern then
+    watch_patterns = {
+      opts.path .. "/.env*",
+      opts.path .. "/*.env*",
+    }
+  else
+    -- Convert single pattern to table
+    local patterns = type(opts.env_file_pattern) == "string" and { opts.env_file_pattern } or opts.env_file_pattern
+    
+    -- Create watch patterns from user patterns
+    for _, pattern in ipairs(patterns) do
+      -- Convert Lua pattern to glob pattern
+      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
+      -- Add path prefix
+      table.insert(watch_patterns, opts.path .. glob_pattern:gsub("^%.%+/", "/"))
+    end
+    
+    -- Always include default patterns as fallback
+    table.insert(watch_patterns, opts.path .. "/.env*")
+  end
 
   -- Watch for new env files in the directory
   api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {

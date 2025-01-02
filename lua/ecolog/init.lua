@@ -110,8 +110,8 @@ local function find_env_files(opts)
     raw_files = vim.split(raw_files, "\n")
   end
 
-  local files = vim.tbl_filter(function(v)
-    local is_env = v:match(PATTERNS.env_file) or v:match(PATTERNS.env_with_suffix)
+  local files = vim.tbl_filter(function(file)
+    local is_env = file:match("%.env$") or file:match("%.env%.[^.]+$")
     return is_env ~= nil -- Return true if there's a match
   end, raw_files)
 
@@ -120,27 +120,7 @@ local function find_env_files(opts)
   end
 
   -- Sort files by priority using string patterns
-  table.sort(files, function(a, b)
-    -- If preferred environment is specified, prioritize it
-    if opts.preferred_environment ~= "" then
-      local pref_pattern = "%.env%." .. vim.pesc(opts.preferred_environment) .. "$"
-      local a_is_preferred = a:match(pref_pattern) ~= nil
-      local b_is_preferred = b:match(pref_pattern) ~= nil
-      if a_is_preferred ~= b_is_preferred then
-        return a_is_preferred
-      end
-    end
-
-    -- If neither file matches preferred environment, prioritize .env file
-    local a_is_env = a:match(PATTERNS.env_file) ~= nil
-    local b_is_env = b:match(PATTERNS.env_file) ~= nil
-    if a_is_env ~= b_is_env then
-      return a_is_env
-    end
-
-    -- Default to alphabetical order
-    return a < b
-  end)
+  files = utils.sort_env_files(files, opts)
 
   cached_env_files = files
   return files

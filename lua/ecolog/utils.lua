@@ -195,4 +195,35 @@ function M.extract_var_name(line)
   return line:match("^(.-)%s*=")
 end
 
+-- Sort environment files by priority
+function M.sort_env_files(files, opts)
+  if #files == 0 then
+    return {}
+  end
+
+  table.sort(files, function(a, b)
+    -- If preferred environment is specified, prioritize it
+    if opts.preferred_environment ~= "" then
+      local pref_pattern = "%.env%." .. vim.pesc(opts.preferred_environment) .. "$"
+      local a_is_preferred = a:match(pref_pattern) ~= nil
+      local b_is_preferred = b:match(pref_pattern) ~= nil
+      if a_is_preferred ~= b_is_preferred then
+        return a_is_preferred
+      end
+    end
+
+    -- If neither file matches preferred environment, prioritize .env file
+    local a_is_env = a:match(M.PATTERNS.env_file) ~= nil
+    local b_is_env = b:match(M.PATTERNS.env_file) ~= nil
+    if a_is_env ~= b_is_env then
+      return a_is_env
+    end
+
+    -- Default to alphabetical order
+    return a < b
+  end)
+
+  return files
+end
+
 return M

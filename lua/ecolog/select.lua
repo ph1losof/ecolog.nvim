@@ -20,6 +20,8 @@ function M.select_env_file(opts, callback)
     return
   end
 
+  env_files = utils.sort_env_files(env_files, opts)
+
   -- State for selection
   local selected_idx = 1
 

@@ -292,6 +292,71 @@ env_file_pattern = {
 - Fallback to default patterns
 - Real-time file monitoring for custom patterns
 
+## 🔄 Custom Sort Function
+
+Ecolog allows you to customize how environment files are sorted using the `sort_fn` option. This is useful when you need specific ordering beyond the default alphabetical sorting.
+
+#### Basic Usage
+
+```lua
+require('ecolog').setup({
+  sort_fn = function(a, b)
+    -- Sort by file size (smaller files first)
+    local a_size = vim.fn.getfsize(a)
+    local b_size = vim.fn.getfsize(b)
+    return a_size < b_size
+  end
+})
+```
+
+#### Examples
+
+1. **Priority-based sorting**:
+
+```lua
+sort_fn = function(a, b)
+  local priority = {
+    [".env.production"] = 1,
+    [".env.staging"] = 2,
+    [".env.development"] = 3,
+    [".env"] = 4
+  }
+  local a_name = vim.fn.fnamemodify(a, ":t")
+  local b_name = vim.fn.fnamemodify(b, ":t")
+  return (priority[a_name] or 99) < (priority[b_name] or 99)
+end
+```
+
+2. **Sort by modification time**:
+
+```lua
+sort_fn = function(a, b)
+  local a_time = vim.fn.getftime(a)
+  local b_time = vim.fn.getftime(b)
+  return a_time > b_time  -- Most recently modified first
+end
+```
+
+3. **Sort by environment type**:
+
+```lua
+sort_fn = function(a, b)
+  -- Extract environment type from filename
+  local function get_env_type(file)
+    local name = vim.fn.fnamemodify(file, ":t")
+    return name:match("^%.env%.(.+)$") or ""
+  end
+  return get_env_type(a) < get_env_type(b)
+end
+```
+
+#### Features
+
+- Custom sorting logic for environment files
+- Access to full file paths for advanced sorting
+- Compatible with `preferred_environment` option
+- Real-time sorting when files change
+
 ## 🔌 Integrations
 
 ### Nvim-cmp Integration

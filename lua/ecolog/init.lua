@@ -6,6 +6,8 @@
 ---@field custom_types table Custom type definitions
 ---@field preferred_environment string Preferred environment name
 ---@field load_shell LoadShellConfig Shell variables loading configuration
+---@field env_file_pattern string|string[] Custom pattern(s) for matching env files
+---@field sort_fn? function Custom function for sorting env files
 
 ---@class ShelterConfig
 ---@field configuration ShelterConfiguration Configuration for shelter mode
@@ -95,6 +97,8 @@ local function find_env_files(opts)
     and last_opts
     and last_opts.path == opts.path
     and last_opts.preferred_environment == opts.preferred_environment
+    and last_opts.env_file_pattern == opts.env_file_pattern
+    and last_opts.sort_fn == opts.sort_fn
   then
     return cached_env_files
   end
@@ -102,25 +106,8 @@ local function find_env_files(opts)
   -- Store options for cache validation
   last_opts = tbl_extend("force", {}, opts)
 
-  -- Find all env files
-  local raw_files = fn.globpath(opts.path, ".env*", false, true)
-
-  -- Ensure raw_files is a table
-  if type(raw_files) == "string" then
-    raw_files = vim.split(raw_files, "\n")
-  end
-
-  local files = vim.tbl_filter(function(file)
-    local is_env = file:match("%.env$") or file:match("%.env%.[^.]+$")
-    return is_env ~= nil -- Return true if there's a match
-  end, raw_files)
-
-  if #files == 0 then
-    return {}
-  end
-
-  -- Sort files by priority using string patterns
-  files = utils.sort_env_files(files, opts)
+  -- Use shared find_env_files function
+  local files = utils.find_env_files(opts)
 
   cached_env_files = files
   return files
@@ -185,6 +172,14 @@ local function parse_env_file(opts, force)
   -- Clear existing env vars
   env_vars = {}
 
+  -- Only find files if we don't have a selected file
+  if not selected_env_file then
+    local env_files = find_env_files(opts)
+    if #env_files > 0 then
+      selected_env_file = env_files[1]
+    end
+  end
+
   -- Load shell variables if enabled
   if
     opts.load_shell
@@ -219,21 +214,16 @@ local function parse_env_file(opts, force)
       -- Detect type and possibly transform value
       local type_name, transformed_value = types.detect_type(value)
 
-      env_vars[key] = {
-        value = transformed_value or value,
-        type = type_name,
-        raw_value = value,
-        source = "shell",
-        comment = nil,
-      }
-    end
-  end
-
-  -- Only find files if we don't have a selected file
-  if not selected_env_file then
-    local env_files = find_env_files(opts)
-    if #env_files > 0 then
-      selected_env_file = env_files[1]
+      -- Only add shell variables if override is true or the key doesn't exist
+      if shell_config.override or not env_vars[key] then
+        env_vars[key] = {
+          value = transformed_value or value,
+          type = type_name,
+          raw_value = value,
+          source = "shell",
+          comment = nil,
+        }
+      end
     end
   end
 
@@ -244,9 +234,8 @@ local function parse_env_file(opts, force)
       for line in env_file:lines() do
         local key, var_info = parse_env_line(line, selected_env_file)
         if key then
-          -- Only override shell vars if configured to NOT override
-          -- or if the key doesn't exist yet
-          if not env_vars[key] or (opts.load_shell and not opts.load_shell.override) then
+          -- Add env file variables if shell override is false or the key doesn't exist
+          if not opts.load_shell or not opts.load_shell.override or not env_vars[key] then
             env_vars[key] = var_info
           end
         end
@@ -266,15 +255,33 @@ local function setup_file_watcher(opts)
   -- Create new watcher group
   current_watcher_group = api.nvim_create_augroup("EcologFileWatcher", { clear = true })
 
-  -- Watch for new .env files in the directory
+  -- Create patterns for watching
+  local watch_patterns = {
+    opts.path .. "/.env*",
+    opts.path .. "/*.env*",
+    opts.path .. "/env.*",
+    opts.path .. "/config.env*",
+  }
+
+  -- Watch for new env files in the directory
   api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
     group = current_watcher_group,
-    pattern = opts.path .. "/.env*",
+    pattern = watch_patterns,
     callback = function(ev)
-      if ev.file:match(PATTERNS.env_file) or ev.file:match(PATTERNS.env_with_suffix) then
-        cached_env_files = nil -- Clear cache to force refresh
-        M.refresh_env_vars(opts)
-        notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
+      -- Check if the file matches our patterns
+      local matches = utils.filter_env_files({ ev.file }, opts.env_file_pattern)
+      if #matches > 0 then
+        -- Clear cache to force refresh
+        cached_env_files = nil
+        last_opts = nil
+
+        -- Find and select new env file
+        local env_files = find_env_files(opts)
+        if #env_files > 0 then
+          selected_env_file = env_files[1]
+          M.refresh_env_vars(opts)
+          notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
+        end
       end
     end,
   })
@@ -285,7 +292,9 @@ local function setup_file_watcher(opts)
       group = current_watcher_group,
       pattern = selected_env_file,
       callback = function()
-        cached_env_files = nil -- Clear cache to force refresh
+        -- Clear cache to force refresh
+        cached_env_files = nil
+        last_opts = nil
         M.refresh_env_vars(opts)
         notify("Environment file updated: " .. fn.fnamemodify(selected_env_file, ":t"), vim.log.levels.INFO)
       end,
@@ -458,6 +467,8 @@ function M.setup(opts)
   local initial_env_files = find_env_files({
     path = opts.path,
     preferred_environment = opts.preferred_environment,
+    env_file_pattern = opts.env_file_pattern,
+    sort_fn = opts.sort_fn,
   })
 
   if #initial_env_files > 0 then
@@ -469,7 +480,7 @@ function M.setup(opts)
       local env_suffix = fn.fnamemodify(selected_env_file, ":t"):gsub("^%.env%.", "")
       if env_suffix ~= ".env" then
         opts.preferred_environment = env_suffix
-        -- Re-find files with updated preferred_environment
+        -- Re-find files with updated preferred_environment but keep custom patterns
         local sorted_files = find_env_files(opts)
         -- Update selected file
         selected_env_file = sorted_files[1]
@@ -556,7 +567,10 @@ function M.setup(opts)
       callback = function()
         select.select_env_file({
           path = opts.path,
-          active_file = selected_env_file, -- Pass the currently selected file
+          active_file = selected_env_file,
+          env_file_pattern = opts.env_file_pattern,
+          sort_fn = opts.sort_fn,
+          preferred_environment = opts.preferred_environment,
         }, function(file)
           if file then
             selected_env_file = file
@@ -711,6 +725,8 @@ function M.get_config()
       filter = nil,
       transform = nil,
     },
+    env_file_pattern = nil, -- Will use default patterns when nil
+    sort_fn = nil, -- Will use default sorting when nil
   }
 end
 

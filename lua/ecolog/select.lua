@@ -8,19 +8,12 @@ local M = {}
 ---@field active_file? string Currently active env file
 
 function M.select_env_file(opts, callback)
-  local env_files = vim.fn.globpath(opts.path or vim.fn.getcwd(), ".env*", false, true)
+  local env_files = utils.find_env_files(opts)
 
-  -- Filter and sort env files
-  env_files = vim.tbl_filter(function(v)
-    return v:match("%.env$") or v:match("%.env%.[^.]+$")
-  end, env_files)
-
-  if #env_files == 0 then
+  if not env_files or #env_files == 0 then
     vim.notify("No environment files found", vim.log.levels.WARN)
     return
   end
-
-  env_files = utils.sort_env_files(env_files, opts)
 
   -- State for selection
   local selected_idx = 1
@@ -127,8 +120,13 @@ function M.select_env_file(opts, callback)
     callback(env_files[selected_idx])
   end, { buffer = bufnr, nowait = true })
 
-  vim.keymap.set("n", "q", close_window, { buffer = bufnr, nowait = true })
-  vim.keymap.set("n", "<ESC>", close_window, { buffer = bufnr, nowait = true })
+  vim.keymap.set("n", "q", function()
+    close_window()
+  end, { buffer = bufnr, nowait = true })
+
+  vim.keymap.set("n", "<ESC>", function()
+    close_window()
+  end, { buffer = bufnr, nowait = true })
 
   -- Number shortcuts
   for i = 1, #env_files do

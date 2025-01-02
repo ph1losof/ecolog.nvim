@@ -12,6 +12,94 @@ M.PATTERNS = {
   env_var = "^[%w_]+$",
 }
 
+-- Default env file patterns
+local DEFAULT_ENV_PATTERNS = {
+  "^.+/%.env$",
+  "^.+/%.env%.[^.]+$",
+}
+
+-- Filter environment files based on patterns
+function M.filter_env_files(files, patterns)
+  if not files then
+    return {}
+  end
+
+  -- Filter out any nil values first
+  files = vim.tbl_filter(function(f) return f ~= nil end, files)
+
+  -- Use default patterns if none provided
+  if not patterns then
+    patterns = DEFAULT_ENV_PATTERNS
+  elseif type(patterns) == "string" then
+    patterns = { patterns }
+  elseif type(patterns) ~= "table" then
+    return files
+  end
+
+  -- If no patterns, return all files
+  if #patterns == 0 then
+    return files
+  end
+
+  return vim.tbl_filter(function(file)
+    if not file then
+      return false
+    end
+    for _, pattern in ipairs(patterns) do
+      if type(pattern) == "string" and file:match(pattern) then
+        return true
+      end
+    end
+    return false
+  end, files)
+end
+
+-- Default sort function
+local function default_sort_fn(a, b, opts)
+  if not a or not b then
+    return false
+  end
+
+  -- If preferred environment is specified, prioritize it
+  if opts and opts.preferred_environment and opts.preferred_environment ~= "" then
+    local pref_pattern = "%." .. vim.pesc(opts.preferred_environment) .. "$"
+    local a_is_preferred = a:match(pref_pattern) ~= nil
+    local b_is_preferred = b:match(pref_pattern) ~= nil
+    if a_is_preferred ~= b_is_preferred then
+      return a_is_preferred
+    end
+  end
+
+  -- If neither file matches preferred environment, prioritize .env file
+  local a_is_env = a:match(M.PATTERNS.env_file) ~= nil
+  local b_is_env = b:match(M.PATTERNS.env_file) ~= nil
+  if a_is_env ~= b_is_env then
+    return a_is_env
+  end
+
+  -- Default to alphabetical order
+  return a < b
+end
+
+-- Sort environment files
+function M.sort_env_files(files, opts)
+  if not files or #files == 0 then
+    return {}
+  end
+
+  opts = opts or {}
+  local sort_fn = opts.sort_fn or default_sort_fn
+
+  -- Filter out any nil values
+  files = vim.tbl_filter(function(f) return f ~= nil end, files)
+
+  table.sort(files, function(a, b)
+    return sort_fn(a, b, opts)
+  end)
+
+  return files
+end
+
 -- Find word boundaries around cursor position
 function M.find_word_boundaries(line, col)
   -- Handle empty line
@@ -195,35 +283,40 @@ function M.extract_var_name(line)
   return line:match("^(.-)%s*=")
 end
 
--- Sort environment files by priority
-function M.sort_env_files(files, opts)
-  if #files == 0 then
-    return {}
+-- Find environment files in a directory
+function M.find_env_files(opts)
+  opts = opts or {}
+  local path = opts.path or vim.fn.getcwd()
+
+  -- Get list of files in directory
+  local files = {}
+  if not opts.env_file_pattern then
+    -- Use default glob patterns if no custom pattern
+    local env_files = vim.fn.glob(path .. "/.env*", false, true)
+    
+    -- Handle string results
+    if type(env_files) == "string" then
+      env_files = {env_files}
+    end
+    
+    -- Filter files
+    files = M.filter_env_files(env_files, DEFAULT_ENV_PATTERNS)
+  else
+    -- Use a broader glob pattern for custom patterns
+    local all_files = vim.fn.glob(path .. "/*", false, true)
+    if type(all_files) == "string" then
+      all_files = {all_files}
+    end
+    files = all_files
   end
 
-  table.sort(files, function(a, b)
-    -- If preferred environment is specified, prioritize it
-    if opts.preferred_environment ~= "" then
-      local pref_pattern = "%.env%." .. vim.pesc(opts.preferred_environment) .. "$"
-      local a_is_preferred = a:match(pref_pattern) ~= nil
-      local b_is_preferred = b:match(pref_pattern) ~= nil
-      if a_is_preferred ~= b_is_preferred then
-        return a_is_preferred
-      end
-    end
+  -- Filter files based on patterns
+  local filtered_files = M.filter_env_files(files, opts.env_file_pattern)
 
-    -- If neither file matches preferred environment, prioritize .env file
-    local a_is_env = a:match(M.PATTERNS.env_file) ~= nil
-    local b_is_env = b:match(M.PATTERNS.env_file) ~= nil
-    if a_is_env ~= b_is_env then
-      return a_is_env
-    end
-
-    -- Default to alphabetical order
-    return a < b
-  end)
-
-  return files
+  -- Sort files
+  local sorted_files = M.sort_env_files(filtered_files, opts)
+  
+  return sorted_files
 end
 
 return M

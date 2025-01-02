@@ -105,8 +105,17 @@ describe("ecolog", function()
       local env_content = "NEW_VAR=test_value"
       vim.fn.writefile({ env_content }, test_dir .. "/.env")
 
+      -- Trigger BufAdd event manually since we're in a test environment
+      vim.api.nvim_exec_autocmds("BufAdd", {
+        pattern = test_dir .. "/.env",
+        data = { file = test_dir .. "/.env" },
+      })
+
       -- Wait for file watcher to process
-      vim.wait(100)
+      vim.wait(100, function()
+        local env_vars = ecolog.get_env_vars()
+        return env_vars.NEW_VAR ~= nil
+      end)
 
       local env_vars = ecolog.get_env_vars()
       assert.is_not_nil(env_vars.NEW_VAR)
@@ -372,6 +381,101 @@ describe("ecolog", function()
 
       -- Cleanup
       vim.fn.delete(test_dir, "rf")
+    end)
+  end)
+
+  describe("initial env file selection", function()
+    local test_dir
+    local ecolog
+
+    before_each(function()
+      test_dir = vim.fn.tempname()
+      vim.fn.mkdir(test_dir)
+      package.loaded["ecolog"] = nil
+      ecolog = require("ecolog")
+    end)
+
+    after_each(function()
+      vim.fn.delete(test_dir, "rf")
+    end)
+
+    it("should select initial env file with default patterns", function()
+      -- Create test files with content
+      vim.fn.writefile({"TEST_VAR=value"}, test_dir .. "/.env")
+      vim.fn.writefile({"TEST_VAR=local"}, test_dir .. "/.env.local")
+      vim.fn.writefile({"TEST_VAR=config"}, test_dir .. "/config.env")
+
+      -- Setup with default patterns
+      ecolog.setup({
+        path = test_dir,
+        preferred_environment = "",
+      })
+
+      -- Should select .env by default
+      local selected = vim.fn.fnamemodify(ecolog.get_env_vars().TEST_VAR.source, ":t")
+      assert.equals(".env", selected)
+      assert.equals("value", ecolog.get_env_vars().TEST_VAR.value)
+    end)
+
+    it("should select initial env file with custom patterns", function()
+      -- Create test files with content
+      vim.fn.writefile({"TEST_VAR=value"}, test_dir .. "/.env")
+      vim.fn.writefile({"TEST_VAR=local"}, test_dir .. "/.env.local")
+      vim.fn.writefile({"TEST_VAR=config"}, test_dir .. "/config.env")
+
+      -- Setup with custom pattern to only match config.env
+      ecolog.setup({
+        path = test_dir,
+        env_file_pattern = "^.+/config%.env$",
+      })
+
+      -- Should select config.env
+      local selected = vim.fn.fnamemodify(ecolog.get_env_vars().TEST_VAR.source, ":t")
+      assert.equals("config.env", selected)
+      assert.equals("config", ecolog.get_env_vars().TEST_VAR.value)
+    end)
+
+    it("should respect preferred environment with custom patterns", function()
+      -- Create test files with content
+      vim.fn.writefile({"TEST_VAR=value"}, test_dir .. "/.env")
+      vim.fn.writefile({"TEST_VAR=config"}, test_dir .. "/config.env")
+      vim.fn.writefile({"TEST_VAR=local"}, test_dir .. "/config.env.local")
+
+      -- Setup with custom pattern and preferred environment
+      ecolog.setup({
+        path = test_dir,
+        env_file_pattern = "^.+/config%.env[^/]*$",
+        preferred_environment = "local",
+      })
+
+      -- Should select config.env.local
+      local selected = vim.fn.fnamemodify(ecolog.get_env_vars().TEST_VAR.source, ":t")
+      assert.equals("config.env.local", selected)
+      assert.equals("local", ecolog.get_env_vars().TEST_VAR.value)
+    end)
+
+    it("should handle multiple custom patterns", function()
+      -- Create test files with content
+      vim.fn.writefile({"TEST_VAR=value"}, test_dir .. "/.env")
+      vim.fn.writefile({"TEST_VAR=config"}, test_dir .. "/config.env")
+      vim.fn.writefile({"TEST_VAR=conf"}, test_dir .. "/env.conf")
+
+      -- Setup with multiple custom patterns
+      ecolog.setup({
+        path = test_dir,
+        env_file_pattern = {
+          "^.+/config%.env[^.]*$",
+          "^.+/env%.conf[^.]*$",
+        },
+        sort_fn = function(a, b)
+          return #a < #b
+        end,
+      })
+
+      -- Should select env.conf (shorter name due to sort function)
+      local selected = vim.fn.fnamemodify(ecolog.get_env_vars().TEST_VAR.source, ":t")
+      assert.equals("env.conf", selected)
+      assert.equals("conf", ecolog.get_env_vars().TEST_VAR.value)
     end)
   end)
 end)

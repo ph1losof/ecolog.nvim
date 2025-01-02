@@ -1,4 +1,4 @@
-# 🌲 ecolog.nvim (Alpha)
+# 🌲 ecolog.nvim (Beta)
 
 <div align="center">
 

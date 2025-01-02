@@ -1,4 +1,5 @@
 local M = {}
+
 -- Cache frequently used functions and APIs
 local api = vim.api
 local notify = vim.notify
@@ -9,54 +10,47 @@ local string_find = string.find
 local tbl_contains = vim.tbl_contains
 local tbl_deep_extend = vim.tbl_deep_extend
 
--- Pre-compile patterns for better performance
-local PATTERNS = {
-  comment = "^%s*#",
-  empty = "^%s*$",
-  key_value = "^([^#=]+)=(.+)$",
-  quoted = "^%s*([\"'])(.*)[\"']%s*$",
-  unquoted = "^%s*([^%s#]+)",
-}
-
--- Create namespace once
-local namespace = api.nvim_create_namespace("ecolog_shelter")
-
--- Features list for iteration
+-- Constants
 local FEATURES = { "cmp", "peek", "files", "telescope", "fzf" }
-
--- Use local cache for frequently accessed values
-local state = {
-  enabled = {},
-  mask_char = "*",
-  revealed = {},
-  revealed_lines = {},
-  current = {},
-  initial_settings = {},
-}
-
--- Default partial mode settings
 local DEFAULT_PARTIAL_MODE = {
   show_start = 3,
   show_end = 3,
   min_mask = 3,
 }
 
-local config = {
-  partial_mode = false,
-  mask_char = "*",
+-- Create namespace once
+local namespace = api.nvim_create_namespace("ecolog_shelter")
+
+-- Internal state with clear structure
+local state = {
+  config = {
+    partial_mode = false,
+    mask_char = "*",
+  },
+  features = {
+    enabled = {},
+    initial = {},
+  },
+  buffer = {
+    revealed_lines = {},
+  },
 }
+
+---@class ShelterSetupOptions
+---@field config? ShelterConfiguration
+---@field partial? table<string, boolean>
 
 -- Optimized masking function
 local function determine_masked_value(value, opts)
-  if not value then
+  if not value or value == "" then
     return ""
   end
 
   opts = opts or {}
-  local partial_mode = opts.partial_mode or config.partial_mode
+  local partial_mode = opts.partial_mode or state.config.partial_mode
 
   if not partial_mode then
-    return string_rep(config.mask_char, #value)
+    return string_rep(state.config.mask_char, #value)
   end
 
   -- Get settings from partial mode config
@@ -67,24 +61,23 @@ local function determine_masked_value(value, opts)
 
   -- If value is too short for partial masking, mask everything
   if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    return string_rep(config.mask_char, #value)
+    return string_rep(state.config.mask_char, #value)
   end
 
   -- Calculate mask length ensuring min_mask requirement
   local mask_length = math.max(min_mask, #value - show_start - show_end)
 
-  return string_sub(value, 1, show_start) .. string_rep(config.mask_char, mask_length) .. string_sub(value, -show_end)
+  return string_sub(value, 1, show_start) .. string_rep(state.config.mask_char, mask_length) .. string_sub(value, -show_end)
 end
 
 M.determine_masked_value = determine_masked_value
 
--- Optimized buffer clearing
+-- Buffer management functions
 local function unshelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
-  state.revealed_lines = {}
+  state.buffer.revealed_lines = {}
 end
 
--- Optimized shelter buffer function
 local function shelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
 
@@ -124,9 +117,9 @@ local function shelter_buffer()
     end
 
     if actual_value then
-      local masked_value = state.revealed_lines[i] and actual_value
+      local masked_value = state.buffer.revealed_lines[i] and actual_value
         or determine_masked_value(actual_value, {
-          partial_mode = config.partial_mode,
+          partial_mode = state.config.partial_mode,
         })
 
       if masked_value and #masked_value > 0 then
@@ -134,12 +127,12 @@ local function shelter_buffer()
           masked_value = quote_char .. masked_value .. quote_char
         end
 
-        -- Collect extmarks instead of setting them immediately
+        -- Collect extmarks for batch update
         table.insert(extmarks, {
           i - 1,
           eq_pos,
           {
-            virt_text = { { masked_value, state.revealed_lines[i] and "String" or "Comment" } },
+            virt_text = { { masked_value, state.buffer.revealed_lines[i] and "String" or "Comment" } },
             virt_text_pos = "overlay",
             hl_mode = "combine",
           }
@@ -163,7 +156,7 @@ local function setup_file_shelter()
   api.nvim_create_autocmd({ "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = ".env*",
     callback = function()
-      if state.current.files then
+      if state.features.enabled.files then
         shelter_buffer()
       else
         unshelter_buffer()
@@ -174,7 +167,7 @@ local function setup_file_shelter()
 
   -- Add command for revealing lines
   api.nvim_create_user_command("EcologShelterLinePeek", function()
-    if not state.current.files then
+    if not state.features.enabled.files then
       notify("Shelter mode for files is not enabled", vim.log.levels.WARN)
       return
     end
@@ -183,10 +176,10 @@ local function setup_file_shelter()
     local current_line = api.nvim_win_get_cursor(0)[1]
 
     -- Clear previous revealed lines
-    state.revealed_lines = {}
+    state.buffer.revealed_lines = {}
 
     -- Mark current line as revealed
-    state.revealed_lines[current_line] = true
+    state.buffer.revealed_lines[current_line] = true
 
     -- Update display
     shelter_buffer()
@@ -198,9 +191,9 @@ local function setup_file_shelter()
       callback = function(ev)
         if
           ev.event == "BufLeave"
-          or (ev.event:match("Cursor") and not state.revealed_lines[api.nvim_win_get_cursor(0)[1]])
+          or (ev.event:match("Cursor") and not state.buffer.revealed_lines[api.nvim_win_get_cursor(0)[1]])
         then
-          state.revealed_lines = {}
+          state.buffer.revealed_lines = {}
           shelter_buffer()
           return true -- Delete the autocmd
         end
@@ -212,10 +205,6 @@ local function setup_file_shelter()
   })
 end
 
----@class ShelterSetupOptions
----@field config? ShelterConfiguration
----@field partial? table<string, boolean>
-
 -- Initialize shelter mode settings
 function M.setup(opts)
   opts = opts or {}
@@ -224,30 +213,27 @@ function M.setup(opts)
   if opts.config then
     -- Handle partial_mode configuration
     if type(opts.config.partial_mode) == "boolean" then
-      config.partial_mode = opts.config.partial_mode and DEFAULT_PARTIAL_MODE or false
+      state.config.partial_mode = opts.config.partial_mode and DEFAULT_PARTIAL_MODE or false
     elseif type(opts.config.partial_mode) == "table" then
-      config.partial_mode = tbl_deep_extend("force", DEFAULT_PARTIAL_MODE, opts.config.partial_mode)
+      state.config.partial_mode = tbl_deep_extend("force", DEFAULT_PARTIAL_MODE, opts.config.partial_mode)
     else
-      config.partial_mode = false
+      state.config.partial_mode = false
     end
 
     -- Get mask_char from configuration
-    config.mask_char = opts.config.mask_char or "*"
+    state.config.mask_char = opts.config.mask_char or "*"
   end
 
   -- Set initial and current settings from partial config
   local partial = opts.partial or {}
   for _, feature in ipairs(FEATURES) do
     local value = type(partial[feature]) == "boolean" and partial[feature] or false
-    state.initial_settings[feature] = value
-    state.current[feature] = value
+    state.features.initial[feature] = value
+    state.features.enabled[feature] = value
   end
 
-  -- Update state mask_char to match config
-  state.mask_char = config.mask_char
-
   -- Set up autocommands for file sheltering if needed
-  if state.current.files then
+  if state.features.enabled.files then
     setup_file_shelter()
   end
 end
@@ -257,25 +243,25 @@ function M.mask_value(value, feature)
   if not value then
     return ""
   end
-  if not state.current[feature] then
+  if not state.features.enabled[feature] then
     return value
   end
 
   return determine_masked_value(value, {
-    partial_mode = config.partial_mode,
+    partial_mode = state.config.partial_mode,
   })
 end
 
 -- Get current state for a feature
 function M.is_enabled(feature)
-  return state.current[feature] or false
+  return state.features.enabled[feature] or false
 end
 
 -- Toggle all shelter modes
 function M.toggle_all()
   local any_enabled = false
   for _, feature in ipairs(FEATURES) do
-    if state.current[feature] then
+    if state.features.enabled[feature] then
       any_enabled = true
       break
     end
@@ -284,15 +270,15 @@ function M.toggle_all()
   if any_enabled then
     -- Disable all
     for _, feature in ipairs(FEATURES) do
-      state.current[feature] = false
+      state.features.enabled[feature] = false
     end
     unshelter_buffer()
     notify("All shelter modes disabled", vim.log.levels.INFO)
   else
     -- Restore initial settings
     local files_enabled = false
-    for feature, value in pairs(state.initial_settings) do
-      state.current[feature] = value
+    for feature, value in pairs(state.features.initial) do
+      state.features.enabled[feature] = value
       if feature == "files" and value then
         files_enabled = true
       end
@@ -315,7 +301,7 @@ function M.set_state(command, feature)
       return
     end
 
-    state.current[feature] = should_enable
+    state.features.enabled[feature] = should_enable
     if feature == "files" then
       if should_enable then
         setup_file_shelter()
@@ -331,7 +317,7 @@ function M.set_state(command, feature)
   else
     -- Apply to all features
     for _, f in ipairs(FEATURES) do
-      state.current[f] = should_enable
+      state.features.enabled[f] = should_enable
     end
     if should_enable then
       setup_file_shelter()

@@ -97,36 +97,48 @@ function M.find_word_boundaries(line, col)
     return nil, nil
   end
 
+  -- Adjust column if it's beyond line length
   if col >= #line then
     col = #line - 1
   end
 
+  -- If we're not on a word character, search forward and backward
   if not line:sub(col + 1, col + 1):match(M.PATTERNS.word) then
-    local temp_col = col
-    while temp_col > 0 and not line:sub(temp_col, temp_col):match(M.PATTERNS.word) do
-      temp_col = temp_col - 1
+    -- Search backward first
+    local back_col = col
+    while back_col > 0 and not line:sub(back_col, back_col):match(M.PATTERNS.word) do
+      back_col = back_col - 1
     end
 
-    if temp_col > 0 and line:sub(temp_col, temp_col):match(M.PATTERNS.word) then
-      col = temp_col
+    -- Search forward if backward search failed
+    local forward_col = col
+    while forward_col < #line and not line:sub(forward_col + 1, forward_col + 1):match(M.PATTERNS.word) do
+      forward_col = forward_col + 1
+    end
+
+    -- Choose the closest word boundary
+    if back_col > 0 and line:sub(back_col, back_col):match(M.PATTERNS.word) then
+      col = back_col
+    elseif forward_col < #line and line:sub(forward_col + 1, forward_col + 1):match(M.PATTERNS.word) then
+      col = forward_col + 1
     else
-      temp_col = col
-      while temp_col < #line and not line:sub(temp_col + 1, temp_col + 1):match(M.PATTERNS.word) do
-        temp_col = temp_col + 1
-      end
-      if temp_col < #line and line:sub(temp_col + 1, temp_col + 1):match(M.PATTERNS.word) then
-        col = temp_col
-      else
-        return nil, nil
-      end
+      return nil, nil
     end
   end
 
+  -- Find start of word
+  local word_start = col
+  while word_start > 0 and line:sub(word_start, word_start):match(M.PATTERNS.word) do
+    word_start = word_start - 1
+  end
+
+  -- Find end of word
   local word_end = col
   while word_end < #line and line:sub(word_end + 1, word_end + 1):match(M.PATTERNS.word) do
     word_end = word_end + 1
   end
 
+  -- Verify we found a valid word
   if not line:sub(word_start + 1, word_end):match(M.PATTERNS.word) then
     return nil, nil
   end
@@ -191,45 +203,6 @@ function M.minimal_restore()
   end
 end
 
----@param env_file string Path to the .env file
----@return boolean success
-local function generate_example_file(env_file)
-  local f = io.open(env_file, "r")
-  if not f then
-    vim.notify("Could not open .env file", vim.log.levels.ERROR)
-    return false
-  end
-
-  local example_content = {}
-  for line in f:lines() do
-    if line:match("^%s*$") or line:match("^%s*#") then
-      table.insert(example_content, line)
-    else
-      local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
-      if name then
-        name = name:gsub("^%s*(.-)%s*$", "%1")
-        comment = comment:gsub("^%s*(.-)%s*$", "%1")
-        table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
-      end
-    end
-  end
-  f:close()
-
-  local example_file = env_file:gsub("%.env$", "") .. ".env.example"
-  local out = io.open(example_file, "w")
-  if not out then
-    vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
-    return false
-  end
-
-  out:write(table.concat(example_content, "\n"))
-  out:close()
-  vim.notify("Generated " .. example_file, vim.log.levels.INFO)
-  return true
-end
-
-M.generate_example_file = generate_example_file
-
 function M.get_word_under_cursor()
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2]
@@ -269,5 +242,44 @@ function M.find_env_files(opts)
 
   return M.sort_env_files(files, opts)
 end
+
+---@param env_file string Path to the .env file
+---@return boolean success
+local function generate_example_file(env_file)
+  local f = io.open(env_file, "r")
+  if not f then
+    vim.notify("Could not open .env file", vim.log.levels.ERROR)
+    return false
+  end
+
+  local example_content = {}
+  for line in f:lines() do
+    if line:match("^%s*$") or line:match("^%s*#") then
+      table.insert(example_content, line)
+    else
+      local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
+      if name then
+        name = name:gsub("^%s*(.-)%s*$", "%1")
+        comment = comment:gsub("^%s*(.-)%s*$", "%1")
+        table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+      end
+    end
+  end
+  f:close()
+
+  local example_file = env_file:gsub("%.env$", "") .. ".env.example"
+  local out = io.open(example_file, "w")
+  if not out then
+    vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
+    return false
+  end
+
+  out:write(table.concat(example_content, "\n"))
+  out:close()
+  vim.notify("Generated " .. example_file, vim.log.levels.INFO)
+  return true
+end
+
+M.generate_example_file = generate_example_file
 
 return M

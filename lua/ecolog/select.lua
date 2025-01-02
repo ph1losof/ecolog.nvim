@@ -31,13 +31,10 @@ function M.select_env_file(opts, callback)
   -- Function to update content
   local function get_content()
     local content = {}
-
-    -- Add file list
     for i, file in ipairs(env_files) do
       local prefix = i == selected_idx and " → " or "   "
       table.insert(content, string.format("%s%d. %s", prefix, i, vim.fn.fnamemodify(file, ":t")))
     end
-
     return content
   end
 
@@ -55,16 +52,12 @@ function M.select_env_file(opts, callback)
       api.nvim_buf_add_highlight(bufnr, -1, hl_group, i - 1, 0, -1)
     end
 
-    -- Update cursor position (hidden but needed for navigation)
+    -- Update cursor position
     api.nvim_win_set_cursor(winid, { selected_idx, 4 })
   end
 
   local float_opts = utils.create_minimal_win_opts(60, #env_files)
-
-  -- Store original guicursor value
   local original_guicursor = vim.opt.guicursor:get()
-
-  -- Create floating window
   local bufnr = api.nvim_create_buf(false, true)
 
   -- Set buffer options
@@ -84,8 +77,6 @@ function M.select_env_file(opts, callback)
   api.nvim_win_set_option(winid, "conceallevel", 2)
   api.nvim_win_set_option(winid, "concealcursor", "niv")
   api.nvim_win_set_option(winid, "cursorline", true)
-
-  -- Set window highlights
   api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
 
   -- Set initial cursor position and highlight
@@ -109,7 +100,6 @@ function M.select_env_file(opts, callback)
   -- Selection and exit keymaps
   local function close_window()
     if api.nvim_win_is_valid(winid) then
-      -- Restore original cursor
       vim.opt.guicursor = original_guicursor
       api.nvim_win_close(winid, true)
     end

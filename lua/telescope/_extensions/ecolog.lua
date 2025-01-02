@@ -79,7 +79,6 @@ local function env_picker(opts)
       previewer = false,
       sorter = conf.generic_sorter(opts),
       attach_mappings = function(prompt_bufnr, map)
-        -- Copy value to clipboard
         if config.mappings.copy_value then
           map("i", config.mappings.copy_value, function()
             local selection = action_state.get_selected_entry()
@@ -91,7 +90,6 @@ local function env_picker(opts)
           end)
         end
 
-        -- Copy name to clipboard
         if config.mappings.copy_name then
           map("i", config.mappings.copy_name, function()
             local selection = action_state.get_selected_entry()
@@ -101,7 +99,6 @@ local function env_picker(opts)
           end)
         end
 
-        -- Append environment name to buffer
         if config.mappings.append_name then
           local append_name_fn = function()
             local selection = action_state.get_selected_entry()
@@ -121,7 +118,6 @@ local function env_picker(opts)
           end
         end
 
-        -- Append environment value to buffer
         if config.mappings.append_value then
           map("i", config.mappings.append_value, function()
             local selection = action_state.get_selected_entry()

@@ -18,6 +18,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Usage](#-usage)
 - [Environment File Priority](#-environment-file-priority)
 - [Shell Variables Integration](#shell-variables-integration)
+- [Custom Environment File Patterns](#-custom-environment-file-patterns)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
@@ -241,7 +242,57 @@ require('ecolog').setup({
 3. Be mindful of the `override` setting when working with both shell and .env variables
 4. Apply shelter mode settings to shell variables containing sensitive data
 
-## 💡 Integrations
+## 💡 Custom Environment File Patterns
+
+Ecolog supports custom patterns for matching environment files. This allows you to define your own naming conventions beyond the default `.env*` pattern.
+
+#### Basic Usage
+
+Set a single custom pattern:
+
+```lua
+require('ecolog').setup({
+  env_file_pattern = "^config/.+%.env$" -- Matches any .env file in the config directory
+})
+```
+
+Use multiple patterns:
+
+```lua
+require('ecolog').setup({
+  env_file_pattern = {
+    "^config/.+%.env$",     -- Matches .env files in config directory
+    "^environments/.+%.env$" -- Matches .env files in environments directory
+  }
+})
+```
+
+#### Pattern Format
+
+- Patterns use Lua pattern matching syntax
+- Patterns are relative to the project root (`path` option)
+- Default patterns (`.env*`) are always included as fallback
+
+#### Examples
+
+```lua
+env_file_pattern = {
+  "^%.env%.%w+$",          -- Matches .env.development, .env.production, etc.
+  "^config/env%.%w+$",     -- Matches config/env.development, config/env.production, etc.
+  "^%.env%.local%.%w+$",   -- Matches .env.local.development, .env.local.production, etc.
+  "^environments/.+%.env$"  -- Matches any file ending in .env in the environments directory
+}
+```
+
+#### Features
+
+- Multiple pattern support
+- Directory-specific matching
+- Flexible naming conventions
+- Fallback to default patterns
+- Real-time file monitoring for custom patterns
+
+## 🔌 Integrations
 
 ### Nvim-cmp Integration
 

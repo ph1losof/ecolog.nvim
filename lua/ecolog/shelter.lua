@@ -11,7 +11,7 @@ local tbl_contains = vim.tbl_contains
 local tbl_deep_extend = vim.tbl_deep_extend
 
 -- Constants
-local FEATURES = { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer" }
+local FEATURES = { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "fzf_previewer" }
 local DEFAULT_PARTIAL_MODE = {
   show_start = 3,
   show_end = 3,
@@ -20,6 +20,31 @@ local DEFAULT_PARTIAL_MODE = {
 
 -- Create namespace once
 local namespace = api.nvim_create_namespace("ecolog_shelter")
+
+-- Helper function to match env files
+local function match_env_file(filename, config)
+  if not filename then
+    return false
+  end
+
+  if filename:match("^%.env$") or filename:match("^%.env%.[^.]+$") then
+    return true
+  end
+
+  -- Only check custom patterns if they exist
+  if config and config.env_file_pattern then
+    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
+      or config.env_file_pattern
+
+    for _, pattern in ipairs(patterns) do
+      if filename:match(pattern) then
+        return true
+      end
+    end
+  end
+
+  return false
+end
 
 -- Internal state with clear structure
 local state = {
@@ -215,30 +240,6 @@ local function setup_telescope_shelter()
   local from_entry = require("telescope.from_entry")
   local conf = require("telescope.config").values
 
-  local match_env_file = function(filename, config)
-    if not filename then
-      return false
-    end
-
-    if filename:match("^%.env$") or filename:match("^%.env%.[^.]+$") then
-      return true
-    end
-
-    -- Only check custom patterns if they exist
-    if config and config.env_file_pattern then
-      local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
-        or config.env_file_pattern
-
-      for _, pattern in ipairs(patterns) do
-        if filename:match(pattern) then
-          return true
-        end
-      end
-    end
-
-    return false
-  end
-
   local extmarks = {}
   local function clear_extmarks()
     for i = 1, #extmarks do
@@ -352,6 +353,149 @@ local function setup_telescope_shelter()
   end
 end
 
+local function setup_fzf_shelter()
+  if not state.features.enabled.fzf_previewer then
+    return
+  end
+
+  notify("Setting up masked preview system", vim.log.levels.DEBUG)
+
+  -- Get the fzf-lua module
+  local ok, fzf = pcall(require, "fzf-lua")
+  if not ok then
+    notify("Failed to require fzf-lua", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Get the builtin previewer module
+  local builtin = require("fzf-lua.previewer.builtin")
+  local buffer_or_file = builtin.buffer_or_file
+
+  -- Store original preview_buf_post
+  local orig_preview_buf_post = buffer_or_file.preview_buf_post
+
+  -- Local extmarks table for this previewer
+  local extmarks = {}
+  local function clear_extmarks()
+    for i = 1, #extmarks do
+      extmarks[i] = nil
+    end
+  end
+
+  -- Override preview_buf_post to add masking
+  buffer_or_file.preview_buf_post = function(self, entry, min_winopts)
+    notify("Preview buf post called for: " .. vim.inspect(entry), vim.log.levels.DEBUG)
+    
+    -- Call original first
+    if orig_preview_buf_post then
+      orig_preview_buf_post(self, entry, min_winopts)
+    end
+
+    -- Get the buffer number
+    local bufnr = self.preview_bufnr
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+      notify("Invalid preview buffer: " .. tostring(bufnr), vim.log.levels.DEBUG)
+      return
+    end
+
+    -- Check if this is an env file
+    local filename = entry and (entry.path or entry.filename or entry.name)
+    if not filename then
+      notify("No filename found in entry", vim.log.levels.DEBUG)
+      return
+    end
+    filename = vim.fn.fnamemodify(filename, ":t")
+    
+    local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+    local is_env_file = match_env_file(filename, config)
+    
+    notify("Checking file: " .. filename .. ", is_env: " .. tostring(is_env_file), vim.log.levels.DEBUG)
+
+    -- If not an env file or shelter not enabled, return
+    if not (is_env_file and state.features.enabled.fzf_previewer) then
+      notify("Skipping masking - not an env file or shelter disabled", vim.log.levels.DEBUG)
+      return
+    end
+
+    notify("Processing buffer: " .. tostring(bufnr), vim.log.levels.DEBUG)
+
+    -- Set buffer as masked
+    local ok, err = pcall(vim.api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
+    if not ok then
+      notify("Failed to set buffer variable: " .. tostring(err), vim.log.levels.DEBUG)
+    end
+
+    -- Get buffer lines
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    notify("Got " .. #lines .. " lines from buffer", vim.log.levels.DEBUG)
+    clear_extmarks()
+
+    -- Process lines in chunks for better performance
+    local chunk_size = 100
+    for i = 1, #lines, chunk_size do
+      local end_idx = math.min(i + chunk_size - 1, #lines)
+      notify("Processing chunk " .. i .. " to " .. end_idx, vim.log.levels.DEBUG)
+
+      vim.schedule(function()
+        local chunk_extmarks = {}
+        for j = i, end_idx do
+          local line = lines[j]
+          -- Fast path: skip comments and empty lines
+          if not (string_find(line, "^%s*#") or string_find(line, "^%s*$")) then
+            -- Fast path: find key-value separator
+            local eq_pos = string_find(line, "=")
+            if eq_pos then
+              local value = string_sub(line, eq_pos + 1)
+              value = string_match(value, "^%s*(.-)%s*$")
+
+              if value then
+                local quote_char = string_match(value, "^([\"'])")
+                local actual_value = quote_char
+                    and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+                  or string_match(value, "^([^%s#]+)")
+
+                if actual_value then
+                  local masked_value = determine_masked_value(actual_value, {
+                    partial_mode = state.config.partial_mode,
+                  })
+
+                  if masked_value and #masked_value > 0 then
+                    if quote_char then
+                      masked_value = quote_char .. masked_value .. quote_char
+                    end
+
+                    table.insert(chunk_extmarks, {
+                      j - 1,
+                      eq_pos,
+                      {
+                        virt_text = { { masked_value, "Comment" } },
+                        virt_text_pos = "overlay",
+                        hl_mode = "combine",
+                      },
+                    })
+                  end
+                end
+              end
+            end
+          end
+        end
+
+        notify("Created " .. #chunk_extmarks .. " extmarks for chunk", vim.log.levels.DEBUG)
+        if #chunk_extmarks > 0 then
+          for _, mark in ipairs(chunk_extmarks) do
+            local ok, err = pcall(vim.api.nvim_buf_set_extmark, bufnr, namespace, mark[1], mark[2], mark[3])
+            if not ok then
+              notify("Failed to set extmark: " .. tostring(err), vim.log.levels.DEBUG)
+            end
+          end
+        end
+      end)
+    end
+  end
+
+  notify("Replaced preview_buf_post", vim.log.levels.DEBUG)
+end
+
 -- Initialize shelter mode settings
 function M.setup(opts)
   opts = opts or {}
@@ -386,6 +530,10 @@ function M.setup(opts)
 
   if state.features.enabled.telescope_previewer then
     setup_telescope_shelter()
+  end
+
+  if state.features.enabled.fzf_previewer then
+    setup_fzf_shelter()
   end
 end
 

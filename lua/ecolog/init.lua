@@ -24,6 +24,7 @@
 ---@field telescope boolean Mask values in telescope
 ---@field telescope_previewer boolean Mask values in telescope previewer
 ---@field fzf boolean Mask values in fzf
+---@field fzf_previewer boolean Mask values in fzf preview window
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
@@ -350,6 +351,7 @@ local DEFAULT_CONFIG = {
       telescope = false,
       telescope_previewer = false,
       fzf = false,
+      fzf_previewer = false,
     },
   },
   integrations = {

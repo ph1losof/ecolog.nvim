@@ -75,8 +75,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             peek = false,      -- Mask values in peek view
             files = false,     -- Mask values in files
             telescope = false, -- Mask values in telescope
-            telescope_previewer = true, -- Mask values in telescope preview buffers
-            fzf = false       -- Mask values in fzf picker
+            telescope_previewer = false, -- Mask values in telescope preview buffers
+            fzf = false,       -- Mask values in fzf picker
+            fzf_previewer = false, -- Mask values in fzf preview buffers
         }
     },
     -- true by default, enables built-in types (database_url, url, etc.)
@@ -605,7 +606,7 @@ require('ecolog').setup({
 - 📋 Copy variable names or values to clipboard
 - ⌨️ Insert variables into your code
 - 🛡️ Integrated with shelter mode for sensitive data protection
-- 🔄 Real-time updates when environment files change
+- 📝 Real-time updates when environment files change
 
 #### Usage
 
@@ -716,7 +717,8 @@ require('ecolog').setup({
             files = false,     -- Mask values in files
             telescope = false, -- Mask values in telescope integration
             telescope_previewer = false, -- Mask values in telescope preview buffers
-            fzf = false       -- Mask values in fzf picker
+            fzf = false,       -- Mask values in fzf picker
+            fzf_previewer = false, -- Mask values in fzf preview buffers
         }
     },
     path = vim.fn.getcwd(), -- Path to search for .env files
@@ -749,11 +751,19 @@ require('ecolog').setup({
    - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
    - Maintains masking state across buffer refreshes
 
-5. **FZF Picker (`fzf = true`)**
+5. **FZF Preview (`fzf_previewer = true`)**
+
+   - Masks values in fzf-lua preview buffers
+   - Automatically applies to any `.env` file previewed in fzf-lua with support of custom env file patterns
+   - Supports all fzf-lua commands that show previews (files, git_files, live_grep, etc.)
+   - Maintains masking state across buffer refreshes
+   - Optimized for performance with buffer content caching
+
+6. **FZF Picker (`fzf = true`)**
 
    - Masks values in fzf-lua picker
 
-6. **Telescope Integration (`telescope = true`)**
+7. **Telescope Integration (`telescope = true`)**
 
    - Masks values in telescope picker from integration
 

@@ -11,7 +11,7 @@ local tbl_contains = vim.tbl_contains
 local tbl_deep_extend = vim.tbl_deep_extend
 
 -- Constants
-local FEATURES = { "cmp", "peek", "files", "telescope", "fzf" }
+local FEATURES = { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer" }
 local DEFAULT_PARTIAL_MODE = {
   show_start = 3,
   show_end = 3,
@@ -70,7 +70,9 @@ local function determine_masked_value(value, opts)
   -- Calculate mask length ensuring min_mask requirement
   local mask_length = math.max(min_mask, #value - show_start - show_end)
 
-  return string_sub(value, 1, show_start) .. string_rep(state.config.mask_char, mask_length) .. string_sub(value, -show_end)
+  return string_sub(value, 1, show_start)
+    .. string_rep(state.config.mask_char, mask_length)
+    .. string_sub(value, -show_end)
 end
 
 M.determine_masked_value = determine_masked_value
@@ -138,7 +140,7 @@ local function shelter_buffer()
             virt_text = { { masked_value, state.buffer.revealed_lines[i] and "String" or "Comment" } },
             virt_text_pos = "overlay",
             hl_mode = "combine",
-          }
+          },
         })
       end
     end
@@ -208,39 +210,35 @@ local function setup_file_shelter()
   })
 end
 
--- Set up telescope preview masking
 local function setup_telescope_shelter()
-  -- Cache required modules
   local previewers = require("telescope.previewers")
   local from_entry = require("telescope.from_entry")
   local conf = require("telescope.config").values
 
-  -- Cache pattern matching functions
   local match_env_file = function(filename, config)
-    if not filename then return false end
-    
-    -- Fast path: check default patterns first
+    if not filename then
+      return false
+    end
+
     if filename:match("^%.env$") or filename:match("^%.env%.[^.]+$") then
       return true
     end
-    
+
     -- Only check custom patterns if they exist
     if config and config.env_file_pattern then
-      local patterns = type(config.env_file_pattern) == "string" 
-        and { config.env_file_pattern } 
+      local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
         or config.env_file_pattern
-      
+
       for _, pattern in ipairs(patterns) do
         if filename:match(pattern) then
           return true
         end
       end
     end
-    
+
     return false
   end
 
-  -- Create a single reusable table for extmarks
   local extmarks = {}
   local function clear_extmarks()
     for i = 1, #extmarks do
@@ -248,20 +246,21 @@ local function setup_telescope_shelter()
     end
   end
 
-  -- Create a custom previewer that wraps the default one
   local masked_previewer = function(opts)
     opts = opts or {}
-    
+
     return previewers.new_buffer_previewer({
       title = opts.title or "File Preview",
-      
+
       get_buffer_by_name = function(_, entry)
         return from_entry.path(entry, false)
       end,
 
       define_preview = function(self, entry, status)
         local p = from_entry.path(entry, false)
-        if not p or p == "" then return end
+        if not p or p == "" then
+          return
+        end
 
         -- Quick check if this is an env file before proceeding
         local filename = vim.fn.fnamemodify(p, ":t")
@@ -272,22 +271,19 @@ local function setup_telescope_shelter()
         conf.buffer_previewer_maker(p, self.state.bufnr, {
           bufname = self.state.bufname,
           callback = function(bufnr)
-            if not (is_env_file and state.features.enabled.telescope) then
+            if not (is_env_file and state.features.enabled.telescope_previewer) then
               return
             end
 
-            -- Mark as masked
             pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
-            
-            -- Get all lines at once
+
             local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
             clear_extmarks()
 
-            -- Process lines in chunks for better performance
             local chunk_size = 100
             for i = 1, #lines, chunk_size do
               local end_idx = math.min(i + chunk_size - 1, #lines)
-              
+
               vim.schedule(function()
                 for j = i, end_idx do
                   local line = lines[j]
@@ -301,8 +297,8 @@ local function setup_telescope_shelter()
 
                       if value then
                         local quote_char = string_match(value, "^([\"'])")
-                        local actual_value = quote_char 
-                          and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+                        local actual_value = quote_char
+                            and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
                           or string_match(value, "^([^%s#]+)")
 
                         if actual_value then
@@ -322,7 +318,7 @@ local function setup_telescope_shelter()
                                 virt_text = { { masked_value, "Comment" } },
                                 virt_text_pos = "overlay",
                                 hl_mode = "combine",
-                              }
+                              },
                             })
                           end
                         end
@@ -331,7 +327,6 @@ local function setup_telescope_shelter()
                   end
                 end
 
-                -- Apply extmarks in batches
                 if #extmarks > 0 then
                   for _, mark in ipairs(extmarks) do
                     api.nvim_buf_set_extmark(bufnr, namespace, mark[1], mark[2], mark[3])
@@ -346,16 +341,13 @@ local function setup_telescope_shelter()
     })
   end
 
-  -- Store the original previewer only once
   if not state._original_file_previewer then
     state._original_file_previewer = conf.file_previewer
   end
 
-  -- Replace the default file previewer with our masked version
-  if state.features.enabled.telescope then
+  if state.features.enabled.telescope_previewer then
     conf.file_previewer = masked_previewer
   else
-    -- Restore original previewer if telescope shelter is disabled
     conf.file_previewer = state._original_file_previewer
   end
 end
@@ -390,6 +382,9 @@ function M.setup(opts)
   -- Set up autocommands for file sheltering if needed
   if state.features.enabled.files then
     setup_file_shelter()
+  end
+
+  if state.features.enabled.telescope_previewer then
     setup_telescope_shelter()
   end
 end
@@ -453,7 +448,7 @@ function M.set_state(command, feature)
 
   if feature then
     if not tbl_contains(FEATURES, feature) then
-      notify("Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', or 'fzf'", vim.log.levels.ERROR)
+      notify("Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', or 'telescope_previewer'", vim.log.levels.ERROR)
       return
     end
 

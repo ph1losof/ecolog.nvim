@@ -22,6 +22,7 @@
 ---@field peek boolean Mask values in peek view
 ---@field files boolean Mask values in files
 ---@field telescope boolean Mask values in telescope
+---@field telescope_previewer boolean Mask values in telescope previewer
 ---@field fzf boolean Mask values in fzf
 
 ---@class IntegrationsConfig
@@ -347,6 +348,7 @@ local DEFAULT_CONFIG = {
       peek = false,
       files = false,
       telescope = false,
+      telescope_previewer = false,
       fzf = false,
     },
   },

@@ -160,6 +160,7 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 | `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                         |
 | `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                      |
 | `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
+| `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
 
 ### 📝 Environment File Priority
 

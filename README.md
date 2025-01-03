@@ -75,6 +75,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             peek = false,      -- Mask values in peek view
             files = false,     -- Mask values in files
             telescope = false, -- Mask values in telescope
+            telescope_previewer = true, -- Mask values in telescope preview buffers
             fzf = false       -- Mask values in fzf picker
         }
     },
@@ -1082,11 +1083,11 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't wan
 ```lua
 return {
   {
-    'philosofonusus/ecolog.nvim',
+    dir = '~/projects/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
-      { '<leader>es', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
-      { '<leader>eS', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
+      { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
+      { '<leader>es', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
     },
     dependencies = { 'nvim-telescope/telescope.nvim' },
     lazy = false,
@@ -1094,23 +1095,29 @@ return {
       preferred_environment = 'local',
       types = true,
       integrations = {
-        lspsaga = true, -- if you don't use lspsaga replace this line with lsp = true,
+        lspsaga = true,
+        nvim_cmp = true,
       },
       shelter = {
         configuration = {
-          partial_mode = true,
+          partial_mode = {
+            min_mask = 5,
+            show_start = 1,
+            show_end = 1,
+          },
           mask_char = '*',
         },
         modules = {
           files = true,
           peek = false,
+          telescope_previewer = true,
           telescope = false,
           cmp = true,
         },
       },
       path = vim.fn.getcwd(),
     },
-  },
+  }
 }
 ```
 

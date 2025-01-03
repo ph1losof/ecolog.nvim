@@ -34,6 +34,9 @@ local state = {
   buffer = {
     revealed_lines = {},
   },
+  telescope = {
+    last_selection = nil,
+  },
 }
 
 ---@class ShelterSetupOptions
@@ -205,6 +208,158 @@ local function setup_file_shelter()
   })
 end
 
+-- Set up telescope preview masking
+local function setup_telescope_shelter()
+  -- Cache required modules
+  local previewers = require("telescope.previewers")
+  local from_entry = require("telescope.from_entry")
+  local conf = require("telescope.config").values
+
+  -- Cache pattern matching functions
+  local match_env_file = function(filename, config)
+    if not filename then return false end
+    
+    -- Fast path: check default patterns first
+    if filename:match("^%.env$") or filename:match("^%.env%.[^.]+$") then
+      return true
+    end
+    
+    -- Only check custom patterns if they exist
+    if config and config.env_file_pattern then
+      local patterns = type(config.env_file_pattern) == "string" 
+        and { config.env_file_pattern } 
+        or config.env_file_pattern
+      
+      for _, pattern in ipairs(patterns) do
+        if filename:match(pattern) then
+          return true
+        end
+      end
+    end
+    
+    return false
+  end
+
+  -- Create a single reusable table for extmarks
+  local extmarks = {}
+  local function clear_extmarks()
+    for i = 1, #extmarks do
+      extmarks[i] = nil
+    end
+  end
+
+  -- Create a custom previewer that wraps the default one
+  local masked_previewer = function(opts)
+    opts = opts or {}
+    
+    return previewers.new_buffer_previewer({
+      title = opts.title or "File Preview",
+      
+      get_buffer_by_name = function(_, entry)
+        return from_entry.path(entry, false)
+      end,
+
+      define_preview = function(self, entry, status)
+        local p = from_entry.path(entry, false)
+        if not p or p == "" then return end
+
+        -- Quick check if this is an env file before proceeding
+        local filename = vim.fn.fnamemodify(p, ":t")
+        local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+        local is_env_file = match_env_file(filename, config)
+
+        -- Use the default previewer maker with optimized callback for env files
+        conf.buffer_previewer_maker(p, self.state.bufnr, {
+          bufname = self.state.bufname,
+          callback = function(bufnr)
+            if not (is_env_file and state.features.enabled.telescope) then
+              return
+            end
+
+            -- Mark as masked
+            pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
+            
+            -- Get all lines at once
+            local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            clear_extmarks()
+
+            -- Process lines in chunks for better performance
+            local chunk_size = 100
+            for i = 1, #lines, chunk_size do
+              local end_idx = math.min(i + chunk_size - 1, #lines)
+              
+              vim.schedule(function()
+                for j = i, end_idx do
+                  local line = lines[j]
+                  -- Fast path: skip comments and empty lines
+                  if not (string_find(line, "^%s*#") or string_find(line, "^%s*$")) then
+                    -- Fast path: find key-value separator
+                    local eq_pos = string_find(line, "=")
+                    if eq_pos then
+                      local value = string_sub(line, eq_pos + 1)
+                      value = string_match(value, "^%s*(.-)%s*$")
+
+                      if value then
+                        local quote_char = string_match(value, "^([\"'])")
+                        local actual_value = quote_char 
+                          and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+                          or string_match(value, "^([^%s#]+)")
+
+                        if actual_value then
+                          local masked_value = determine_masked_value(actual_value, {
+                            partial_mode = state.config.partial_mode,
+                          })
+
+                          if masked_value and #masked_value > 0 then
+                            if quote_char then
+                              masked_value = quote_char .. masked_value .. quote_char
+                            end
+
+                            table.insert(extmarks, {
+                              j - 1,
+                              eq_pos,
+                              {
+                                virt_text = { { masked_value, "Comment" } },
+                                virt_text_pos = "overlay",
+                                hl_mode = "combine",
+                              }
+                            })
+                          end
+                        end
+                      end
+                    end
+                  end
+                end
+
+                -- Apply extmarks in batches
+                if #extmarks > 0 then
+                  for _, mark in ipairs(extmarks) do
+                    api.nvim_buf_set_extmark(bufnr, namespace, mark[1], mark[2], mark[3])
+                  end
+                  clear_extmarks()
+                end
+              end)
+            end
+          end,
+        })
+      end,
+    })
+  end
+
+  -- Store the original previewer only once
+  if not state._original_file_previewer then
+    state._original_file_previewer = conf.file_previewer
+  end
+
+  -- Replace the default file previewer with our masked version
+  if state.features.enabled.telescope then
+    conf.file_previewer = masked_previewer
+  else
+    -- Restore original previewer if telescope shelter is disabled
+    conf.file_previewer = state._original_file_previewer
+  end
+end
+
 -- Initialize shelter mode settings
 function M.setup(opts)
   opts = opts or {}
@@ -235,6 +390,7 @@ function M.setup(opts)
   -- Set up autocommands for file sheltering if needed
   if state.features.enabled.files then
     setup_file_shelter()
+    setup_telescope_shelter()
   end
 end
 

@@ -713,7 +713,8 @@ require('ecolog').setup({
             cmp = false,       -- Mask values in completion
             peek = false,      -- Mask values in peek view
             files = false,     -- Mask values in files
-            telescope = false, -- Mask values in telescope
+            telescope = false, -- Mask values in telescope integration
+            telescope_previewer = false, -- Mask values in telescope preview buffers
             fzf = false       -- Mask values in fzf picker
         }
     },
@@ -723,6 +724,37 @@ require('ecolog').setup({
 ```
 
 ### 🎯 Features
+
+#### Module-specific Masking
+
+1. **Completion Menu (`cmp = true`)**
+
+   - Masks values in nvim-cmp completion menu
+   - Protects sensitive data during autocompletion
+
+2. **Peek View (`peek = true`)**
+
+   - Masks values when using EcologPeek command
+   - Allows secure variable inspection
+
+3. **File View (`files = true`)**
+
+   - Masks values directly in .env files
+   - Use `:EcologShelterLinePeek` to temporarily reveal values
+
+4. **Telescope Preview (`telescope_previewer = true`)**
+
+   - Masks values in telescope preview buffers
+   - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
+   - Maintains masking state across buffer refreshes
+
+5. **FZF Picker (`fzf = true`)**
+
+   - Masks values in fzf-lua picker
+
+6. **Telescope Integration (`telescope = true`)**
+
+   - Masks values in telescope picker from integration
 
 #### Partial Masking
 
@@ -1000,6 +1032,7 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
                peek = true,      -- Mask values in peek view
                files = true,     -- Mask values in files
                telescope = false -- Mask values in telescope
+               telescope_previewer = false -- Mask values in telescope preview buffers
            }
        },
        path = vim.fn.getcwd(), -- Path to search for .env files

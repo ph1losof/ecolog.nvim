@@ -615,8 +615,10 @@ function M.setup(opts)
 end
 
 M.find_word_boundaries = utils.find_word_boundaries
-M.get_config = function()
-  return vim.deepcopy(DEFAULT_CONFIG)
+
+-- Get the current configuration
+function M.get_config()
+  return state.last_opts
 end
 
 return M

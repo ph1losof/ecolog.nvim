@@ -132,22 +132,10 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
     return
   end
 
-  -- Get cursor context efficiently
-  local line = api.nvim_get_current_line()
-  local cursor_pos = api.nvim_win_get_cursor(0)
-  local word_start, word_end = utils.find_word_boundaries(line, cursor_pos[2])
-
-  -- Extract variable with optimized provider calls
+  -- Extract variable name
   local extracted_var = var_name
   if not extracted_var then
-    for _, provider in ipairs(available_providers) do
-      extracted_var = provider.extract_var(line, word_end)
-      if extracted_var then break end
-    end
-  end
-
-  if not extracted_var then
-    extracted_var = line:sub(word_start, word_end)
+    extracted_var = utils.get_var_word_under_cursor(available_providers)
   end
 
   if not extracted_var or #extracted_var == 0 then

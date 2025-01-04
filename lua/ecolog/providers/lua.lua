@@ -3,7 +3,7 @@ local M = {}
 M.providers = {
   -- Double quotes completion
   {
-    pattern = 'os%.getenv%("%w*$',
+    pattern = 'os%.getenv%("[%w_]*$',
     filetype = "lua",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -15,7 +15,7 @@ M.providers = {
   },
   -- Single quotes completion
   {
-    pattern = "os%.getenv%('%w*$",
+    pattern = "os%.getenv%('[%w_]*$",
     filetype = "lua",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -27,7 +27,7 @@ M.providers = {
   },
   -- Full pattern with double quotes
   {
-    pattern = 'os%.getenv%("%w+"%)?$',
+    pattern = 'os%.getenv%("[%w_]+"%)?$',
     filetype = "lua",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -39,7 +39,7 @@ M.providers = {
   },
   -- Full pattern with single quotes
   {
-    pattern = "os%.getenv%('%w+'%)?$",
+    pattern = "os%.getenv%('[%w_]+'%)?$",
     filetype = "lua",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)

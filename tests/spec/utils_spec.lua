@@ -68,53 +68,86 @@ describe("utils", function()
     end)
   end)
 
-  describe("get_word_under_cursor", function()
-    it("should get word under cursor in middle of line", function()
-      api.nvim_get_current_line.returns("const TEST_VAR = process.env.TEST")
-      api.nvim_win_get_cursor.returns({ 1, 15 }) -- cursor on TEST_VAR
-      assert.equals("TEST_VAR", utils.get_word_under_cursor())
+  describe("get_var_word_under_cursor", function()
+    local mock_provider = {
+      extract_var = function(line, col)
+        if line:match("process%.env%.") then
+          return line:match("process%.env%.([%w_]+)")
+        end
+        return nil
+      end
+    }
+
+    it("should find word at cursor", function()
+      local line = "TEST_VAR=value"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 4 } end)
+
+      assert.equals("TEST_VAR", utils.get_var_word_under_cursor())
     end)
 
-    it("should get word under cursor at start of line", function()
-      api.nvim_get_current_line.returns("TEST_VAR = value")
-      api.nvim_win_get_cursor.returns({ 1, 0 })
-      assert.equals("TEST_VAR", utils.get_word_under_cursor())
+    it("should not find word at cursor start position", function()
+      local line = "TEST_VAR=value"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 0 } end)
+
+      assert.equals("", utils.get_var_word_under_cursor())
     end)
 
-    it("should get word under cursor at end of line", function()
-      api.nvim_get_current_line.returns("const TEST_VAR")
-      api.nvim_win_get_cursor.returns({ 1, 11 })
-      assert.equals("TEST_VAR", utils.get_word_under_cursor())
+    it("should find word with provider match", function()
+      local line = "process.env.TEST_VAR"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 15 } end)
+
+      assert.equals("TEST_VAR", utils.get_var_word_under_cursor({ mock_provider }))
     end)
 
-    it("should handle cursor at start of word", function()
-      api.nvim_get_current_line.returns("const TEST_VAR = value")
-      api.nvim_win_get_cursor.returns({ 1, 6 })
-      assert.equals("TEST_VAR", utils.get_word_under_cursor())
+    it("should find word with underscore", function()
+      local line = "TEST_VAR=value"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 5 } end)
+
+      assert.equals("TEST_VAR", utils.get_var_word_under_cursor())
     end)
 
-    it("should handle cursor at end of word", function()
-      api.nvim_get_current_line.returns("const TEST_VAR = value")
-      api.nvim_win_get_cursor.returns({ 1, 13 })
-      assert.equals("TEST_VAR", utils.get_word_under_cursor())
+    it("should find word with multiple underscores", function()
+      local line = "MY_TEST_VAR=value"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 5 } end)
+
+      assert.equals("MY_TEST_VAR", utils.get_var_word_under_cursor())
     end)
 
-    it("should handle underscore in word", function()
-      api.nvim_get_current_line.returns("const MY_TEST_VAR = value")
-      api.nvim_win_get_cursor.returns({ 1, 10 })
-      assert.equals("MY_TEST_VAR", utils.get_word_under_cursor())
+    it("should return empty string for empty line", function()
+      local line = ""
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 0 } end)
+
+      assert.equals("", utils.get_var_word_under_cursor())
     end)
 
-    it("should handle empty line", function()
-      api.nvim_get_current_line.returns("")
-      api.nvim_win_get_cursor.returns({ 1, 0 })
-      assert.equals("", utils.get_word_under_cursor())
+    it("should return empty string for non-word", function()
+      local line = "===="
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 0 } end)
+
+      assert.equals("", utils.get_var_word_under_cursor())
     end)
 
-    it("should handle line with no word characters", function()
-      api.nvim_get_current_line.returns("    =   ")
-      api.nvim_win_get_cursor.returns({ 1, 3 })
-      assert.equals("", utils.get_word_under_cursor())
+    it("should find word with provider match when hovering over variable", function()
+      local line = "const url = process.env.DATABASE_URL;"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 33 } end)  -- cursor on DATABASE_URL
+
+      assert.equals("DATABASE_URL", utils.get_var_word_under_cursor({ mock_provider }))
+    end)
+
+    it("should find word with provider match when cursor is at end of variable", function()
+      local line = "const url = process.env.DATABASE_URL;"
+      stub(api, "nvim_get_current_line", function() return line end)
+      stub(api, "nvim_win_get_cursor", function() return { 1, 36 } end)  -- cursor right after DATABASE_URL
+
+      assert.equals("DATABASE_URL", utils.get_var_word_under_cursor({ mock_provider }))
     end)
   end)
 

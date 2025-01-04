@@ -203,7 +203,8 @@ function M.minimal_restore()
   end
 end
 
-function M.get_word_under_cursor()
+---@return string Variable name or empty string if not found
+function M.get_var_word_under_cursor(providers)
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2]
   local word_start, word_end = M.find_word_boundaries(line, col)
@@ -212,7 +213,27 @@ function M.get_word_under_cursor()
     return ""
   end
 
-  return line:sub(word_start, word_end)
+  if not providers then
+    local filetype = vim.bo.filetype
+    providers = require("ecolog.providers").get_providers(filetype)
+  end
+
+  for _, provider in ipairs(providers) do
+    local extracted = provider.extract_var(line, word_end)
+    if extracted then
+      return extracted
+    end
+  end
+
+  local ecolog = require("ecolog")
+  local config = ecolog.get_config()
+  local provider_patterns = config and config.provider_patterns
+
+  if not provider_patterns then
+    return line:sub(word_start, word_end)
+  end
+
+  return ""
 end
 
 function M.extract_var_name(line)

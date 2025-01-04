@@ -3,7 +3,7 @@ local M = {}
 M.providers = {
   -- os.environ.get with double quotes completion
   {
-    pattern = 'os%.environ%.get%("%w*$',
+    pattern = 'os%.environ%.get%("[%w_]*$',
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -15,7 +15,7 @@ M.providers = {
   },
   -- os.environ.get with single quotes completion
   {
-    pattern = "os%.environ%.get%('%w*$",
+    pattern = "os%.environ%.get%('[%w_]*$",
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -27,7 +27,7 @@ M.providers = {
   },
   -- os.environ.get full pattern with double quotes
   {
-    pattern = 'os%.environ%.get%("%w+"%)?$',
+    pattern = 'os%.environ%.get%("[%w_]+"%)?$',
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -39,7 +39,7 @@ M.providers = {
   },
   -- os.environ.get full pattern with single quotes
   {
-    pattern = "os%.environ%.get%('%w+'%)?$",
+    pattern = "os%.environ%.get%('[%w_]+'%)?$",
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -51,7 +51,7 @@ M.providers = {
   },
   -- os.environ[] with double quotes completion
   {
-    pattern = 'os%.environ%["%w*$',
+    pattern = 'os%.environ%["[%w_]*$',
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -63,7 +63,7 @@ M.providers = {
   },
   -- os.environ[] with single quotes completion
   {
-    pattern = "os%.environ%['%w*$",
+    pattern = "os%.environ%['[%w_]*$",
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -75,7 +75,7 @@ M.providers = {
   },
   -- os.environ[] full pattern with double quotes
   {
-    pattern = 'os%.environ%["%w+"%]?$',
+    pattern = 'os%.environ%["[%w_]+"%]?$',
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -87,7 +87,7 @@ M.providers = {
   },
   -- os.environ[] full pattern with single quotes
   {
-    pattern = "os%.environ%['%w+'%]?$",
+    pattern = "os%.environ%['[%w_]+'%]?$",
     filetype = "python",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)

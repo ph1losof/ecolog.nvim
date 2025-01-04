@@ -1,44 +1,3 @@
----@class EcologConfig
----@field path string Path to search for .env files
----@field shelter ShelterConfig Shelter mode configuration
----@field integrations IntegrationsConfig Integration settings
----@field types boolean|table Enable all types or specific type configuration
----@field custom_types table Custom type definitions
----@field preferred_environment string Preferred environment name
----@field load_shell LoadShellConfig Shell variables loading configuration
----@field env_file_pattern string|string[] Custom pattern(s) for matching env files
----@field sort_fn? function Custom function for sorting env files
-
----@class ShelterConfig
----@field configuration ShelterConfiguration Configuration for shelter mode
----@field modules ShelterModules Module-specific shelter settings
-
----@class ShelterConfiguration
----@field partial_mode boolean|table Partial masking configuration
----@field mask_char string Character used for masking
-
----@class ShelterModules
----@field cmp boolean Mask values in completion
----@field peek boolean Mask values in peek view
----@field files boolean Mask values in files
----@field telescope boolean Mask values in telescope
----@field telescope_previewer boolean Mask values in telescope previewer
----@field fzf boolean Mask values in fzf
----@field fzf_previewer boolean Mask values in fzf preview window
-
----@class IntegrationsConfig
----@field lsp boolean Enable LSP integration
----@field lspsaga boolean Enable LSP Saga integration
----@field nvim_cmp boolean Enable nvim-cmp integration
----@field blink_cmp boolean Enable Blink CMP integration
----@field fzf boolean Enable fzf-lua integration
-
----@class LoadShellConfig
----@field enabled boolean Enable loading shell variables
----@field override boolean Override .env file variables with shell variables
----@field filter? function Optional function to filter shell variables
----@field transform? function Optional function to transform shell variables
-
 local M = {}
 
 local api = vim.api
@@ -46,6 +5,44 @@ local fn = vim.fn
 local notify = vim.notify
 local schedule = vim.schedule
 local tbl_extend = vim.tbl_deep_extend
+
+local DEFAULT_CONFIG = {
+  path = vim.fn.getcwd(),
+  shelter = {
+    configuration = {
+      partial_mode = false,
+      mask_char = "*",
+    },
+    modules = {
+      cmp = false,
+      peek = false,
+      files = false,
+      telescope = false,
+      telescope_previewer = false,
+      fzf = false,
+      fzf_previewer = false,
+    },
+  },
+  integrations = {
+    lsp = false,
+    lspsaga = false,
+    nvim_cmp = true,
+    blink_cmp = false,
+    fzf = false,
+  },
+  types = true,
+  custom_types = {},
+  preferred_environment = "",
+  provider_patterns = true,
+  load_shell = {
+    enabled = false,
+    override = false,
+    filter = nil,
+    transform = nil,
+  },
+  env_file_pattern = nil,
+  sort_fn = nil,
+}
 
 local _loaded_modules = {}
 local _loading = {}
@@ -77,6 +74,7 @@ local state = {
   env_vars = {},
   cached_env_files = nil,
   last_opts = nil,
+  file_cache_opts = nil,
   current_watcher_group = nil,
   selected_env_file = nil,
   _providers_loaded = false,
@@ -127,22 +125,23 @@ local function find_env_files(opts)
 
   if
     state.cached_env_files
-    and state.last_opts
-    and state.last_opts.path == opts.path
-    and state.last_opts.preferred_environment == opts.preferred_environment
-    and state.last_opts.env_file_pattern == opts.env_file_pattern
-    and state.last_opts.sort_fn == opts.sort_fn
+    and state.file_cache_opts
+    and state.file_cache_opts.path == opts.path
+    and state.file_cache_opts.preferred_environment == opts.preferred_environment
+    and state.file_cache_opts.env_file_pattern == opts.env_file_pattern
+    and state.file_cache_opts.sort_fn == opts.sort_fn
   then
     return state.cached_env_files
   end
 
-  state.last_opts = tbl_extend("force", {}, opts)
+  state.file_cache_opts = tbl_extend("force", {}, opts)
   state.cached_env_files = utils.find_env_files(opts)
   return state.cached_env_files
 end
 
 local function parse_env_file(opts, force)
-  opts = opts or {}
+  -- Always use full config
+  opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
 
   if not force and next(state.env_vars) ~= nil then
     return
@@ -326,7 +325,11 @@ end
 
 function M.refresh_env_vars(opts)
   state.cached_env_files = nil
-  state.last_opts = nil
+  state.file_cache_opts = nil
+  -- Use either last_opts or DEFAULT_CONFIG as the base
+  local base_opts = state.last_opts or DEFAULT_CONFIG
+  -- Always use full config
+  opts = vim.tbl_deep_extend("force", base_opts, opts or {})
   parse_env_file(opts, true)
 end
 
@@ -337,101 +340,108 @@ function M.get_env_vars()
   return state.env_vars
 end
 
-local DEFAULT_CONFIG = {
-  path = vim.fn.getcwd(),
-  shelter = {
-    configuration = {
-      partial_mode = false,
-      mask_char = "*",
-    },
-    modules = {
-      cmp = false,
-      peek = false,
-      files = false,
-      telescope = false,
-      telescope_previewer = false,
-      fzf = false,
-      fzf_previewer = false,
-    },
-  },
-  integrations = {
-    lsp = false,
-    lspsaga = false,
-    nvim_cmp = true,
-    blink_cmp = false,
-    fzf = false,
-  },
-  types = true,
-  custom_types = {},
-  preferred_environment = "",
-  load_shell = {
-    enabled = false,
-    override = false,
-    filter = nil,
-    transform = nil,
-  },
-  env_file_pattern = nil,
-  sort_fn = nil,
-}
+---@class EcologConfig
+---@field path string Path to search for .env files
+---@field shelter ShelterConfig Shelter mode configuration
+---@field integrations IntegrationsConfig Integration settings
+---@field types boolean|table Enable all types or specific type configuration
+---@field custom_types table Custom type definitions
+---@field preferred_environment string Preferred environment name
+---@field load_shell LoadShellConfig Shell variables loading configuration
+---@field env_file_pattern string|string[] Custom pattern(s) for matching env files
+---@field sort_fn? function Custom function for sorting env files
+---@field provider_patterns boolean Controls how environment variables are extracted from code. When true (default), only recognizes variables through language-specific patterns. When false, falls back to word under cursor if no provider matches.
+
+---@class ShelterConfig
+---@field configuration ShelterConfiguration Configuration for shelter mode
+---@field modules ShelterModules Module-specific shelter settings
+
+---@class ShelterConfiguration
+---@field partial_mode boolean|table Partial masking configuration. When false (default), completely masks values. When true, uses default partial masking. When table, customizes partial masking.
+---@field mask_char string Character used for masking sensitive values
+
+---@class ShelterModules
+---@field cmp boolean Mask values in completion menu
+---@field peek boolean Mask values in peek view
+---@field files boolean Mask values in environment files
+---@field telescope boolean Mask values in telescope picker
+---@field telescope_previewer boolean Mask values in telescope preview buffers
+---@field fzf boolean Mask values in fzf picker
+---@field fzf_previewer boolean Mask values in fzf preview buffers
+
+---@class IntegrationsConfig
+---@field lsp boolean Enable LSP integration for hover and goto-definition
+---@field lspsaga boolean Enable LSP Saga integration for hover and goto-definition
+---@field nvim_cmp boolean Enable nvim-cmp integration for autocompletion
+---@field blink_cmp boolean Enable Blink CMP integration for autocompletion
+---@field fzf boolean Enable fzf-lua integration for environment variable picking
+
+---@class LoadShellConfig
+---@field enabled boolean Enable loading shell variables into environment
+---@field override boolean When true, shell variables take precedence over .env files
+---@field filter? function Optional function to filter which shell variables to load
+---@field transform? function Optional function to transform shell variable values
 
 ---@param opts? EcologConfig
 function M.setup(opts)
-  opts = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  -- Merge user options with defaults
+  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  state.last_opts = config
 
-  if opts.integrations.blink_cmp then
-    opts.integrations.nvim_cmp = false
+  if config.integrations.blink_cmp then
+    config.integrations.nvim_cmp = false
   end
 
   require("ecolog.highlights").setup()
   shelter.setup({
-    config = opts.shelter.configuration,
-    partial = opts.shelter.modules,
+    config = config.shelter.configuration,
+    partial = config.shelter.modules,
   })
   types.setup({
-    types = opts.types,
-    custom_types = opts.custom_types,
+    types = config.types,
+    custom_types = config.custom_types,
   })
 
-  if opts.integrations.lsp then
+  if config.integrations.lsp then
     local lsp = require_module("ecolog.integrations.lsp")
     lsp.setup()
   end
 
-  if opts.integrations.lspsaga then
+  if config.integrations.lspsaga then
     local lspsaga = require_module("ecolog.integrations.lspsaga")
     lspsaga.setup()
   end
 
-  if opts.integrations.nvim_cmp then
+  if config.integrations.nvim_cmp then
     local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
     nvim_cmp.setup(opts.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
-  if opts.integrations.blink_cmp then
+  if config.integrations.blink_cmp then
     local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
     blink_cmp.setup(opts.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
-  if opts.integrations.fzf then
+  if config.integrations.fzf then
     local fzf = require("ecolog.integrations.fzf")
     fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
   end
 
   local initial_env_files = find_env_files({
-    path = opts.path,
-    preferred_environment = opts.preferred_environment,
-    env_file_pattern = opts.env_file_pattern,
-    sort_fn = opts.sort_fn,
+    path = config.path,
+    preferred_environment = config.preferred_environment,
+    env_file_pattern = config.env_file_pattern,
+    sort_fn = config.sort_fn,
   })
 
   if #initial_env_files > 0 then
     state.selected_env_file = initial_env_files[1]
 
-    if opts.preferred_environment == "" then
+    if config.preferred_environment == "" then
       local env_suffix = fn.fnamemodify(state.selected_env_file, ":t"):gsub("^%.env%.", "")
       if env_suffix ~= ".env" then
-        opts.preferred_environment = env_suffix
-        local sorted_files = find_env_files(opts)
+        config.preferred_environment = env_suffix
+        local sorted_files = find_env_files(config)
         state.selected_env_file = sorted_files[1]
       end
     end
@@ -443,17 +453,18 @@ function M.setup(opts)
   end
 
   schedule(function()
-    parse_env_file(opts)
+    parse_env_file(config)
   end)
 
-  setup_file_watcher(opts)
+  setup_file_watcher(config)
 
+  -- Create commands with the config
   local commands = {
     EcologPeek = {
       callback = function(args)
         load_providers()
-        parse_env_file(opts)
-        peek.peek_env_value(args.args, opts, state.env_vars, providers, parse_env_file)
+        parse_env_file(config)
+        peek.peek_env_value(args.args, config, state.env_vars, providers, parse_env_file)
       end,
       nargs = "?",
       desc = "Peek at environment variable value",
@@ -502,25 +513,25 @@ function M.setup(opts)
     },
     EcologRefresh = {
       callback = function()
-        M.refresh_env_vars(opts)
+        M.refresh_env_vars(config)
       end,
       desc = "Refresh environment variables cache",
     },
     EcologSelect = {
       callback = function()
         select.select_env_file({
-          path = opts.path,
+          path = config.path,
           active_file = state.selected_env_file,
-          env_file_pattern = opts.env_file_pattern,
-          sort_fn = opts.sort_fn,
-          preferred_environment = opts.preferred_environment,
+          env_file_pattern = config.env_file_pattern,
+          sort_fn = config.sort_fn,
+          preferred_environment = config.preferred_environment,
         }, function(file)
           if file then
             state.selected_env_file = file
-            opts.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
-            setup_file_watcher(opts)
+            config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
+            setup_file_watcher(config)
             state.cached_env_files = nil
-            M.refresh_env_vars(opts)
+            M.refresh_env_vars(config)
             notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
           end
         end)
@@ -544,22 +555,7 @@ function M.setup(opts)
         local var_name = args.args
 
         if var_name == "" then
-          local line = api.nvim_get_current_line()
-          local cursor_pos = api.nvim_win_get_cursor(0)
-          local col = cursor_pos[2]
-          local word_start, word_end = utils.find_word_boundaries(line, col)
-
-          for _, provider in ipairs(available_providers) do
-            local extracted = provider.extract_var(line, word_end)
-            if extracted then
-              var_name = extracted
-              break
-            end
-          end
-
-          if not var_name or #var_name == 0 then
-            var_name = line:sub(word_start, word_end)
-          end
+          var_name = utils.get_var_word_under_cursor(available_providers)
         end
 
         if not var_name or #var_name == 0 then
@@ -567,7 +563,7 @@ function M.setup(opts)
           return
         end
 
-        parse_env_file(opts)
+        parse_env_file(config)
 
         local var = state.env_vars[var_name]
         if not var then
@@ -592,7 +588,7 @@ function M.setup(opts)
     EcologFzf = {
       callback = function()
         local has_fzf, fzf = pcall(require, "ecolog.integrations.fzf")
-        if not has_fzf or not opts.integrations.fzf then
+        if not has_fzf or not config.integrations.fzf then
           notify(
             "FZF integration is not enabled. Enable it in your setup with integrations.fzf = true",
             vim.log.levels.ERROR
@@ -601,6 +597,7 @@ function M.setup(opts)
         end
         if not fzf._initialized then
           fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
+
           fzf._initialized = true
         end
         fzf.env_picker()
@@ -622,7 +619,7 @@ M.find_word_boundaries = utils.find_word_boundaries
 
 -- Get the current configuration
 function M.get_config()
-  return state.last_opts
+  return state.last_opts or DEFAULT_CONFIG
 end
 
 return M

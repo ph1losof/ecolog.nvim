@@ -2,11 +2,11 @@ local M = {}
 
 M.providers = {
   {
-    pattern = "process%.env%.%w*$",
+    pattern = "process%.env%.[%w_]*$",
     filetype = { "typescript", "typescriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col + 1)
-      return before_cursor:match("process%.env%.(%w+)$")
+      local before_cursor = line:sub(1, col)
+      return before_cursor:match("process%.env%.([%w_]+)$")
     end,
     get_completion_trigger = function()
       return "process.env."
@@ -14,7 +14,7 @@ M.providers = {
   },
   -- process.env square brackets with double quotes
   {
-    pattern = 'process%.env%["%w*$',
+    pattern = 'process%.env%["[%w_]*$',
     filetype = { "typescript", "typescriptreact" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -26,7 +26,7 @@ M.providers = {
   },
   -- process.env square brackets with single quotes
   {
-    pattern = "process%.env%['%w*$",
+    pattern = "process%.env%['[%w_]*$",
     filetype = { "typescript", "typescriptreact" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -37,11 +37,11 @@ M.providers = {
     end,
   },
   {
-    pattern = "import%.meta%.env%.%w*$",
+    pattern = "import%.meta%.env%.[%w_]*$",
     filetype = { "typescript", "typescriptreact" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col + 1)
-      return before_cursor:match("import%.meta%.env%.(%w+)$")
+      return before_cursor:match("import%.meta%.env%.([%w_]+)$")
     end,
     get_completion_trigger = function()
       return "import.meta.env."
@@ -49,7 +49,7 @@ M.providers = {
   },
   -- import.meta.env square brackets with double quotes
   {
-    pattern = 'import%.meta%.env%["%w*$',
+    pattern = 'import%.meta%.env%["[%w_]*$',
     filetype = { "typescript", "typescriptreact" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -61,7 +61,7 @@ M.providers = {
   },
   -- import.meta.env square brackets with single quotes
   {
-    pattern = "import%.meta%.env%['%w*$",
+    pattern = "import%.meta%.env%['[%w_]*$",
     filetype = { "typescript", "typescriptreact" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -72,7 +72,7 @@ M.providers = {
     end,
   },
   {
-    pattern = "Bun%.env%.%w*$",
+    pattern = "Bun%.env%.[%w_]*$",
     filetype = { "typescript", "javascript" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -85,7 +85,7 @@ M.providers = {
   },
   -- Bun.env square brackets with double quotes
   {
-    pattern = 'Bun%.env%["%w*$',
+    pattern = 'Bun%.env%["[%w_]*$',
     filetype = { "typescript", "javascript" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -97,7 +97,7 @@ M.providers = {
   },
   -- Bun.env square brackets with single quotes
   {
-    pattern = "Bun%.env%['%w*$",
+    pattern = "Bun%.env%['[%w_]*$",
     filetype = { "typescript", "javascript" },
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -109,7 +109,7 @@ M.providers = {
   },
   -- Deno double quotes completion
   {
-    pattern = 'Deno%.env%.get%("%w*$',
+    pattern = 'Deno%.env%.get%("[%w_]*$',
     filetype = "typescript",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -121,7 +121,7 @@ M.providers = {
   },
   -- Deno single quotes completion
   {
-    pattern = "Deno%.env%.get%('%w*$",
+    pattern = "Deno%.env%.get%('[%w_]*$",
     filetype = "typescript",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -133,7 +133,7 @@ M.providers = {
   },
   -- Deno full pattern with double quotes
   {
-    pattern = 'Deno%.env%.get%("%w+"%)?$',
+    pattern = 'Deno%.env%.get%("[%w_]+"%)?$',
     filetype = "typescript",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)
@@ -145,7 +145,7 @@ M.providers = {
   },
   -- Deno full pattern with single quotes
   {
-    pattern = "Deno%.env%.get%('%w+'%)?$",
+    pattern = "Deno%.env%.get%('[%w_]+'%)?$",
     filetype = "typescript",
     extract_var = function(line, col)
       local before_cursor = line:sub(1, col)

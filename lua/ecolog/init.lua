@@ -414,17 +414,17 @@ function M.setup(opts)
 
   if config.integrations.nvim_cmp then
     local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
-    nvim_cmp.setup(config, state.env_vars, providers, shelter, types, state.selected_env_file)
+    nvim_cmp.setup(opts.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
   if config.integrations.blink_cmp then
     local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
-    blink_cmp.setup(config, state.env_vars, providers, shelter, types, state.selected_env_file)
+    blink_cmp.setup(opts.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
   if config.integrations.fzf then
     local fzf = require("ecolog.integrations.fzf")
-    fzf.setup(config)
+    fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
   end
 
   local initial_env_files = find_env_files({
@@ -596,7 +596,8 @@ function M.setup(opts)
           return
         end
         if not fzf._initialized then
-          fzf.setup(config)
+          fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
+
           fzf._initialized = true
         end
         fzf.env_picker()

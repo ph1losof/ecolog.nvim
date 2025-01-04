@@ -414,7 +414,7 @@ function M.setup(opts)
 
   if opts.integrations.fzf then
     local fzf = require("ecolog.integrations.fzf")
-    fzf.setup(opts.integrations.fzf)
+    fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
   end
 
   local initial_env_files = find_env_files({
@@ -600,7 +600,7 @@ function M.setup(opts)
           return
         end
         if not fzf._initialized then
-          fzf.setup(opts)
+          fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
           fzf._initialized = true
         end
         fzf.env_picker()

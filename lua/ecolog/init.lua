@@ -1,45 +1,3 @@
----@class EcologConfig
----@field path string Path to search for .env files
----@field shelter ShelterConfig Shelter mode configuration
----@field integrations IntegrationsConfig Integration settings
----@field types boolean|table Enable all types or specific type configuration
----@field custom_types table Custom type definitions
----@field preferred_environment string Preferred environment name
----@field load_shell LoadShellConfig Shell variables loading configuration
----@field env_file_pattern string|string[] Custom pattern(s) for matching env files
----@field sort_fn? function Custom function for sorting env files
----@field provider_patterns boolean Controls how environment variables are extracted from code. When true (default), only recognizes variables through language-specific patterns. When false, falls back to word under cursor if no provider matches.
-
----@class ShelterConfig
----@field configuration ShelterConfiguration Configuration for shelter mode
----@field modules ShelterModules Module-specific shelter settings
-
----@class ShelterConfiguration
----@field partial_mode boolean|table Partial masking configuration. When false (default), completely masks values. When true, uses default partial masking. When table, customizes partial masking.
----@field mask_char string Character used for masking sensitive values
-
----@class ShelterModules
----@field cmp boolean Mask values in completion menu
----@field peek boolean Mask values in peek view
----@field files boolean Mask values in environment files
----@field telescope boolean Mask values in telescope picker
----@field telescope_previewer boolean Mask values in telescope preview buffers
----@field fzf boolean Mask values in fzf picker
----@field fzf_previewer boolean Mask values in fzf preview buffers
-
----@class IntegrationsConfig
----@field lsp boolean Enable LSP integration for hover and goto-definition
----@field lspsaga boolean Enable LSP Saga integration for hover and goto-definition
----@field nvim_cmp boolean Enable nvim-cmp integration for autocompletion
----@field blink_cmp boolean Enable Blink CMP integration for autocompletion
----@field fzf boolean Enable fzf-lua integration for environment variable picking
-
----@class LoadShellConfig
----@field enabled boolean Enable loading shell variables into environment
----@field override boolean When true, shell variables take precedence over .env files
----@field filter? function Optional function to filter which shell variables to load
----@field transform? function Optional function to transform shell variable values
-
 local M = {}
 
 local api = vim.api
@@ -47,6 +5,44 @@ local fn = vim.fn
 local notify = vim.notify
 local schedule = vim.schedule
 local tbl_extend = vim.tbl_deep_extend
+
+local DEFAULT_CONFIG = {
+  path = vim.fn.getcwd(),
+  shelter = {
+    configuration = {
+      partial_mode = false,
+      mask_char = "*",
+    },
+    modules = {
+      cmp = false,
+      peek = false,
+      files = false,
+      telescope = false,
+      telescope_previewer = false,
+      fzf = false,
+      fzf_previewer = false,
+    },
+  },
+  integrations = {
+    lsp = false,
+    lspsaga = false,
+    nvim_cmp = true,
+    blink_cmp = false,
+    fzf = false,
+  },
+  types = true,
+  custom_types = {},
+  preferred_environment = "",
+  provider_patterns = true,
+  load_shell = {
+    enabled = false,
+    override = false,
+    filter = nil,
+    transform = nil,
+  },
+  env_file_pattern = nil,
+  sort_fn = nil,
+}
 
 local _loaded_modules = {}
 local _loading = {}
@@ -330,8 +326,10 @@ end
 function M.refresh_env_vars(opts)
   state.cached_env_files = nil
   state.file_cache_opts = nil
+  -- Use either last_opts or DEFAULT_CONFIG as the base
+  local base_opts = state.last_opts or DEFAULT_CONFIG
   -- Always use full config
-  opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
+  opts = vim.tbl_deep_extend("force", base_opts, opts or {})
   parse_env_file(opts, true)
 end
 
@@ -342,43 +340,47 @@ function M.get_env_vars()
   return state.env_vars
 end
 
-local DEFAULT_CONFIG = {
-  path = vim.fn.getcwd(),
-  shelter = {
-    configuration = {
-      partial_mode = false,
-      mask_char = "*",
-    },
-    modules = {
-      cmp = false,
-      peek = false,
-      files = false,
-      telescope = false,
-      telescope_previewer = false,
-      fzf = false,
-      fzf_previewer = false,
-    },
-  },
-  integrations = {
-    lsp = false,
-    lspsaga = false,
-    nvim_cmp = true,
-    blink_cmp = false,
-    fzf = false,
-  },
-  types = true,
-  custom_types = {},
-  preferred_environment = "",
-  provider_patterns = true,
-  load_shell = {
-    enabled = false,
-    override = false,
-    filter = nil,
-    transform = nil,
-  },
-  env_file_pattern = nil,
-  sort_fn = nil,
-}
+---@class EcologConfig
+---@field path string Path to search for .env files
+---@field shelter ShelterConfig Shelter mode configuration
+---@field integrations IntegrationsConfig Integration settings
+---@field types boolean|table Enable all types or specific type configuration
+---@field custom_types table Custom type definitions
+---@field preferred_environment string Preferred environment name
+---@field load_shell LoadShellConfig Shell variables loading configuration
+---@field env_file_pattern string|string[] Custom pattern(s) for matching env files
+---@field sort_fn? function Custom function for sorting env files
+---@field provider_patterns boolean Controls how environment variables are extracted from code. When true (default), only recognizes variables through language-specific patterns. When false, falls back to word under cursor if no provider matches.
+
+---@class ShelterConfig
+---@field configuration ShelterConfiguration Configuration for shelter mode
+---@field modules ShelterModules Module-specific shelter settings
+
+---@class ShelterConfiguration
+---@field partial_mode boolean|table Partial masking configuration. When false (default), completely masks values. When true, uses default partial masking. When table, customizes partial masking.
+---@field mask_char string Character used for masking sensitive values
+
+---@class ShelterModules
+---@field cmp boolean Mask values in completion menu
+---@field peek boolean Mask values in peek view
+---@field files boolean Mask values in environment files
+---@field telescope boolean Mask values in telescope picker
+---@field telescope_previewer boolean Mask values in telescope preview buffers
+---@field fzf boolean Mask values in fzf picker
+---@field fzf_previewer boolean Mask values in fzf preview buffers
+
+---@class IntegrationsConfig
+---@field lsp boolean Enable LSP integration for hover and goto-definition
+---@field lspsaga boolean Enable LSP Saga integration for hover and goto-definition
+---@field nvim_cmp boolean Enable nvim-cmp integration for autocompletion
+---@field blink_cmp boolean Enable Blink CMP integration for autocompletion
+---@field fzf boolean Enable fzf-lua integration for environment variable picking
+
+---@class LoadShellConfig
+---@field enabled boolean Enable loading shell variables into environment
+---@field override boolean When true, shell variables take precedence over .env files
+---@field filter? function Optional function to filter which shell variables to load
+---@field transform? function Optional function to transform shell variable values
 
 ---@param opts? EcologConfig
 function M.setup(opts)

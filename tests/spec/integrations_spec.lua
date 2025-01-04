@@ -244,7 +244,7 @@ describe("integrations", function()
           api.nvim_get_current_line.returns(tc.line)
           api.nvim_win_get_cursor.returns({ 1, tc.col })
 
-          local word = lspsaga.get_word_under_cursor()
+          local word = lspsaga.get_var_word_under_cursor()
           assert.equals(tc.expected, word)
         end)
       end

@@ -364,6 +364,7 @@ local DEFAULT_CONFIG = {
   types = true,
   custom_types = {},
   preferred_environment = "",
+  provider_patterns = true,
   load_shell = {
     enabled = false,
     override = false,
@@ -544,22 +545,7 @@ function M.setup(opts)
         local var_name = args.args
 
         if var_name == "" then
-          local line = api.nvim_get_current_line()
-          local cursor_pos = api.nvim_win_get_cursor(0)
-          local col = cursor_pos[2]
-          local word_start, word_end = utils.find_word_boundaries(line, col)
-
-          for _, provider in ipairs(available_providers) do
-            local extracted = provider.extract_var(line, word_end)
-            if extracted then
-              var_name = extracted
-              break
-            end
-          end
-
-          if not var_name or #var_name == 0 then
-            var_name = line:sub(word_start, word_end)
-          end
+          var_name = utils.get_var_word_under_cursor(available_providers, opts)
         end
 
         if not var_name or #var_name == 0 then

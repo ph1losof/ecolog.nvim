@@ -6,7 +6,6 @@ local M = {}
 
 -- Cache vim functions and APIs
 local api, lsp, cmd, bo = vim.api, vim.lsp, vim.cmd, vim.bo
-local sub = string.sub
 local utils = require("ecolog.utils")
 
 -- Cache original LSP handlers
@@ -15,45 +14,18 @@ local original_handlers = {
   definition = nil,
 }
 
--- Check if a word matches an environment variable (optimized)
-local function matches_env_var(word, line, col, available_providers, env_vars)
-  if word:match(utils.PATTERNS.env_var) and env_vars[word] then
-    return word
-  end
-
-  -- Then try providers
-  for i = 1, #available_providers do
-    local extracted = available_providers[i].extract_var(line, col)
-    if extracted and env_vars[extracted] then
-      return extracted
-    end
-  end
-
-  return nil
-end
-
 -- Handle hover request (optimized)
 local function handle_hover(err, result, ctx, config, providers, ecolog)
   if err then
     return original_handlers.hover(err, result, ctx, config)
   end
 
-  -- Get cursor context (optimized)
-  local line = api.nvim_get_current_line()
-  local cursor = api.nvim_win_get_cursor(0)
-  local col = cursor[2]
-
-  -- Find word boundaries
-  local word_start, word_end = utils.find_word_boundaries(line, col)
-
   -- Get available providers
   local available_providers = providers.get_providers(bo[0].filetype)
 
-  -- Check for env var match
-  local env_var =
-    matches_env_var(sub(line, word_start, word_end), line, word_end, available_providers, ecolog.get_env_vars())
-
-  if env_var then
+  -- Try to get env var at cursor
+  local env_var = utils.get_var_word_under_cursor(available_providers, ecolog.get_config())
+  if env_var and ecolog.get_env_vars()[env_var] then
     -- Get the command callback
     local commands = api.nvim_get_commands({})
     if commands.EcologPeek and commands.EcologPeek.callback then
@@ -74,18 +46,11 @@ local function handle_definition(err, result, ctx, config, providers, ecolog)
     return original_handlers.definition(err, result, ctx, config)
   end
 
-  -- Get cursor context (optimized)
-  local line = api.nvim_get_current_line()
-  local cursor = api.nvim_win_get_cursor(0)
-  local word_start, word_end = utils.find_word_boundaries(line, cursor[2])
-
   -- Get available providers
   local available_providers = providers.get_providers(bo[0].filetype)
 
-  -- Check for env var match
-  local env_var =
-    matches_env_var(sub(line, word_start, word_end), line, word_end, available_providers, ecolog.get_env_vars())
-
+  -- Try to get env var at cursor
+  local env_var = utils.get_var_word_under_cursor(available_providers, ecolog.get_config())
   if env_var then
     local var = ecolog.get_env_vars()[env_var]
     if not var then

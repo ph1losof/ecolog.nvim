@@ -13,7 +13,7 @@ function M.is_env_var(word)
 end
 
 function M.handle_hover(args)
-  local word = utils.get_word_under_cursor()
+  local word = utils.get_var_word_under_cursor(nil, M._ecolog.get_config())
   if M.is_env_var(word) then
     if M._ecolog.get_opts then
       local peek = require("ecolog.peek")
@@ -33,7 +33,7 @@ function M.handle_hover(args)
 end
 
 function M.handle_goto_definition(args)
-  local word = utils.get_word_under_cursor()
+  local word = utils.get_var_word_under_cursor(nil, M._ecolog.get_config())
   if M.is_env_var(word) then
     local env_vars = M._ecolog.get_env_vars()
     local var = env_vars[word]
@@ -153,6 +153,8 @@ function M.setup()
   M.replace_saga_keymaps()
 end
 
-M.get_word_under_cursor = utils.get_word_under_cursor
+M.get_word_under_cursor = function(...)
+  return utils.get_var_word_under_cursor(..., M._ecolog.get_config())
+end
 
 return M

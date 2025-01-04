@@ -203,16 +203,50 @@ function M.minimal_restore()
   end
 end
 
-function M.get_word_under_cursor()
+---Get variable word under cursor using provider extraction
+---@param providers table Optional providers table, if not provided will get from current filetype
+---@param opts? table Optional config options
+---@return string Variable name or empty string if not found
+function M.get_var_word_under_cursor(providers, opts)
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2]
   local word_start, word_end = M.find_word_boundaries(line, col)
 
   if not word_start or not word_end then
+    vim.notify("No word boundaries found at cursor", vim.log.levels.DEBUG)
     return ""
   end
 
-  return line:sub(word_start, word_end)
+  local word = line:sub(word_start, word_end)
+  vim.notify(string.format("Found word boundaries: '%s' at positions %d-%d", word, word_start, word_end), vim.log.levels.DEBUG)
+
+  -- If no providers passed, get them from current filetype
+  if not providers then
+    local filetype = vim.bo.filetype
+    providers = require("ecolog.providers").get_providers(filetype)
+    vim.notify(string.format("Using providers for filetype: %s", filetype), vim.log.levels.DEBUG)
+  end
+
+  -- Try extracting with each provider
+  for _, provider in ipairs(providers) do
+    local extracted = provider.extract_var(line, word_end)
+    if extracted then
+      vim.notify(string.format("Provider matched and extracted: '%s'", extracted), vim.log.levels.DEBUG)
+      return extracted
+    end
+  end
+
+  vim.notify("No provider matches found", vim.log.levels.DEBUG)
+
+  -- Only fallback to word under cursor if provider_patterns is disabled
+  if not opts or opts.provider_patterns ~= false then
+    vim.notify("Provider patterns enabled, not falling back to word under cursor", vim.log.levels.DEBUG)
+    return ""
+  end
+
+  vim.notify(string.format("Provider patterns disabled, falling back to word under cursor: '%s'", word), vim.log.levels.DEBUG)
+  -- Fall back to word under cursor if provider patterns are disabled
+  return word
 end
 
 function M.extract_var_name(line)

@@ -24,7 +24,7 @@ local function handle_hover(err, result, ctx, config, providers, ecolog)
   local available_providers = providers.get_providers(bo[0].filetype)
 
   -- Try to get env var at cursor
-  local env_var = utils.get_var_word_under_cursor(available_providers, ecolog.get_config())
+  local env_var = utils.get_var_word_under_cursor(available_providers, ecolog.get_config().provider_patterns)
   if env_var and ecolog.get_env_vars()[env_var] then
     -- Get the command callback
     local commands = api.nvim_get_commands({})
@@ -50,7 +50,7 @@ local function handle_definition(err, result, ctx, config, providers, ecolog)
   local available_providers = providers.get_providers(bo[0].filetype)
 
   -- Try to get env var at cursor
-  local env_var = utils.get_var_word_under_cursor(available_providers, ecolog.get_config())
+  local env_var = utils.get_var_word_under_cursor(available_providers, ecolog.get_config().provider_patterns)
   if env_var then
     local var = ecolog.get_env_vars()[env_var]
     if not var then

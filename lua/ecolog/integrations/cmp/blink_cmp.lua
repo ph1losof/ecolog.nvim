@@ -18,6 +18,17 @@ function M:get_trigger_characters()
     return trigger_patterns[ft]
   end
 
+  local ok, ecolog = pcall(require, "ecolog")
+  if not ok then
+    return {}
+  end
+
+  local config = ecolog.get_config()
+  if not config.provider_patterns.cmp then
+    trigger_patterns[ft] = { "" } 
+    return trigger_patterns[ft]
+  end
+
   local chars = {}
   local seen = {}
   for _, provider in ipairs(_providers.get_providers(ft)) do
@@ -41,13 +52,13 @@ function M:enabled()
 end
 
 function M:get_completions(ctx, callback)
-  -- Get current env vars directly from ecolog
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
     callback({ context = ctx, items = {} })
     return function() end
   end
 
+  local config = ecolog.get_config()
   local env_vars = ecolog.get_env_vars()
   if vim.tbl_count(env_vars) == 0 then
     callback({ context = ctx, items = {} })
@@ -62,29 +73,32 @@ function M:get_completions(ctx, callback)
   local should_complete = false
   local matched_provider
 
-  -- Check completion triggers from all providers
-  for _, provider in ipairs(available_providers) do
-    if provider.pattern and before_line:match(provider.pattern) then
-      should_complete = true
-      matched_provider = provider
-      break
-    end
-
-    if provider.get_completion_trigger then
-      local trigger = provider.get_completion_trigger()
-      local parts = vim.split(trigger, ".", { plain = true })
-      local pattern = table.concat(
-        vim.tbl_map(function(part)
-          return vim.pesc(part)
-        end, parts),
-        "%."
-      )
-      if before_line:match(pattern .. "$") then
+  if config.provider_patterns.cmp then
+    for _, provider in ipairs(available_providers) do
+      if provider.pattern and before_line:match(provider.pattern) then
         should_complete = true
         matched_provider = provider
         break
       end
+
+      if provider.get_completion_trigger then
+        local trigger = provider.get_completion_trigger()
+        local parts = vim.split(trigger, ".", { plain = true })
+        local pattern = table.concat(
+          vim.tbl_map(function(part)
+            return vim.pesc(part)
+          end, parts),
+          "%."
+        )
+        if before_line:match(pattern .. "$") then
+          should_complete = true
+          matched_provider = provider
+          break
+        end
+      end
     end
+  else
+    should_complete = true 
   end
 
   if not should_complete then

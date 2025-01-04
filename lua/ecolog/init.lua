@@ -33,7 +33,10 @@ local DEFAULT_CONFIG = {
   types = true,
   custom_types = {},
   preferred_environment = "",
-  provider_patterns = true,
+  provider_patterns = {
+    extract = true,
+    cmp = true,
+  },
   load_shell = {
     enabled = false,
     override = false,
@@ -350,7 +353,7 @@ end
 ---@field load_shell LoadShellConfig Shell variables loading configuration
 ---@field env_file_pattern string|string[] Custom pattern(s) for matching env files
 ---@field sort_fn? function Custom function for sorting env files
----@field provider_patterns boolean Controls how environment variables are extracted from code. When true (default), only recognizes variables through language-specific patterns. When false, falls back to word under cursor if no provider matches.
+---@field provider_patterns table|boolean Controls how environment variables are extracted from code. When table, contains 'extract' (default: true) and 'cmp' (default: true) fields. When boolean, sets both fields to that value. 'extract' controls whether variables are extracted through language-specific patterns, 'cmp' controls whether completion is enabled.
 
 ---@class ShelterConfig
 ---@field configuration ShelterConfiguration Configuration for shelter mode
@@ -386,6 +389,20 @@ end
 function M.setup(opts)
   -- Merge user options with defaults
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  
+  -- Normalize provider_patterns to table format
+  if type(config.provider_patterns) == "boolean" then
+    config.provider_patterns = {
+      extract = config.provider_patterns,
+      cmp = config.provider_patterns,
+    }
+  elseif type(config.provider_patterns) == "table" then
+    config.provider_patterns = vim.tbl_deep_extend("force", {
+      extract = true,
+      cmp = true,
+    }, config.provider_patterns)
+  end
+  
   state.last_opts = config
 
   if config.integrations.blink_cmp then

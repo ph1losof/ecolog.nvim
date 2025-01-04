@@ -218,22 +218,23 @@ function M.get_var_word_under_cursor(providers)
     providers = require("ecolog.providers").get_providers(filetype)
   end
 
-  for _, provider in ipairs(providers) do
-    local extracted = provider.extract_var(line, word_end)
-    if extracted then
-      return extracted
-    end
-  end
-
   local ecolog = require("ecolog")
   local config = ecolog.get_config()
   local provider_patterns = config and config.provider_patterns
 
-  if not provider_patterns then
-    return line:sub(word_start, word_end)
+  -- Check if provider patterns are enabled for extraction
+  if provider_patterns and provider_patterns.extract then
+    for _, provider in ipairs(providers) do
+      local extracted = provider.extract_var(line, word_end)
+      if extracted then
+        return extracted
+      end
+    end
+    return ""
   end
 
-  return ""
+  -- If provider patterns are disabled for extraction, return the word under cursor
+  return line:sub(word_start, word_end)
 end
 
 function M.extract_var_name(line)

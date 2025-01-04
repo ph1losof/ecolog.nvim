@@ -13,17 +13,24 @@ local function setup_completion(cmp, opts, providers)
   api.nvim_set_hl(0, "CmpItemAbbrMatchFuzzyEcolog", { link = "EcologVariable" })
   api.nvim_set_hl(0, "CmpItemMenuEcolog", { link = "EcologSource" })
 
-  -- Register completion source
   cmp.register_source("ecolog", {
     get_trigger_characters = function()
+      local has_ecolog, ecolog = pcall(require, "ecolog")
+      if not has_ecolog then
+        return {}
+      end
+      
+      local config = ecolog.get_config()
+      if not config.provider_patterns.cmp then
+        return { "" }
+      end
+      
       local triggers = {}
       local available_providers = providers.get_providers(vim.bo.filetype)
 
-      -- Collect unique trigger characters from all providers
       for _, provider in ipairs(available_providers) do
         if provider.get_completion_trigger then
           local trigger = provider.get_completion_trigger()
-          -- Split trigger into characters and add them
           for char in trigger:gmatch(".") do
             if not vim.tbl_contains(triggers, char) then
               table.insert(triggers, char)
@@ -36,13 +43,13 @@ local function setup_completion(cmp, opts, providers)
     end,
 
     complete = function(self, request, callback)
-      -- Get current env vars directly from ecolog
       local has_ecolog, ecolog = pcall(require, "ecolog")
       if not has_ecolog then
         callback({ items = {}, isIncomplete = false })
         return
       end
 
+      local config = ecolog.get_config()
       local env_vars = ecolog.get_env_vars()
       local filetype = vim.bo.filetype
       local available_providers = providers.get_providers(filetype)
@@ -56,24 +63,27 @@ local function setup_completion(cmp, opts, providers)
       local line = request.context.cursor_before_line
       local matched_provider
 
-      -- Check completion triggers from all providers
-      for _, provider in ipairs(available_providers) do
-        if provider.get_completion_trigger then
-          local trigger = provider.get_completion_trigger()
-          local parts = vim.split(trigger, ".", { plain = true })
-          local pattern = table.concat(
-            vim.tbl_map(function(part)
-              return vim.pesc(part)
-            end, parts),
-            "%."
-          )
+      if config.provider_patterns.cmp then
+        for _, provider in ipairs(available_providers) do
+          if provider.get_completion_trigger then
+            local trigger = provider.get_completion_trigger()
+            local parts = vim.split(trigger, ".", { plain = true })
+            local pattern = table.concat(
+              vim.tbl_map(function(part)
+                return vim.pesc(part)
+              end, parts),
+              "%."
+            )
 
-          if line:match(pattern .. "$") or (provider.pattern and line:match(provider.pattern)) then
-            should_complete = true
-            matched_provider = provider
-            break
+            if line:match(pattern .. "$") or (provider.pattern and line:match(provider.pattern)) then
+              should_complete = true
+              matched_provider = provider
+              break
+            end
           end
         end
+      else
+        should_complete = true 
       end
 
       if not should_complete then

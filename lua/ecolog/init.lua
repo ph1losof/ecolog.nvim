@@ -8,36 +8,37 @@
 ---@field load_shell LoadShellConfig Shell variables loading configuration
 ---@field env_file_pattern string|string[] Custom pattern(s) for matching env files
 ---@field sort_fn? function Custom function for sorting env files
+---@field provider_patterns boolean Controls how environment variables are extracted from code. When true (default), only recognizes variables through language-specific patterns. When false, falls back to word under cursor if no provider matches.
 
 ---@class ShelterConfig
 ---@field configuration ShelterConfiguration Configuration for shelter mode
 ---@field modules ShelterModules Module-specific shelter settings
 
 ---@class ShelterConfiguration
----@field partial_mode boolean|table Partial masking configuration
----@field mask_char string Character used for masking
+---@field partial_mode boolean|table Partial masking configuration. When false (default), completely masks values. When true, uses default partial masking. When table, customizes partial masking.
+---@field mask_char string Character used for masking sensitive values
 
 ---@class ShelterModules
----@field cmp boolean Mask values in completion
+---@field cmp boolean Mask values in completion menu
 ---@field peek boolean Mask values in peek view
----@field files boolean Mask values in files
----@field telescope boolean Mask values in telescope
----@field telescope_previewer boolean Mask values in telescope previewer
----@field fzf boolean Mask values in fzf
----@field fzf_previewer boolean Mask values in fzf preview window
+---@field files boolean Mask values in environment files
+---@field telescope boolean Mask values in telescope picker
+---@field telescope_previewer boolean Mask values in telescope preview buffers
+---@field fzf boolean Mask values in fzf picker
+---@field fzf_previewer boolean Mask values in fzf preview buffers
 
 ---@class IntegrationsConfig
----@field lsp boolean Enable LSP integration
----@field lspsaga boolean Enable LSP Saga integration
----@field nvim_cmp boolean Enable nvim-cmp integration
----@field blink_cmp boolean Enable Blink CMP integration
----@field fzf boolean Enable fzf-lua integration
+---@field lsp boolean Enable LSP integration for hover and goto-definition
+---@field lspsaga boolean Enable LSP Saga integration for hover and goto-definition
+---@field nvim_cmp boolean Enable nvim-cmp integration for autocompletion
+---@field blink_cmp boolean Enable Blink CMP integration for autocompletion
+---@field fzf boolean Enable fzf-lua integration for environment variable picking
 
 ---@class LoadShellConfig
----@field enabled boolean Enable loading shell variables
----@field override boolean Override .env file variables with shell variables
----@field filter? function Optional function to filter shell variables
----@field transform? function Optional function to transform shell variables
+---@field enabled boolean Enable loading shell variables into environment
+---@field override boolean When true, shell variables take precedence over .env files
+---@field filter? function Optional function to filter which shell variables to load
+---@field transform? function Optional function to transform shell variable values
 
 local M = {}
 

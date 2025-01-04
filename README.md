@@ -86,6 +86,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     types = true,
     path = vim.fn.getcwd(), -- Path to search for .env files
     preferred_environment = "development", -- Optional: prioritize specific env files
+    -- Controls how environment variables are extracted from code
+    provider_patterns = true, -- true by default, when false will fallback to word under cursor if no provider matches
   },
 }
 ```
@@ -101,6 +103,20 @@ require('cmp').setup({
 ```
 
 If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
+
+### Provider Patterns
+
+The `provider_patterns` option controls how environment variables are extracted from your code:
+
+- When `true` (default): Only recognizes environment variables through language-specific patterns
+  - Example: In JavaScript, only matches `process.env.MY_VAR` or `import.meta.env.MY_VAR`
+  - Example: In Python, only matches `os.environ.get('MY_VAR')` or `os.environ['MY_VAR']`
+
+- When `false`: Falls back to the word under cursor if no language provider matches
+  - Useful when you want to peek at any word that might be an environment variable
+  - Less strict but might give false positives
+
+This affects all features that extract variables from code (peek, goto definition, etc.).
 
 ## ✨ Features
 

@@ -109,6 +109,7 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 The `provider_patterns` option controls how environment variables are extracted from your code:
 
 - When `true` (default): Only recognizes environment variables through language-specific patterns
+
   - Example: In JavaScript, only matches `process.env.MY_VAR` or `import.meta.env.MY_VAR`
   - Example: In Python, only matches `os.environ.get('MY_VAR')` or `os.environ['MY_VAR']`
 
@@ -427,9 +428,7 @@ require('ecolog').setup({
   "saghen/blink.cmp",
   opts = {
     sources = {
-      completion = {
-        enabled_providers = { 'ecolog', 'lsp', 'path', 'snippets', 'buffer' },
-      },
+      default = { 'ecolog', 'lsp', 'path', 'snippets', 'buffer' },
       providers = {
         ecolog = { name = 'ecolog', module = 'ecolog.integrations.cmp.blink_cmp' },
       },

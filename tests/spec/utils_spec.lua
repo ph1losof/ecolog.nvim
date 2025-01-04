@@ -78,45 +78,44 @@ describe("utils", function()
       end
     }
 
-    it("should find word at cursor with provider patterns disabled", function()
+    it("should find word at cursor", function()
       local line = "TEST_VAR=value"
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 4 } end)
 
-      assert.equals("TEST_VAR", utils.get_var_word_under_cursor(nil, { provider_patterns = false }))
+      assert.equals("TEST_VAR", utils.get_var_word_under_cursor())
     end)
 
-    it("should not find word at cursor with provider patterns enabled", function()
+    it("should not find word at cursor start position", function()
       local line = "TEST_VAR=value"
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 0 } end)
 
-      assert.equals("", utils.get_var_word_under_cursor(nil, { provider_patterns = true }))
+      assert.equals("", utils.get_var_word_under_cursor())
     end)
 
-    it("should find word with provider match regardless of provider_patterns setting", function()
+    it("should find word with provider match", function()
       local line = "process.env.TEST_VAR"
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 15 } end)
 
-      assert.equals("TEST_VAR", utils.get_var_word_under_cursor({ mock_provider }, { provider_patterns = true }))
-      assert.equals("TEST_VAR", utils.get_var_word_under_cursor({ mock_provider }, { provider_patterns = false }))
+      assert.equals("TEST_VAR", utils.get_var_word_under_cursor({ mock_provider }))
     end)
 
-    it("should find word with underscore and provider patterns disabled", function()
+    it("should find word with underscore", function()
       local line = "TEST_VAR=value"
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 5 } end)
 
-      assert.equals("TEST_VAR", utils.get_var_word_under_cursor(nil, { provider_patterns = false }))
+      assert.equals("TEST_VAR", utils.get_var_word_under_cursor())
     end)
 
-    it("should find word with multiple underscores and provider patterns disabled", function()
+    it("should find word with multiple underscores", function()
       local line = "MY_TEST_VAR=value"
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 5 } end)
 
-      assert.equals("MY_TEST_VAR", utils.get_var_word_under_cursor(nil, { provider_patterns = false }))
+      assert.equals("MY_TEST_VAR", utils.get_var_word_under_cursor())
     end)
 
     it("should return empty string for empty line", function()
@@ -140,7 +139,7 @@ describe("utils", function()
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 33 } end)  -- cursor on DATABASE_URL
 
-      assert.equals("DATABASE_URL", utils.get_var_word_under_cursor({ mock_provider }, { provider_patterns = true }))
+      assert.equals("DATABASE_URL", utils.get_var_word_under_cursor({ mock_provider }))
     end)
 
     it("should find word with provider match when cursor is at end of variable", function()
@@ -148,7 +147,7 @@ describe("utils", function()
       stub(api, "nvim_get_current_line", function() return line end)
       stub(api, "nvim_win_get_cursor", function() return { 1, 36 } end)  -- cursor right after DATABASE_URL
 
-      assert.equals("DATABASE_URL", utils.get_var_word_under_cursor({ mock_provider }, { provider_patterns = true }))
+      assert.equals("DATABASE_URL", utils.get_var_word_under_cursor({ mock_provider }))
     end)
   end)
 

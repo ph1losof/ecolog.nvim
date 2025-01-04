@@ -77,6 +77,7 @@ local state = {
   env_vars = {},
   cached_env_files = nil,
   last_opts = nil,
+  file_cache_opts = nil,
   current_watcher_group = nil,
   selected_env_file = nil,
   _providers_loaded = false,
@@ -127,22 +128,23 @@ local function find_env_files(opts)
 
   if
     state.cached_env_files
-    and state.last_opts
-    and state.last_opts.path == opts.path
-    and state.last_opts.preferred_environment == opts.preferred_environment
-    and state.last_opts.env_file_pattern == opts.env_file_pattern
-    and state.last_opts.sort_fn == opts.sort_fn
+    and state.file_cache_opts
+    and state.file_cache_opts.path == opts.path
+    and state.file_cache_opts.preferred_environment == opts.preferred_environment
+    and state.file_cache_opts.env_file_pattern == opts.env_file_pattern
+    and state.file_cache_opts.sort_fn == opts.sort_fn
   then
     return state.cached_env_files
   end
 
-  state.last_opts = tbl_extend("force", {}, opts)
+  state.file_cache_opts = tbl_extend("force", {}, opts)
   state.cached_env_files = utils.find_env_files(opts)
   return state.cached_env_files
 end
 
 local function parse_env_file(opts, force)
-  opts = opts or {}
+  -- Always use full config
+  opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
 
   if not force and next(state.env_vars) ~= nil then
     return
@@ -326,7 +328,9 @@ end
 
 function M.refresh_env_vars(opts)
   state.cached_env_files = nil
-  state.last_opts = nil
+  state.file_cache_opts = nil
+  -- Always use full config
+  opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
   parse_env_file(opts, true)
 end
 
@@ -377,62 +381,64 @@ local DEFAULT_CONFIG = {
 
 ---@param opts? EcologConfig
 function M.setup(opts)
-  opts = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  -- Merge user options with defaults
+  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  state.last_opts = config
 
-  if opts.integrations.blink_cmp then
-    opts.integrations.nvim_cmp = false
+  if config.integrations.blink_cmp then
+    config.integrations.nvim_cmp = false
   end
 
   require("ecolog.highlights").setup()
   shelter.setup({
-    config = opts.shelter.configuration,
-    partial = opts.shelter.modules,
+    config = config.shelter.configuration,
+    partial = config.shelter.modules,
   })
   types.setup({
-    types = opts.types,
-    custom_types = opts.custom_types,
+    types = config.types,
+    custom_types = config.custom_types,
   })
 
-  if opts.integrations.lsp then
+  if config.integrations.lsp then
     local lsp = require_module("ecolog.integrations.lsp")
     lsp.setup()
   end
 
-  if opts.integrations.lspsaga then
+  if config.integrations.lspsaga then
     local lspsaga = require_module("ecolog.integrations.lspsaga")
     lspsaga.setup()
   end
 
-  if opts.integrations.nvim_cmp then
+  if config.integrations.nvim_cmp then
     local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
-    nvim_cmp.setup(opts, state.env_vars, providers, shelter, types, state.selected_env_file)
+    nvim_cmp.setup(config, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
-  if opts.integrations.blink_cmp then
+  if config.integrations.blink_cmp then
     local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
-    blink_cmp.setup(opts, state.env_vars, providers, shelter, types, state.selected_env_file)
+    blink_cmp.setup(config, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
-  if opts.integrations.fzf then
+  if config.integrations.fzf then
     local fzf = require("ecolog.integrations.fzf")
-    fzf.setup(opts)
+    fzf.setup(config)
   end
 
   local initial_env_files = find_env_files({
-    path = opts.path,
-    preferred_environment = opts.preferred_environment,
-    env_file_pattern = opts.env_file_pattern,
-    sort_fn = opts.sort_fn,
+    path = config.path,
+    preferred_environment = config.preferred_environment,
+    env_file_pattern = config.env_file_pattern,
+    sort_fn = config.sort_fn,
   })
 
   if #initial_env_files > 0 then
     state.selected_env_file = initial_env_files[1]
 
-    if opts.preferred_environment == "" then
+    if config.preferred_environment == "" then
       local env_suffix = fn.fnamemodify(state.selected_env_file, ":t"):gsub("^%.env%.", "")
       if env_suffix ~= ".env" then
-        opts.preferred_environment = env_suffix
-        local sorted_files = find_env_files(opts)
+        config.preferred_environment = env_suffix
+        local sorted_files = find_env_files(config)
         state.selected_env_file = sorted_files[1]
       end
     end
@@ -444,17 +450,18 @@ function M.setup(opts)
   end
 
   schedule(function()
-    parse_env_file(opts)
+    parse_env_file(config)
   end)
 
-  setup_file_watcher(opts)
+  setup_file_watcher(config)
 
+  -- Create commands with the config
   local commands = {
     EcologPeek = {
       callback = function(args)
         load_providers()
-        parse_env_file(opts)
-        peek.peek_env_value(args.args, opts, state.env_vars, providers, parse_env_file)
+        parse_env_file(config)
+        peek.peek_env_value(args.args, config, state.env_vars, providers, parse_env_file)
       end,
       nargs = "?",
       desc = "Peek at environment variable value",
@@ -503,25 +510,25 @@ function M.setup(opts)
     },
     EcologRefresh = {
       callback = function()
-        M.refresh_env_vars(opts)
+        M.refresh_env_vars(config)
       end,
       desc = "Refresh environment variables cache",
     },
     EcologSelect = {
       callback = function()
         select.select_env_file({
-          path = opts.path,
+          path = config.path,
           active_file = state.selected_env_file,
-          env_file_pattern = opts.env_file_pattern,
-          sort_fn = opts.sort_fn,
-          preferred_environment = opts.preferred_environment,
+          env_file_pattern = config.env_file_pattern,
+          sort_fn = config.sort_fn,
+          preferred_environment = config.preferred_environment,
         }, function(file)
           if file then
             state.selected_env_file = file
-            opts.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
-            setup_file_watcher(opts)
+            config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
+            setup_file_watcher(config)
             state.cached_env_files = nil
-            M.refresh_env_vars(opts)
+            M.refresh_env_vars(config)
             notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
           end
         end)
@@ -545,7 +552,7 @@ function M.setup(opts)
         local var_name = args.args
 
         if var_name == "" then
-          var_name = utils.get_var_word_under_cursor(available_providers, opts)
+          var_name = utils.get_var_word_under_cursor(available_providers)
         end
 
         if not var_name or #var_name == 0 then
@@ -553,7 +560,7 @@ function M.setup(opts)
           return
         end
 
-        parse_env_file(opts)
+        parse_env_file(config)
 
         local var = state.env_vars[var_name]
         if not var then
@@ -578,7 +585,7 @@ function M.setup(opts)
     EcologFzf = {
       callback = function()
         local has_fzf, fzf = pcall(require, "ecolog.integrations.fzf")
-        if not has_fzf or not opts.integrations.fzf then
+        if not has_fzf or not config.integrations.fzf then
           notify(
             "FZF integration is not enabled. Enable it in your setup with integrations.fzf = true",
             vim.log.levels.ERROR
@@ -586,7 +593,7 @@ function M.setup(opts)
           return
         end
         if not fzf._initialized then
-          fzf.setup(opts)
+          fzf.setup(config)
           fzf._initialized = true
         end
         fzf.env_picker()
@@ -608,7 +615,7 @@ M.find_word_boundaries = utils.find_word_boundaries
 
 -- Get the current configuration
 function M.get_config()
-  return state.last_opts
+  return state.last_opts or DEFAULT_CONFIG
 end
 
 return M

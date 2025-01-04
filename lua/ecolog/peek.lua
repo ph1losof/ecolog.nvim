@@ -135,7 +135,7 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
   -- Extract variable name
   local extracted_var = var_name
   if not extracted_var then
-    extracted_var = utils.get_var_word_under_cursor(available_providers, opts.provider_patterns)
+    extracted_var = utils.get_var_word_under_cursor(available_providers)
   end
 
   if not extracted_var or #extracted_var == 0 then

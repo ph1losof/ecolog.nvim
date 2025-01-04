@@ -203,11 +203,8 @@ function M.minimal_restore()
   end
 end
 
----Get variable word under cursor using provider extraction
----@param providers table Optional providers table, if not provided will get from current filetype
----@param provider_patterns boolean Whether to use provider patterns for extraction
 ---@return string Variable name or empty string if not found
-function M.get_var_word_under_cursor(providers, provider_patterns)
+function M.get_var_word_under_cursor(providers)
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2]
   local word_start, word_end = M.find_word_boundaries(line, col)
@@ -216,13 +213,11 @@ function M.get_var_word_under_cursor(providers, provider_patterns)
     return ""
   end
 
-  -- If no providers passed, get them from current filetype
   if not providers then
     local filetype = vim.bo.filetype
     providers = require("ecolog.providers").get_providers(filetype)
   end
 
-  -- Try extracting with each provider
   for _, provider in ipairs(providers) do
     local extracted = provider.extract_var(line, word_end)
     if extracted then
@@ -230,13 +225,15 @@ function M.get_var_word_under_cursor(providers, provider_patterns)
     end
   end
 
-  -- Only fallback to word under cursor if provider_patterns is disabled
-  if provider_patterns then
-    return ""
+  local ecolog = require("ecolog")
+  local config = ecolog.get_config()
+  local provider_patterns = config and config.provider_patterns
+
+  if not provider_patterns then
+    return line:sub(word_start, word_end)
   end
 
-  -- Fall back to word under cursor if provider patterns are disabled
-  return line:sub(word_start, word_end)
+  return ""
 end
 
 function M.extract_var_name(line)

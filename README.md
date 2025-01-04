@@ -86,8 +86,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     types = true,
     path = vim.fn.getcwd(), -- Path to search for .env files
     preferred_environment = "development", -- Optional: prioritize specific env files
-    -- Controls how environment variables are extracted from code
-    provider_patterns = true, -- true by default, when false will fallback to word under cursor if no provider matches
+    -- Controls how environment variables are extracted from code and how cmp works
+    provider_patterns = true, -- true by default, when false will not check provider patterns
   },
 }
 ```
@@ -109,6 +109,7 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 The `provider_patterns` option controls how environment variables are extracted from your code and how completion works. It can be configured in two ways:
 
 1. As a boolean (for backward compatibility):
+
    ```lua
    provider_patterns = true  -- Enables both extraction and completion with language patterns
    -- or
@@ -128,6 +129,7 @@ The `provider_patterns` option controls how environment variables are extracted 
 The `extract` field controls how variables are extracted from code for features like peek, goto definition, etc:
 
 - When `true` (default): Only recognizes environment variables through language-specific patterns
+
   - Example: In JavaScript, only matches `process.env.MY_VAR` or `import.meta.env.MY_VAR`
   - Example: In Python, only matches `os.environ.get('MY_VAR')` or `os.environ['MY_VAR']`
 
@@ -140,6 +142,7 @@ The `extract` field controls how variables are extracted from code for features 
 The `cmp` field controls how completion behaves:
 
 - When `true` (default):
+
   - Uses language-specific triggers (e.g., `process.env.` in JavaScript)
   - Only completes in valid environment variable contexts
   - Formats completions according to language patterns
@@ -152,6 +155,7 @@ The `cmp` field controls how completion behaves:
 #### Example Configurations
 
 1. Default behavior (strict mode):
+
    ```lua
    provider_patterns = {
      extract = true,  -- Only extract vars from language patterns
@@ -160,6 +164,7 @@ The `cmp` field controls how completion behaves:
    ```
 
 2. Flexible extraction, strict completion:
+
    ```lua
    provider_patterns = {
      extract = false,  -- Extract any word as potential var
@@ -168,6 +173,7 @@ The `cmp` field controls how completion behaves:
    ```
 
 3. Strict extraction, flexible completion:
+
    ```lua
    provider_patterns = {
      extract = true,   -- Only extract vars from language patterns

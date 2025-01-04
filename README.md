@@ -106,10 +106,28 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
 ### Provider Patterns
 
-The `provider_patterns` option controls how environment variables are extracted from your code:
+The `provider_patterns` option controls how environment variables are extracted from your code and how completion works. It can be configured in two ways:
+
+1. As a boolean (for backward compatibility):
+   ```lua
+   provider_patterns = true  -- Enables both extraction and completion with language patterns
+   -- or
+   provider_patterns = false -- Disables both, falls back to word under cursor and basic completion
+   ```
+
+2. As a table for fine-grained control:
+   ```lua
+   provider_patterns = {
+     extract = true,  -- Controls variable extraction from code
+     cmp = true      -- Controls completion behavior
+   }
+   ```
+
+#### Extract Mode
+
+The `extract` field controls how variables are extracted from code for features like peek, goto definition, etc:
 
 - When `true` (default): Only recognizes environment variables through language-specific patterns
-
   - Example: In JavaScript, only matches `process.env.MY_VAR` or `import.meta.env.MY_VAR`
   - Example: In Python, only matches `os.environ.get('MY_VAR')` or `os.environ['MY_VAR']`
 
@@ -117,7 +135,55 @@ The `provider_patterns` option controls how environment variables are extracted 
   - Useful when you want to peek at any word that might be an environment variable
   - Less strict but might give false positives
 
-This affects all features that extract variables from code (peek, goto definition, etc.).
+#### Completion Mode
+
+The `cmp` field controls how completion behaves:
+
+- When `true` (default):
+  - Uses language-specific triggers (e.g., `process.env.` in JavaScript)
+  - Only completes in valid environment variable contexts
+  - Formats completions according to language patterns
+
+- When `false`:
+  - Uses a basic trigger (any character)
+  - Completes environment variables anywhere
+  - Useful for more flexible but less context-aware completion
+
+#### Example Configurations
+
+1. Default behavior (strict mode):
+   ```lua
+   provider_patterns = {
+     extract = true,  -- Only extract vars from language patterns
+     cmp = true      -- Only complete in valid contexts
+   }
+   ```
+
+2. Flexible extraction, strict completion:
+   ```lua
+   provider_patterns = {
+     extract = false,  -- Extract any word as potential var
+     cmp = true       -- Only complete in valid contexts
+   }
+   ```
+
+3. Strict extraction, flexible completion:
+   ```lua
+   provider_patterns = {
+     extract = true,   -- Only extract vars from language patterns
+     cmp = false      -- Complete anywhere
+   }
+   ```
+
+4. Maximum flexibility:
+   ```lua
+   provider_patterns = {
+     extract = false,  -- Extract any word as potential var
+     cmp = false      -- Complete anywhere
+   }
+   ```
+
+This affects all features that extract variables from code (peek, goto definition, etc.) and how completion behaves.
 
 ## ✨ Features
 

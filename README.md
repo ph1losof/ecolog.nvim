@@ -577,45 +577,29 @@ require('telescope').setup({
 
 ### FZF Integration
 
-Ecolog provides integration with [fzf-lua](https://github.com/ibhagwan/fzf-lua) for fuzzy finding environment variables.
+Ecolog integrates with [fzf-lua](https://github.com/ibhagwan/fzf-lua) to provide a fuzzy finder interface for environment variables.
 
 #### Setup
-
-Enable the integration in your Ecolog setup:
-
-```lua
-require('ecolog').setup({
-  integrations = {
-    fzf = true,
-  },
-})
-```
-
-Then configure it (optional):
 
 ```lua
 require('ecolog').setup({
   integrations = {
     fzf = {
       shelter = {
-        -- Whether to show masked values when copying to clipboard
-        mask_on_copy = false,
+        mask_on_copy = false, -- Whether to mask values when copying
       },
-      -- Default keybindings
       mappings = {
-        -- Key to copy value to clipboard
-        copy_value = "ctrl-y",
-        -- Key to copy name to clipboard
-        copy_name = "ctrl-n",
-        -- Key to append value to buffer
-        append_value = "ctrl-a",
-        -- Key to append name to buffer
-        append_name = "enter",
+        copy_value = "ctrl-y",  -- Copy variable value to clipboard
+        copy_name = "ctrl-n",   -- Copy variable name to clipboard
+        append_value = "ctrl-a", -- Append value at cursor position
+        append_name = "enter",   -- Append name at cursor position
       },
     }
   }
 })
 ```
+
+You can trigger the FZF picker using `:EcologFzf` command.
 
 #### Features
 

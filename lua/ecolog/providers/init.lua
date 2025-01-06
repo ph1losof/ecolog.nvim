@@ -9,11 +9,6 @@ M.providers = setmetatable({}, {
   end,
 })
 
--- Use utils require_on_demand instead of local providers_cache
-local function load_provider(name)
-  return utils.require_on_demand("ecolog.providers." .. name)
-end
-
 -- Load providers
 function M.load_providers()
   if M._providers_loaded then

@@ -96,8 +96,7 @@ M.providers = {
     get_completion_trigger = function()
       return "os.environ['"
     end,
-  }
+  },
 }
 
 return M.providers
-

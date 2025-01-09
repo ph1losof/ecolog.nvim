@@ -20,6 +20,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Usage](#-usage)
 - [Environment File Priority](#-environment-file-priority)
 - [Shell Variables Integration](#-shell-variables-integration)
+- [vim.env Module](#-vim-env-module)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
@@ -254,6 +255,7 @@ This affects all features that extract variables from code (peek, goto definitio
 | `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                      |
 | `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
 | `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
+| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)     |
 
 ### 📝 Environment File Priority
 
@@ -335,6 +337,47 @@ require('ecolog').setup({
 2. Consider using `transform` to clearly mark shell-sourced variables
 3. Be mindful of the `override` setting when working with both shell and .env variables
 4. Apply shelter mode settings to shell variables containing sensitive data
+
+## 💡 vim.env Module
+
+Ecolog can automatically sync your environment variables with Neovim's built-in `vim.env` table, making them available to any Neovim process or plugin.
+
+### Configuration
+
+Enable vim.env module in your setup:
+
+```lua
+{
+  vim_env = true, -- false by default
+}
+```
+
+### Features
+
+- Automatically syncs environment variables to `vim.env`
+- Updates `vim.env` in real-time when environment files change
+- Cleans up variables when they are removed from the environment file
+- Provides commands to inspect the current state
+
+### Commands
+
+| Command         | Description                                      |
+| --------------- | ------------------------------------------------ |
+| `:EcologEnvGet` | Get the value of a specific environment variable |
+
+### Example
+
+```lua
+-- In your config
+require('ecolog').setup({
+  vim_env = true,
+  -- ... other options
+})
+
+-- After setup, variables from your .env file will be available in vim.env:
+print(vim.env.DATABASE_URL) -- prints your database URL
+print(vim.env.API_KEY)      -- prints your API key
+```
 
 ## 💡 Custom Environment File Patterns
 

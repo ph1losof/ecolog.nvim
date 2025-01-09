@@ -30,6 +30,7 @@ local DEFAULT_CONFIG = {
     blink_cmp = false,
     fzf = false,
   },
+  vim_env = false,
   types = true,
   custom_types = {},
   preferred_environment = "",
@@ -81,7 +82,16 @@ local state = {
   current_watcher_group = nil,
   selected_env_file = nil,
   _providers_loaded = false,
+  _env_module = nil,
 }
+
+local function get_env_module()
+  if not state._env_module then
+    state._env_module = require("ecolog.env")
+    state._env_module.setup()
+  end
+  return state._env_module
+end
 
 local function parse_env_line(line, file_path)
   if not line:match(utils.PATTERNS.env_line) then
@@ -263,6 +273,9 @@ local function setup_file_watcher(opts)
         state.cached_env_files = nil
         state.last_opts = nil
         M.refresh_env_vars(opts)
+        if state._env_module then
+          state._env_module.update_env_vars()
+        end
         notify("Environment file updated: " .. fn.fnamemodify(state.selected_env_file, ":t"), vim.log.levels.INFO)
       end,
     })
@@ -389,7 +402,7 @@ end
 function M.setup(opts)
   -- Merge user options with defaults
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
-  
+
   -- Normalize provider_patterns to table format
   if type(config.provider_patterns) == "boolean" then
     config.provider_patterns = {
@@ -402,7 +415,7 @@ function M.setup(opts)
       cmp = true,
     }, config.provider_patterns)
   end
-  
+
   state.last_opts = config
 
   if config.integrations.blink_cmp then
@@ -549,6 +562,9 @@ function M.setup(opts)
             setup_file_watcher(config)
             state.cached_env_files = nil
             M.refresh_env_vars(config)
+            if state._env_module then
+              state._env_module.update_env_vars()
+            end
             notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
           end
         end)
@@ -629,6 +645,10 @@ function M.setup(opts)
       desc = cmd.desc,
       complete = cmd.complete,
     })
+  end
+
+  if opts.vim_env then
+    get_env_module()
   end
 end
 

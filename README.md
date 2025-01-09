@@ -20,7 +20,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Usage](#-usage)
 - [Environment File Priority](#-environment-file-priority)
 - [Shell Variables Integration](#-shell-variables-integration)
-- [vim.env Module](#-vim-env-module)
+- [vim.env Integration](#-vimenv-integration)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
@@ -338,7 +338,7 @@ require('ecolog').setup({
 3. Be mindful of the `override` setting when working with both shell and .env variables
 4. Apply shelter mode settings to shell variables containing sensitive data
 
-## 💡 vim.env Module
+## 💡 vim.env Integration
 
 Ecolog can automatically sync your environment variables with Neovim's built-in `vim.env` table, making them available to any Neovim process or plugin.
 

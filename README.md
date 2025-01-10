@@ -257,15 +257,7 @@ This affects all features that extract variables from code (peek, goto definitio
 | `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
 | `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)     |
 
-### 📝 Environment File Priority
-
-Files are loaded in the following priority order:
-
-1. `.env.{preferred_environment}` (if preferred_environment is set)
-2. `.env`
-3. Other `.env.*` files (alphabetically)
-
-## 🔌 Environment File Priority
+## 📝 Environment File Priority
 
 Files are loaded in the following priority order:
 

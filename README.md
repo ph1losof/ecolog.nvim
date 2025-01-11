@@ -194,49 +194,63 @@ This affects all features that extract variables from code (peek, goto definitio
 
 ## ✨ Features
 
-🔍 **Environment Variable Peeking**
+🔍 **Advanced Environment Variable Management**
 
-- Quick peek at environment variable values and metadata
-- Intelligent context detection
-- Type-aware value display
-- Preview inline comments directly in your code
+- Intelligent variable detection across multiple languages
+- Real-time file monitoring and cache updates
+- Support for custom environment file patterns
+- Priority-based environment file loading
+- Shell variables integration
+- vim.env synchronization
 
 🤖 **Smart Autocompletion**
 
-- Integration with nvim-cmp
-- Context-aware suggestions
-- Type-safe completions
+- Context-aware suggestions with nvim-cmp and blink-cmp
+- Type-safe completions with validation
 - Intelligent provider detection
+- Language-specific completion triggers
+- Comment and metadata support in completions
 
-🛡️ **Shelter Mode Protection**
+🛡️ **Enhanced Security Features**
 
-- Mask sensitive values in completion menu
-- Visual protection for .env file content
-- Secure value peeking with masking
-- Flexible per-feature control
+- Configurable shelter mode for sensitive data
+- Partial masking with customizable patterns
+- Per-feature security controls
 - Real-time visual masking
+- Temporary value reveal functionality
+- Screen sharing protection
 
-🔄 **Real-time Updates**
+🔄 **Integrations**
 
-- Automatic cache management
-- Live environment file monitoring
-- Instant mask updates
-- File change detection
+- LSP integration for hover and definition
+- Telescope integration with fuzzy finding
+- FZF integration with preview support
+- LSP Saga integration
+- Custom provider API for language support
 
 📁 **Multi-Environment Support**
 
 - Multiple .env file handling
-- Priority-based file loading
+- Custom file pattern matching
+- Priority-based loading system
 - Environment-specific configurations
-- Smart file selection
+- Custom sort functions for file priority
 
-💡 **Intelligent Type System**
+💡 **Type System**
 
-- Automatic type inference
-- Type validation and checking
-- Smart type suggestions
+- Built-in type validation
 - Custom type definitions
-- Context-based type detection
+- Pattern-based type detection
+- Value transformation support
+- Type-aware completion and validation
+
+🎨 **UI/UX Features**
+
+- Theme integration with existing colorschemes
+- Customizable highlighting
+- Rich preview windows
+- Inline documentation
+- Status indicators
 
 ## 🚀 Usage
 

@@ -34,10 +34,11 @@ function M:get_trigger_characters()
   for _, provider in ipairs(_providers.get_providers(ft)) do
     if provider.get_completion_trigger then
       local trigger = provider.get_completion_trigger()
-      for char in trigger:gmatch(".") do
-        if not seen[char] then
-          seen[char] = true
-          table.insert(chars, char)
+      local parts = vim.split(trigger, ".", { plain = true })
+      for _, part in ipairs(parts) do
+        if not seen[part] then
+          seen[part] = true
+          table.insert(chars, ".")
         end
       end
     end
@@ -54,14 +55,24 @@ end
 function M:get_completions(ctx, callback)
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
-    callback({ context = ctx, items = {} })
+    callback({ 
+      context = ctx, 
+      items = {}, 
+      is_incomplete_forward = true,
+      is_incomplete_backward = true
+    })
     return function() end
   end
 
   local config = ecolog.get_config()
   local env_vars = ecolog.get_env_vars()
   if vim.tbl_count(env_vars) == 0 then
-    callback({ context = ctx, items = {} })
+    callback({ 
+      context = ctx, 
+      items = {}, 
+      is_incomplete_forward = true,
+      is_incomplete_backward = true
+    })
     return function() end
   end
 
@@ -70,6 +81,7 @@ function M:get_completions(ctx, callback)
   local cursor = ctx.cursor[2]
   local line = ctx.line
   local before_line = string.sub(line, 1, cursor)
+  
   local should_complete = false
   local matched_provider
 
@@ -102,7 +114,12 @@ function M:get_completions(ctx, callback)
   end
 
   if not should_complete then
-    callback({ context = ctx, items = {} })
+    callback({ 
+      context = ctx, 
+      items = {}, 
+      is_incomplete_forward = true,
+      is_incomplete_backward = true
+    })
     return function() end
   end
 
@@ -136,7 +153,12 @@ function M:get_completions(ctx, callback)
     table.insert(items, item)
   end
 
-  callback({ context = ctx, items = items })
+  callback({ 
+    context = ctx, 
+    items = items,
+    is_incomplete_forward = true,
+    is_incomplete_backward = true
+  })
   return function() end
 end
 

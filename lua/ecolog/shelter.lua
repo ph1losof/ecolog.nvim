@@ -336,6 +336,7 @@ local function setup_telescope_shelter()
                         if actual_value then
                           local masked_value = determine_masked_value(actual_value, {
                             partial_mode = state.config.partial_mode,
+                            key = string_sub(line, 1, eq_pos - 1):match("^%s*(.-)%s*$"),
                           })
 
                           if masked_value and #masked_value > 0 then
@@ -456,6 +457,7 @@ local function setup_fzf_shelter()
             if actual_value then
               local masked_value = determine_masked_value(actual_value, {
                 partial_mode = state.config.partial_mode,
+                key = string_sub(line, 1, eq_pos - 1):match("^%s*(.-)%s*$"),
               })
 
               if masked_value and #masked_value > 0 then

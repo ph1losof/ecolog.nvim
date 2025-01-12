@@ -125,7 +125,7 @@ function M:get_completions(ctx, callback)
 
   local items = {}
   for var_name, var_info in pairs(env_vars) do
-    local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp") or var_info.value
+    local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name) or var_info.value
 
     local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
     if var_info.comment then

@@ -35,8 +35,8 @@ local function setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
 end
 
-local function get_masked_value(value)
-  return shelter.mask_value(value, "telescope")
+local function get_masked_value(value, key)
+  return shelter.mask_value(value, "telescope", key)
 end
 
 local function env_picker(opts)
@@ -68,7 +68,7 @@ local function env_picker(opts)
       finder = finders.new_table({
         results = results,
         entry_maker = function(entry)
-          local display_value = get_masked_value(entry.value)
+          local display_value = get_masked_value(entry.value, entry.name)
           return {
             value = entry,
             display = string.format("%-30s = %s", entry.name, display_value),
@@ -82,7 +82,7 @@ local function env_picker(opts)
         if config.mappings.copy_value then
           map("i", config.mappings.copy_value, function()
             local selection = action_state.get_selected_entry()
-            local value = config.shelter.mask_on_copy and get_masked_value(selection.value.value)
+            local value = config.shelter.mask_on_copy and get_masked_value(selection.value.value, selection.value.name)
               or selection.value.value
             vim.fn.setreg("+", value)
             actions.close(prompt_bufnr)
@@ -121,7 +121,7 @@ local function env_picker(opts)
         if config.mappings.append_value then
           map("i", config.mappings.append_value, function()
             local selection = action_state.get_selected_entry()
-            local value = config.shelter.mask_on_copy and get_masked_value(selection.value.value)
+            local value = config.shelter.mask_on_copy and get_masked_value(selection.value.value, selection.value.name)
               or selection.value.value
             actions.close(prompt_bufnr)
             local cursor = vim.api.nvim_win_get_cursor(0)
@@ -137,6 +137,12 @@ local function env_picker(opts)
       end,
     })
     :find()
+end
+
+local function make_display(entry)
+  local value = entry.value
+  local display_value = config.shelter.mask_on_copy and get_masked_value(value, entry.name) or value
+  return string.format("%s = %s", entry.name, display_value)
 end
 
 return telescope.register_extension({

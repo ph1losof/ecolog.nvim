@@ -70,14 +70,32 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Enables shelter mode for sensitive values
     shelter = {
         configuration = {
-            partial_mode = false, -- false by default, disables partial mode, for more control check out shelter partial mode
+            -- Partial mode configuration:
+            -- false: completely mask values (default)
+            -- true: use default partial masking settings
+            -- table: customize partial masking
+            -- partial_mode = false,
+            -- or with custom settings:
+            partial_mode = {
+                show_start = 3,    -- Show first 3 characters
+                show_end = 3,      -- Show last 3 characters
+                min_mask = 3,      -- Minimum masked characters
+            },
             mask_char = "*",   -- Character used for masking
+            -- Default masking mode when no pattern matches
+            default_mode = "partial", -- Can be "none", "partial", or "full"
+            -- Pattern-based masking rules
+            patterns = {
+                ["*_TOKEN"] = "full",      -- Always fully mask TOKEN variables
+                ["*_API_KEY"] = "partial", -- Use partial masking for API keys
+                ["*_PUBLIC_*"] = "none",   -- Don't mask public variables
+            }
         },
         modules = {
-            cmp = true,       -- Mask values in completion
+            cmp = false,       -- Mask values in completion
             peek = false,      -- Mask values in peek view
             files = false,     -- Mask values in files
-            telescope = false, -- Mask values in telescope
+            telescope = false, -- Mask values in telescope integration
             telescope_previewer = false, -- Mask values in telescope preview buffers
             fzf = false,       -- Mask values in fzf picker
             fzf_previewer = false, -- Mask values in fzf preview buffers
@@ -832,6 +850,14 @@ require('ecolog').setup({
                 min_mask = 3,      -- Minimum masked characters
             },
             mask_char = "*",   -- Character used for masking
+            -- Default masking mode when no pattern matches
+            default_mode = "partial", -- Can be "none", "partial", or "full"
+            -- Pattern-based masking rules
+            patterns = {
+                ["*_TOKEN"] = "full",      -- Always fully mask TOKEN variables
+                ["*_API_KEY"] = "partial", -- Use partial masking for API keys
+                ["*_PUBLIC_*"] = "none",   -- Don't mask public variables
+            }
         },
         modules = {
             cmp = false,       -- Mask values in completion
@@ -916,6 +942,28 @@ Three modes of operation:
    }
    -- Example: "my-secret-key" -> "my-s***ey"
    ```
+
+4. **Pattern-Based Masking**
+   ```lua
+   patterns = {
+       ["*_TOKEN"] = "full",      -- Always fully mask TOKEN variables
+       ["*_API_KEY"] = "partial", -- Use partial masking for API keys
+       ["*_PUBLIC_*"] = "none",   -- Don't mask public variables
+   }
+   ```
+
+   Pattern modes:
+   - `"full"`: Always fully mask the value
+   - `"partial"`: Use partial masking (according to partial_mode settings)
+   - `"none"`: Don't mask the value
+
+   If a variable name doesn't match any pattern, the `default_mode` setting is used.
+   This can be set to:
+   - `"partial"`: Use partial masking (default)
+   - `"full"`: Fully mask all unmatched variables
+   - `"none"`: Don't mask unmatched variables
+
+   Patterns support glob-style matching with `*` for any characters.
 
 #### 1. Completion Protection (cmp)
 

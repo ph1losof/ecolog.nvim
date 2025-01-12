@@ -45,6 +45,8 @@ local state = {
   config = {
     partial_mode = false,
     mask_char = "*",
+    patterns = {},
+    default_mode = "full",
   },
   features = {
     enabled = {},
@@ -62,20 +64,54 @@ local state = {
 ---@field config? ShelterConfiguration
 ---@field partial? table<string, boolean>
 
+-- Helper function to check if a key matches any pattern
+local function matches_shelter_pattern(key)
+  if not key or not state.config.patterns or vim.tbl_isempty(state.config.patterns) then
+    return nil
+  end
+
+  for pattern, mode in pairs(state.config.patterns) do
+    -- Convert glob pattern to Lua pattern
+    local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+    if key:match("^" .. lua_pattern .. "$") then
+      return mode
+    end
+  end
+
+  return nil
+end
+
 local function determine_masked_value(value, opts)
   if not value or value == "" then
     return ""
   end
 
   opts = opts or {}
-  local partial_mode = opts.partial_mode or state.config.partial_mode
-
-  if not partial_mode then
-    return string_rep(state.config.mask_char, #value)
+  local key = opts.key
+  local pattern_mode = key and matches_shelter_pattern(key)
+  
+  -- If pattern matched
+  if pattern_mode then
+    if pattern_mode == "none" then
+      return value
+    elseif pattern_mode == "full" then
+      return string_rep(state.config.mask_char, #value)
+    end
+    -- pattern_mode must be "partial", continue to partial masking
+  else
+    -- No pattern matched, use default_mode
+    if state.config.default_mode == "none" then
+      return value
+    elseif state.config.default_mode == "full" then
+      return string_rep(state.config.mask_char, #value)
+    end
+    -- default_mode must be "partial", continue to partial masking
   end
 
+  -- At this point, we either have pattern_mode == "partial" or default_mode == "partial"
   -- Get settings from partial mode config
-  local settings = type(partial_mode) == "table" and partial_mode or DEFAULT_PARTIAL_MODE
+  local settings = type(state.config.partial_mode) == "table" and state.config.partial_mode or DEFAULT_PARTIAL_MODE
+
   local show_start = math.max(0, settings.show_start or 0)
   local show_end = math.max(0, settings.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or 1)
@@ -139,6 +175,7 @@ local function shelter_buffer()
       local masked_value = state.buffer.revealed_lines[i] and actual_value
         or determine_masked_value(actual_value, {
           partial_mode = state.config.partial_mode,
+          key = key,
         })
 
       if masked_value and #masked_value > 0 then
@@ -460,6 +497,20 @@ function M.setup(opts)
     end
 
     state.config.mask_char = opts.config.mask_char or "*"
+    
+    -- Add patterns configuration
+    if opts.config.patterns then
+      state.config.patterns = opts.config.patterns
+    end
+
+    -- Add default_mode configuration
+    if opts.config.default_mode then
+      if not vim.tbl_contains({ "none", "partial", "full" }, opts.config.default_mode) then
+        notify("Invalid default_mode. Using 'partial'.", vim.log.levels.WARN)
+      else
+        state.config.default_mode = opts.config.default_mode
+      end
+    end
   end
 
   local partial = opts.partial or {}
@@ -482,7 +533,7 @@ function M.setup(opts)
   end
 end
 
-function M.mask_value(value, feature)
+function M.mask_value(value, feature, key)
   if not value then
     return ""
   end
@@ -492,6 +543,7 @@ function M.mask_value(value, feature)
 
   return determine_masked_value(value, {
     partial_mode = state.config.partial_mode,
+    key = key,
   })
 end
 

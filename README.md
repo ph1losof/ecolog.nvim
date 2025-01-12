@@ -84,13 +84,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             mask_char = "*",   -- Character used for masking
         },
         modules = {
-            cmp = false,       -- Mask values in completion
+            cmp = true,       -- Mask values in completion
             peek = false,      -- Mask values in peek view
-            files = false,     -- Mask values in files (boolean) or detailed config (table)
-            -- or with detailed configuration:
-            files = {
-                shelter_on_leave = false,  -- Re-enable shelter when leaving buffer even if disabled by user
-            },
+            files = true,
             telescope = false, -- Mask values in telescope integration
             telescope_previewer = false, -- Mask values in telescope preview buffers
             fzf = false,       -- Mask values in fzf picker

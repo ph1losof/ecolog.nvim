@@ -379,11 +379,15 @@ end
 ---@class ShelterModules
 ---@field cmp boolean Mask values in completion menu
 ---@field peek boolean Mask values in peek view
----@field files boolean Mask values in environment files
+---@field files boolean|FilesModuleConfig Mask values in environment files
 ---@field telescope boolean Mask values in telescope picker
 ---@field telescope_previewer boolean Mask values in telescope preview buffers
 ---@field fzf boolean Mask values in fzf picker
 ---@field fzf_previewer boolean Mask values in fzf preview buffers
+
+---@class FilesModuleConfig
+---@field enabled boolean Enable masking in environment files
+---@field shelter_on_leave boolean Re-enable shelter when leaving buffer even if disabled by user
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration for hover and goto-definition

@@ -47,6 +47,7 @@ local state = {
     mask_char = "*",
     patterns = {},
     default_mode = "full",
+    shelter_on_leave = false,
   },
   features = {
     enabled = {},
@@ -218,6 +219,18 @@ local function setup_file_shelter()
         else
           unshelter_buffer()
         end
+      end
+    end,
+    group = group,
+  })
+
+  api.nvim_create_autocmd("BufLeave", {
+    pattern = watch_patterns,
+    callback = function(ev)
+      local filename = vim.fn.fnamemodify(ev.file, ":t")
+      if match_env_file(filename, config) and state.config.shelter_on_leave then
+        state.features.enabled.files = true
+        shelter_buffer()
       end
     end,
     group = group,
@@ -494,22 +507,18 @@ function M.setup(opts)
   opts = opts or {}
 
   if opts.config then
-    -- Handle partial_mode first as it affects default_mode
     if type(opts.config.partial_mode) == "boolean" then
       state.config.partial_mode = opts.config.partial_mode and DEFAULT_PARTIAL_MODE or false
-      -- Set default_mode based on partial_mode unless it's explicitly set
       if opts.config.default_mode == nil then
         state.config.default_mode = opts.config.partial_mode and "partial" or "full"
       end
     elseif type(opts.config.partial_mode) == "table" then
       state.config.partial_mode = tbl_deep_extend("force", DEFAULT_PARTIAL_MODE, opts.config.partial_mode)
-      -- Set default_mode to partial unless it's explicitly set
       if opts.config.default_mode == nil then
         state.config.default_mode = "partial"
       end
     else
       state.config.partial_mode = false
-      -- Set default_mode to full unless it's explicitly set
       if opts.config.default_mode == nil then
         state.config.default_mode = "full"
       end
@@ -517,12 +526,10 @@ function M.setup(opts)
 
     state.config.mask_char = opts.config.mask_char or "*"
 
-    -- Add patterns configuration
     if opts.config.patterns then
       state.config.patterns = opts.config.patterns
     end
 
-    -- Handle explicit default_mode configuration
     if opts.config.default_mode then
       if not vim.tbl_contains({ "none", "partial", "full" }, opts.config.default_mode) then
         notify("Invalid default_mode. Using '" .. state.config.default_mode .. "'.", vim.log.levels.WARN)
@@ -535,8 +542,22 @@ function M.setup(opts)
   local partial = opts.partial or {}
   for _, feature in ipairs(FEATURES) do
     local value = type(partial[feature]) == "boolean" and partial[feature] or false
-    state.features.initial[feature] = value
-    state.features.enabled[feature] = value
+    if feature == "files" then
+      if type(partial[feature]) == "table" then
+        state.features.enabled[feature] = true
+        state.features.initial[feature] = true
+        state.config.shelter_on_leave = partial[feature].shelter_on_leave
+      else
+        state.features.enabled[feature] = value
+        state.features.initial[feature] = value
+        if value then
+          state.config.shelter_on_leave = true
+        end
+      end
+    else
+      state.features.initial[feature] = value
+      state.features.enabled[feature] = value
+    end
   end
 
   if state.features.enabled.files then
@@ -618,8 +639,10 @@ function M.set_state(command, feature)
       if should_enable then
         setup_file_shelter()
         shelter_buffer()
+        state.config.shelter_on_leave = true
       else
         unshelter_buffer()
+        state.config.shelter_on_leave = false
       end
     end
     notify(
@@ -629,6 +652,9 @@ function M.set_state(command, feature)
   else
     for _, f in ipairs(FEATURES) do
       state.features.enabled[f] = should_enable
+      if f == "files" then
+        state.config.shelter_on_leave = should_enable
+      end
     end
     if should_enable then
       setup_file_shelter()

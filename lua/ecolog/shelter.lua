@@ -195,13 +195,29 @@ end
 local function setup_file_shelter()
   local group = api.nvim_create_augroup("ecolog_shelter", { clear = true })
 
+  local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+  local watch_patterns = {}
+
+  if not config.env_file_pattern then
+    watch_patterns = { ".env*" }
+  else
+    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern } or config.env_file_pattern
+    for _, pattern in ipairs(patterns) do
+      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
+      table.insert(watch_patterns, glob_pattern:gsub("^%.%+/", ""))
+    end
+  end
+
   api.nvim_create_autocmd({ "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
-    pattern = ".env*",
-    callback = function()
-      if state.features.enabled.files then
-        shelter_buffer()
-      else
-        unshelter_buffer()
+    pattern = watch_patterns,
+    callback = function(ev)
+      local filename = vim.fn.fnamemodify(ev.file, ":t")
+      if match_env_file(filename, config) then
+        if state.features.enabled.files then
+          shelter_buffer()
+        else
+          unshelter_buffer()
+        end
       end
     end,
     group = group,

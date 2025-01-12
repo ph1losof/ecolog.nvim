@@ -94,7 +94,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
         modules = {
             cmp = false,       -- Mask values in completion
             peek = false,      -- Mask values in peek view
-            files = false,     -- Mask values in files
+            files = false,     -- Mask values in files (boolean) or detailed config (table)
+            -- or with detailed configuration:
+            files = {
+                shelter_on_leave = false,  -- Re-enable shelter when leaving buffer even if disabled by user
+            },
             telescope = false, -- Mask values in telescope integration
             telescope_previewer = false, -- Mask values in telescope preview buffers
             fzf = false,       -- Mask values in fzf picker
@@ -830,49 +834,43 @@ require('ecolog').setup({
 
 ## 🛡️ Shelter Mode
 
-Shelter mode provides a secure way to work with sensitive environment variables by masking their values in different contexts. This feature helps prevent accidental exposure of sensitive data like API keys, passwords, tokens, and other credentials.
+Shelter mode provides enhanced security for sensitive environment variables by masking their values. This is particularly useful during:
+- Screen sharing sessions
+- Recording tutorials
+- Live coding streams
+- Collaborative development
 
-### 🔧 Configuration
+### Configuration Options
 
+The `files` module can be configured in two ways:
+
+1. Simple boolean configuration:
 ```lua
-require('ecolog').setup({
-    shelter = {
-        configuration = {
-            -- Partial mode configuration:
-            -- false: completely mask values (default)
-            -- true: use default partial masking settings
-            -- table: customize partial masking
-            -- partial_mode = false,
-            -- or with custom settings:
-            partial_mode = {
-                show_start = 3,    -- Show first 3 characters
-                show_end = 3,      -- Show last 3 characters
-                min_mask = 3,      -- Minimum masked characters
-            },
-            mask_char = "*",   -- Character used for masking
-            -- Default masking mode when no pattern matches
-            default_mode = "partial", -- Can be "none", "partial", or "full"
-            -- Pattern-based masking rules
-            patterns = {
-                ["*_TOKEN"] = "full",      -- Always fully mask TOKEN variables
-                ["*_API_KEY"] = "partial", -- Use partial masking for API keys
-                ["*_PUBLIC_*"] = "none",   -- Don't mask public variables
-            }
-        },
-        modules = {
-            cmp = false,       -- Mask values in completion
-            peek = false,      -- Mask values in peek view
-            files = false,     -- Mask values in files
-            telescope = false, -- Mask values in telescope integration
-            telescope_previewer = false, -- Mask values in telescope preview buffers
-            fzf = false,       -- Mask values in fzf picker
-            fzf_previewer = false, -- Mask values in fzf preview buffers
-        }
-    },
-    path = vim.fn.getcwd(), -- Path to search for .env files
-    preferred_environment = "development", -- Optional: prioritize specific env files
-})
+shelter = {
+    modules = {
+        files = true  -- Simply enable/disable files module
+    }
+}
 ```
+
+2. Detailed configuration with `shelter_on_leave`:
+```lua
+shelter = {
+    modules = {
+        files = {
+            shelter_on_leave = false  -- Control automatic re-enabling of shelter when leaving buffer
+        }
+    }
+}
+```
+
+When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer, even if you manually disabled it. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
+
+### Available Commands
+
+`:EcologShelterToggle` - Toggle all shelter modes
+`:EcologShelterToggle enable/disable [feature]` - Enable/disable specific features
+`:EcologShelterLinePeek` - Temporarily reveal value on current line
 
 ### 🎯 Features
 

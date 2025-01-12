@@ -72,7 +72,7 @@ local function create_peek_content(var_name, var_info, types)
   highlights[1] = { "EcologVariable", 0, PATTERNS.label_width, PATTERNS.label_width + #var_name }
   highlights[2] = { "EcologType", 1, PATTERNS.label_width, PATTERNS.label_width + #display_type }
   highlights[3] = { "EcologSource", 2, PATTERNS.label_width, PATTERNS.label_width + #source }
-  highlights[4] = { "EcologValue", 3, PATTERNS.label_width, PATTERNS.label_width + #display_value }
+  highlights[4] = { shelter.is_enabled("peek") and shelter.get_config().highlight_group or "EcologValue", 3, PATTERNS.label_width, PATTERNS.label_width + #display_value }
 
   -- Add comment if exists
   if var_info.comment then

@@ -596,6 +596,10 @@ function M.is_enabled(feature)
   return state.features.enabled[feature] or false
 end
 
+function M.get_config()
+  return state.config
+end
+
 function M.toggle_all()
   local any_enabled = false
   for _, feature in ipairs(FEATURES) do

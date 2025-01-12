@@ -64,14 +64,12 @@ local state = {
 ---@field config? ShelterConfiguration
 ---@field partial? table<string, boolean>
 
--- Helper function to check if a key matches any pattern
 local function matches_shelter_pattern(key)
   if not key or not state.config.patterns or vim.tbl_isempty(state.config.patterns) then
     return nil
   end
 
   for pattern, mode in pairs(state.config.patterns) do
-    -- Convert glob pattern to Lua pattern
     local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
     if key:match("^" .. lua_pattern .. "$") then
       return mode
@@ -89,39 +87,31 @@ local function determine_masked_value(value, opts)
   opts = opts or {}
   local key = opts.key
   local pattern_mode = key and matches_shelter_pattern(key)
-  
-  -- If pattern matched
+
   if pattern_mode then
     if pattern_mode == "none" then
       return value
     elseif pattern_mode == "full" then
       return string_rep(state.config.mask_char, #value)
     end
-    -- pattern_mode must be "partial", continue to partial masking
   else
-    -- No pattern matched, use default_mode
     if state.config.default_mode == "none" then
       return value
     elseif state.config.default_mode == "full" then
       return string_rep(state.config.mask_char, #value)
     end
-    -- default_mode must be "partial", continue to partial masking
   end
 
-  -- At this point, we either have pattern_mode == "partial" or default_mode == "partial"
-  -- Get settings from partial mode config
   local settings = type(state.config.partial_mode) == "table" and state.config.partial_mode or DEFAULT_PARTIAL_MODE
 
   local show_start = math.max(0, settings.show_start or 0)
   local show_end = math.max(0, settings.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or 1)
 
-  -- If value is too short for partial masking, mask everything
   if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
     return string_rep(state.config.mask_char, #value)
   end
 
-  -- Calculate mask length ensuring min_mask requirement
   local mask_length = math.max(min_mask, #value - show_start - show_end)
 
   return string_sub(value, 1, show_start)
@@ -488,25 +478,38 @@ function M.setup(opts)
   opts = opts or {}
 
   if opts.config then
+    -- Handle partial_mode first as it affects default_mode
     if type(opts.config.partial_mode) == "boolean" then
       state.config.partial_mode = opts.config.partial_mode and DEFAULT_PARTIAL_MODE or false
+      -- Set default_mode based on partial_mode unless it's explicitly set
+      if opts.config.default_mode == nil then
+        state.config.default_mode = opts.config.partial_mode and "partial" or "full"
+      end
     elseif type(opts.config.partial_mode) == "table" then
       state.config.partial_mode = tbl_deep_extend("force", DEFAULT_PARTIAL_MODE, opts.config.partial_mode)
+      -- Set default_mode to partial unless it's explicitly set
+      if opts.config.default_mode == nil then
+        state.config.default_mode = "partial"
+      end
     else
       state.config.partial_mode = false
+      -- Set default_mode to full unless it's explicitly set
+      if opts.config.default_mode == nil then
+        state.config.default_mode = "full"
+      end
     end
 
     state.config.mask_char = opts.config.mask_char or "*"
-    
+
     -- Add patterns configuration
     if opts.config.patterns then
       state.config.patterns = opts.config.patterns
     end
 
-    -- Add default_mode configuration
+    -- Handle explicit default_mode configuration
     if opts.config.default_mode then
       if not vim.tbl_contains({ "none", "partial", "full" }, opts.config.default_mode) then
-        notify("Invalid default_mode. Using 'partial'.", vim.log.levels.WARN)
+        notify("Invalid default_mode. Using '" .. state.config.default_mode .. "'.", vim.log.levels.WARN)
       else
         state.config.default_mode = opts.config.default_mode
       end

@@ -1233,7 +1233,15 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
           mask_char = "█"  -- Use blocks
        }
    }
+   -- or
+   shelter = {
+       configuration = {
+          highlight_group = "NonText"  -- Use a different highlight group for masked values
+       }
+   }
    ```
+
+   The `highlight_group` option allows you to customize the highlight group used for masked values. By default, it uses the `Comment` highlight group. You can use any valid Neovim highlight group name.
 
 3. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
 

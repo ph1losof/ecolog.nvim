@@ -89,7 +89,7 @@ end
 -- Set up peek window autocommands
 local function setup_peek_autocommands(curbuf)
   -- Auto-close window on cursor move in main buffer
-  api.nvim_create_autocmd({ "CursorMoved", "InsertEnter", "BufDelete" }, {
+  api.nvim_create_autocmd({ "CursorMoved", "InsertEnter", "BufDelete", "BufWinLeave" }, {
     buffer = curbuf,
     callback = function(opt)
       if peek.winid and api.nvim_win_is_valid(peek.winid) and api.nvim_get_current_win() ~= peek.winid then

@@ -48,6 +48,7 @@ local state = {
     patterns = {},
     default_mode = "full",
     shelter_on_leave = false,
+    highlight_group = "Comment",
   },
   features = {
     enabled = {},
@@ -178,7 +179,7 @@ local function shelter_buffer()
           i - 1,
           eq_pos,
           {
-            virt_text = { { masked_value, state.buffer.revealed_lines[i] and "String" or "Comment" } },
+            virt_text = { { masked_value, state.buffer.revealed_lines[i] and "String" or state.config.highlight_group } },
             virt_text_pos = "overlay",
             hl_mode = "combine",
           },
@@ -329,9 +330,13 @@ local function setup_telescope_shelter()
 
                       if value then
                         local quote_char = string_match(value, "^([\"'])")
-                        local actual_value = quote_char
-                            and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
-                          or string_match(value, "^([^%s#]+)")
+                        local actual_value
+
+                        if quote_char then
+                          actual_value = string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+                        else
+                          actual_value = string_match(value, "^([^%s#]+)")
+                        end
 
                         if actual_value then
                           local masked_value = determine_masked_value(actual_value, {
@@ -348,7 +353,7 @@ local function setup_telescope_shelter()
                               j - 1,
                               eq_pos,
                               {
-                                virt_text = { { masked_value, "Comment" } },
+                                virt_text = { { masked_value, state.config.highlight_group } },
                                 virt_text_pos = "overlay",
                                 hl_mode = "combine",
                               },
@@ -426,33 +431,30 @@ local function setup_fzf_shelter()
     end
 
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-
     local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
 
     if processed_buffers[bufnr] and processed_buffers[bufnr].hash == content_hash then
       return
     end
 
-    vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-
-    pcall(vim.api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
-
-    local comment_pattern = "^%s*#"
-    local empty_pattern = "^%s*$"
-    local quote_pattern = "^([\"'])"
-
     local all_extmarks = {}
+
     for i, line in ipairs(lines) do
-      if not (string_find(line, comment_pattern) or string_find(line, empty_pattern)) then
+      if not (string_find(line, "^%s*#") or string_find(line, "^%s*$")) then
         local eq_pos = string_find(line, "=")
         if eq_pos then
           local value = string_sub(line, eq_pos + 1)
           value = string_match(value, "^%s*(.-)%s*$")
 
           if value then
-            local quote_char = string_match(value, quote_pattern)
-            local actual_value = quote_char and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
-              or string_match(value, "^([^%s#]+)")
+            local quote_char = string_match(value, "^([\"'])")
+            local actual_value
+
+            if quote_char then
+              actual_value = string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+            else
+              actual_value = string_match(value, "^([^%s#]+)")
+            end
 
             if actual_value then
               local masked_value = determine_masked_value(actual_value, {
@@ -469,7 +471,7 @@ local function setup_fzf_shelter()
                   i - 1,
                   eq_pos,
                   {
-                    virt_text = { { masked_value, "Comment" } },
+                    virt_text = { { masked_value, state.config.highlight_group } },
                     virt_text_pos = "overlay",
                     hl_mode = "combine",
                   },
@@ -527,6 +529,7 @@ function M.setup(opts)
     end
 
     state.config.mask_char = opts.config.mask_char or "*"
+    state.config.highlight_group = opts.config.highlight_group or "Comment"
 
     if opts.config.patterns then
       state.config.patterns = opts.config.patterns

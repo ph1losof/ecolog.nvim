@@ -375,6 +375,7 @@ end
 ---@class ShelterConfiguration
 ---@field partial_mode boolean|table Partial masking configuration. When false (default), completely masks values. When true, uses default partial masking. When table, customizes partial masking.
 ---@field mask_char string Character used for masking sensitive values
+---@field highlight_group string The highlight group to use for masked values (default: "Comment")
 
 ---@class ShelterModules
 ---@field cmp boolean Mask values in completion menu

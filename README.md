@@ -82,14 +82,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
                 min_mask = 3,      -- Minimum masked characters
             },
             mask_char = "*",   -- Character used for masking
-            -- Default masking mode when no pattern matches
-            default_mode = "partial", -- Can be "none", "partial", or "full"
-            -- Pattern-based masking rules
-            patterns = {
-                ["*_TOKEN"] = "full",      -- Always fully mask TOKEN variables
-                ["*_API_KEY"] = "partial", -- Use partial masking for API keys
-                ["*_PUBLIC_*"] = "none",   -- Don't mask public variables
-            }
         },
         modules = {
             cmp = false,       -- Mask values in completion
@@ -835,6 +827,7 @@ require('ecolog').setup({
 ## 🛡️ Shelter Mode
 
 Shelter mode provides enhanced security for sensitive environment variables by masking their values. This is particularly useful during:
+
 - Screen sharing sessions
 - Recording tutorials
 - Live coding streams
@@ -845,6 +838,7 @@ Shelter mode provides enhanced security for sensitive environment variables by m
 The `files` module can be configured in two ways:
 
 1. Simple boolean configuration:
+
 ```lua
 shelter = {
     modules = {
@@ -854,6 +848,7 @@ shelter = {
 ```
 
 2. Detailed configuration with `shelter_on_leave`:
+
 ```lua
 shelter = {
     modules = {
@@ -864,7 +859,7 @@ shelter = {
 }
 ```
 
-When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer, even if you manually disabled it. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
+When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
 
 ### Available Commands
 

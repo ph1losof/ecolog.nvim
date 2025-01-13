@@ -73,6 +73,7 @@ local select = utils.get_module("ecolog.select")
 local peek = utils.get_module("ecolog.peek")
 local shelter = utils.get_module("ecolog.shelter")
 local types = utils.get_module("ecolog.types")
+local shell = utils.get_module("ecolog.shell")
 
 local state = {
   env_vars = {},
@@ -176,34 +177,11 @@ local function parse_env_file(opts, force)
       or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
     )
   then
-    local shell_vars = vim.fn.environ()
-    local shell_config = type(opts.load_shell) == "table" and opts.load_shell or { enabled = true }
+    local shell_vars, shell_config = shell.load_shell_vars(opts.load_shell)
 
-    if shell_config.filter then
-      local filtered_vars = {}
-      for key, value in pairs(shell_vars) do
-        if shell_config.filter(key, value) then
-          filtered_vars[key] = value
-        end
-      end
-      shell_vars = filtered_vars
-    end
-
-    for key, value in pairs(shell_vars) do
-      if shell_config.transform then
-        value = shell_config.transform(key, value)
-      end
-
-      local type_name, transformed_value = types.detect_type(value)
-
+    for key, var_info in pairs(shell_vars) do
       if shell_config.override or not state.env_vars[key] then
-        state.env_vars[key] = {
-          value = transformed_value or value,
-          type = type_name,
-          raw_value = value,
-          source = "shell",
-          comment = nil,
-        }
+        state.env_vars[key] = var_info
       end
     end
   end

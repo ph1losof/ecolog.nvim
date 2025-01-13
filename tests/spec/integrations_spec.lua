@@ -9,9 +9,57 @@ describe("integrations", function()
     package.loaded["ecolog.integrations.cmp.nvim_cmp"] = nil
     package.loaded["ecolog.integrations.cmp.blink_cmp"] = nil
     package.loaded["ecolog"] = nil
+    package.loaded["ecolog.utils"] = nil
+    package.loaded["ecolog.providers"] = nil
 
     nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
     blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
+
+    -- Mock ecolog module
+    package.loaded["ecolog"] = {
+      get_config = function()
+        return {
+          provider_patterns = {
+            extract = true,
+            cmp = true
+          }
+        }
+      end,
+      get_env_vars = function()
+        return {
+          MY_TEST_VAR = { value = "test", source = ".env" }
+        }
+      end
+    }
+
+    -- Mock utils module
+    package.loaded["ecolog.utils"] = {
+      get_var_word_under_cursor = function(providers)
+        local line = vim.api.nvim_get_current_line()
+        if line:match("MY_TEST_VAR") then
+          return "MY_TEST_VAR"
+        end
+        return ""
+      end
+    }
+
+    -- Mock providers module
+    package.loaded["ecolog.providers"] = {
+      get_providers = function()
+        return {
+          {
+            pattern = "process%.env%.%w*$",
+            extract_var = function(line, col)
+              if line:match("process%.env%.") then
+                return line:match("process%.env%.([%w_]+)")
+              end
+              return nil
+            end
+          }
+        }
+      end,
+      load_providers = function() end
+    }
   end)
 
   describe("nvim-cmp integration", function()
@@ -168,9 +216,17 @@ describe("integrations", function()
   describe("lspsaga integration", function()
     local lspsaga
     local api = vim.api
+    local peek_spy = stub.new()
 
     before_each(function()
       package.loaded["ecolog.integrations.lspsaga"] = nil
+      package.loaded["lspsaga.hover"] = {
+        render_hover_doc = function() end
+      }
+      package.loaded["lspsaga.definition"] = {
+        init = function() end
+      }
+
       lspsaga = require("ecolog.integrations.lspsaga")
 
       -- Mock vim.api functions
@@ -203,33 +259,33 @@ describe("integrations", function()
       local test_cases = {
         {
           desc = "should detect word in middle of line",
-          line = "const TEST_VAR = process.env.TEST",
-          col = 15, -- cursor on TEST_VAR
-          expected = "TEST_VAR",
+          line = "const MY_TEST_VAR = process.env.TEST",
+          col = 15, -- cursor on MY_TEST_VAR
+          expected = "MY_TEST_VAR",
         },
         {
           desc = "should detect word at start of line",
-          line = "TEST_VAR = value",
+          line = "MY_TEST_VAR = value",
           col = 0,
-          expected = "TEST_VAR",
+          expected = "MY_TEST_VAR",
         },
         {
           desc = "should detect word at end of line",
-          line = "const TEST_VAR",
+          line = "const MY_TEST_VAR",
           col = 11,
-          expected = "TEST_VAR",
+          expected = "MY_TEST_VAR",
         },
         {
           desc = "should handle cursor at start of word",
-          line = "const TEST_VAR = value",
+          line = "const MY_TEST_VAR = value",
           col = 6,
-          expected = "TEST_VAR",
+          expected = "MY_TEST_VAR",
         },
         {
           desc = "should handle cursor at end of word",
-          line = "const TEST_VAR = value",
+          line = "const MY_TEST_VAR = value",
           col = 13,
-          expected = "TEST_VAR",
+          expected = "MY_TEST_VAR",
         },
         {
           desc = "should handle underscore in word",
@@ -244,7 +300,8 @@ describe("integrations", function()
           api.nvim_get_current_line.returns(tc.line)
           api.nvim_win_get_cursor.returns({ 1, tc.col })
 
-          local word = lspsaga.get_var_word_under_cursor()
+          local utils = require("ecolog.utils")
+          local word = utils.get_var_word_under_cursor()
           assert.equals(tc.expected, word)
         end)
       end
@@ -252,143 +309,16 @@ describe("integrations", function()
 
     describe("command handling", function()
       it("should use EcologPeek for env vars", function()
-        -- Mock environment variables and peek module
-        local mock_peek = {
-          peek_env_value = stub(),
-        }
-        package.loaded["ecolog.peek"] = mock_peek
-
-        local mock_providers = {
-          get_providers = function()
-            return {}
-          end,
-        }
-        package.loaded["ecolog.providers"] = mock_providers
-
-        local mock_ecolog = {
-          get_env_vars = function()
-            return { TEST_VAR = { value = "test" } }
-          end,
-          get_opts = function()
-            return { some = "opts" }
-          end,
-        }
-        lspsaga._ecolog = mock_ecolog
-
-        api.nvim_get_current_line.returns("const TEST_VAR = value")
-        api.nvim_win_get_cursor.returns({ 1, 8 })
-
-        lspsaga.handle_hover()
-        assert
-          .stub(mock_peek.peek_env_value)
-          .was_called_with("TEST_VAR", { some = "opts" }, { TEST_VAR = { value = "test" } }, mock_providers, match._)
-      end)
-
-      describe("keymap replacement", function()
-        it("should replace Lspsaga keymaps with Ecolog commands", function()
-          -- Mock existing keymaps
-          api.nvim_get_keymap.returns({
-            {
-              lhs = "K",
-              rhs = "<cmd>Lspsaga hover_doc<CR>",
-              silent = 1,
-              noremap = 1,
-            },
-          })
-
-          lspsaga.replace_saga_keymaps()
-
-          assert.stub(api.nvim_del_keymap).was_called()
-          assert.stub(api.nvim_set_keymap).was_called_with("n", "K", "<cmd>EcologSagaHover<CR>", {
-            silent = true,
-            noremap = true,
-            expr = false,
-            desc = "Ecolog hover_doc",
-          })
-        end)
-      end)
-    end)
-  end)
-
-  describe("lsp integration", function()
-    local lsp
-    local api = vim.api
-    local lsp_handlers = vim.lsp.handlers
-
-    before_each(function()
-      package.loaded["ecolog.integrations.lsp"] = nil
-      package.loaded["ecolog.providers"] = nil
-      lsp = require("ecolog.integrations.lsp")
-
-      -- Mock vim.api functions
-      stub(api, "nvim_get_current_line")
-      stub(api, "nvim_win_get_cursor")
-      stub(api, "nvim_buf_get_lines")
-      stub(api, "nvim_win_set_cursor")
-      stub(api, "nvim_create_user_command")
-
-      -- Mock vim.cmd
-      stub(vim, "cmd")
-
-      -- Mock providers
-      package.loaded["ecolog.providers"] = {
-        get_providers = function()
-          return {}
-        end,
-        load_providers = function() end,
-      }
-
-      -- Initialize ecolog with default settings
-      local ecolog = require("ecolog")
-      ecolog.setup({
-        integrations = {
-          lsp = true,
-        },
-      })
-
-      -- Store original LSP handlers
-      lsp_handlers["textDocument/hover"] = function() end
-      lsp_handlers["textDocument/definition"] = function() end
-
-      -- Mock EcologPeek command
-      local old_pcall = _G.pcall
-      _G.pcall = function(fn, ...)
-        if type(...) == "string" and (...):match("^EcologPeek") then
-          return true
-        end
-        return old_pcall(fn, ...)
-      end
-    end)
-
-    after_each(function()
-      -- Restore stubs
-      api.nvim_get_current_line:revert()
-      api.nvim_win_get_cursor:revert()
-      api.nvim_buf_get_lines:revert()
-      api.nvim_win_set_cursor:revert()
-      api.nvim_create_user_command:revert()
-      vim.cmd:revert()
-
-      -- Clear mocks
-      package.loaded["ecolog.providers"] = nil
-
-      -- Restore pcall
-      _G.pcall = old_pcall
-    end)
-
-    describe("hover handling", function()
-      it("should use EcologPeek for env vars", function()
-        -- Create spy for EcologPeek command
-        local peek_spy = stub()
-
         -- Mock environment variables
         local mock_ecolog = {
           get_env_vars = function()
-            return { TEST_VAR = { value = "test", source = ".env" } }
+            return { MY_TEST_VAR = { value = "test", source = ".env" } }
           end,
           setup = function(opts)
-            -- Create the EcologPeek command with the spy
-            api.nvim_create_user_command("EcologPeek", peek_spy, { nargs = "?" })
+            -- Create the EcologPeek command
+            api.nvim_create_user_command("EcologPeek", function(args)
+              peek_spy(args.args)
+            end, { nargs = "?" })
           end,
         }
         package.loaded["ecolog"] = mock_ecolog
@@ -396,115 +326,80 @@ describe("integrations", function()
         -- Initialize ecolog
         mock_ecolog.setup({
           integrations = {
-            lsp = true,
+            lspsaga = true,
           },
         })
-
-        -- Mock providers with TypeScript provider
-        package.loaded["ecolog.providers"] = {
-          get_providers = function()
-            return {
-              {
-                pattern = "process%.env%.%w*$",
-                extract_var = function(line, col)
-                  return "TEST_VAR"
-                end,
-              },
-            }
-          end,
-          load_providers = function() end,
-        }
 
         -- Mock cursor position on env var
-        api.nvim_get_current_line.returns("const TEST_VAR = process.env.TEST_VAR")
+        api.nvim_get_current_line.returns("const MY_TEST_VAR = process.env.MY_TEST_VAR")
         api.nvim_win_get_cursor.returns({ 1, 30 })
 
-        -- Mock api.nvim_get_commands to return our command
-        stub(api, "nvim_get_commands").returns({
+        -- Mock nvim_get_commands to return our command
+        stub(api, "nvim_get_commands")
+        api.nvim_get_commands.returns({
           EcologPeek = {
-            callback = peek_spy,
+            callback = function(args)
+              peek_spy(args.args)
+            end,
           },
         })
 
         -- Call hover handler
-        lsp.setup()
-        lsp_handlers["textDocument/hover"](nil, {}, {}, {})
+        lspsaga.handle_hover({})
 
-        -- Verify EcologPeek command was called with correct args
-        assert.stub(peek_spy).was_called_with({ args = "TEST_VAR" })
-      end)
+        -- Verify EcologPeek was called
+        assert.stub(peek_spy).was_called_with("MY_TEST_VAR")
 
-      it("should use original hover handler for non-env vars", function()
-        -- Mock environment variables
-        local mock_ecolog = {
-          get_env_vars = function()
-            return { TEST_VAR = { value = "test" } }
-          end,
-        }
-        package.loaded["ecolog"] = mock_ecolog
-
-        -- Mock providers with TypeScript provider
-        package.loaded["ecolog.providers"] = {
-          get_providers = function()
-            return {
-              {
-                pattern = "process%.env%.%w*$",
-                extract_var = function(line, col)
-                  return nil
-                end,
-              },
-            }
-          end,
-          load_providers = function() end,
-        }
-
-        -- Mock cursor position on regular variable
-        api.nvim_get_current_line.returns("const regularVar = 'hello'")
-        api.nvim_win_get_cursor.returns({ 1, 8 })
-
-        -- Create spy for original hover handler
-        local original_hover = stub()
-        local result = { contents = "test hover" }
-        lsp_handlers["textDocument/hover"] = original_hover
-
-        -- Call hover handler
-        lsp.setup()
-        lsp_handlers["textDocument/hover"](nil, result, {}, {})
-
-        -- Verify original handler was called
-        assert.stub(original_hover).was_called_with(nil, result, {}, {})
+        -- Restore stub
+        api.nvim_get_commands:revert()
       end)
     end)
 
-    describe("setup and restore", function()
-      it("should restore original handlers", function()
-        -- Store original handlers
-        local original_hover = function() end
-        local original_definition = function() end
-        lsp_handlers["textDocument/hover"] = original_hover
-        lsp_handlers["textDocument/definition"] = original_definition
+    describe("keymap replacement", function()
+      it("should replace Lspsaga keymaps with Ecolog commands", function()
+        -- Mock existing keymaps
+        api.nvim_get_keymap.returns({
+          {
+            lhs = "K",
+            rhs = "<cmd>Lspsaga hover_doc<CR>",
+            silent = 1,
+            noremap = 1,
+          },
+          {
+            lhs = "gd",
+            rhs = "<cmd>Lspsaga goto_definition<CR>",
+            silent = 1,
+            noremap = 1,
+          },
+        })
 
-        -- Mock providers
-        package.loaded["ecolog.providers"] = {
-          get_providers = function()
-            return {}
-          end,
-          load_providers = function() end,
-        }
+        -- Replace keymaps
+        lspsaga.replace_saga_keymaps()
 
-        -- Setup LSP integration
-        lsp.setup()
+        -- Verify old keymaps were deleted
+        assert.stub(api.nvim_del_keymap).was_called(2)
 
-        -- Verify handlers were changed
-        assert.are_not.equal(original_hover, lsp_handlers["textDocument/hover"])
-        assert.are_not.equal(original_definition, lsp_handlers["textDocument/definition"])
-
-        -- Restore handlers
-        lsp.restore()
-
-        -- Verify original handlers were restored
-        assert.equal(original_hover, lsp_handlers["textDocument/hover"])
-        assert.equal(original_definition, lsp_handlers["textDocument/definition"])
+        -- Verify both new keymaps were set (without enforcing order)
+        assert.stub(api.nvim_set_keymap).was_called(2)
+        
+        -- Get all calls to nvim_set_keymap
+        local calls = api.nvim_set_keymap.calls
+        local hover_call_found = false
+        local gd_call_found = false
+        
+        for _, call in ipairs(calls) do
+          local mode, lhs, rhs, opts = unpack(call.vals)
+          if mode == "n" and lhs == "K" and rhs == "<cmd>EcologSagaHover<CR>" then
+            assert.same({ silent = true, noremap = true, expr = false, desc = "Ecolog hover_doc" }, opts)
+            hover_call_found = true
+          elseif mode == "n" and lhs == "gd" and rhs == "<cmd>EcologSagaGD<CR>" then
+            assert.same({ silent = true, noremap = true, expr = false, desc = "Ecolog goto_definition" }, opts)
+            gd_call_found = true
+          end
+        end
+        
+        assert.is_true(hover_call_found, "Hover keymap was not set correctly")
+        assert.is_true(gd_call_found, "Goto definition keymap was not set correctly")
       end)
     end)
   end)

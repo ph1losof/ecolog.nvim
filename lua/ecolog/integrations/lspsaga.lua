@@ -33,7 +33,13 @@ function M.handle_hover(args)
         require("lspsaga.hover"):render_hover_doc(args)
       end
     else
-      cmd("EcologPeek " .. word)
+      -- Get the EcologPeek command
+      local command = api.nvim_get_commands({})["EcologPeek"]
+      if command and command.callback then
+        command.callback({ args = word })
+      else
+        cmd("EcologPeek " .. word)
+      end
     end
   else
     require("lspsaga.hover"):render_hover_doc(args)
@@ -77,7 +83,7 @@ function M.handle_goto_definition(args)
 end
 
 function M.replace_saga_keymaps()
-  local modes = { "n", "v" }
+  local modes = { "n" }  -- Only replace normal mode keymaps
   local saga_commands = {
     ["Lspsaga hover_doc"] = "EcologSagaHover",
     ["Lspsaga goto_definition"] = "EcologSagaGD",

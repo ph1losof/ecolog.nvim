@@ -1,12 +1,12 @@
 local M = {}
+local utils = require("ecolog.utils")
 
 M.providers = {
   {
     pattern = "getenv%(['\"][%w_]*['\"]%s*%)$",
     filetype = "php",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col + 1)
-      return before_cursor:match("getenv%(['\"]([%w_]+)['\"]%s*%)$")
+      return utils.extract_env_var(line, col, "getenv%(['\"]([%w_]+)['\"]%s*%)$")
     end,
     get_completion_trigger = function()
       return "getenv('"
@@ -16,8 +16,7 @@ M.providers = {
     pattern = "_ENV%[['\"][%w_]*['\"]%]$",
     filetype = "php",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col + 1)
-      return before_cursor:match("_ENV%[['\"]([%w_]+)['\"]%]$")
+      return utils.extract_env_var(line, col, "_ENV%[['\"]([%w_]+)['\"]%]$")
     end,
     get_completion_trigger = function()
       return "_ENV['"

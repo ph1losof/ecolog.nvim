@@ -176,6 +176,19 @@ function M.setup_file_shelter()
       local filename = vim.fn.fnamemodify(ev.file, ":t")
       if utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
         state.set_feature_state("files", true)
+        
+        -- Enable telescope_previewer if it was in initial config
+        if state.get_state().features.initial.telescope_previewer then
+          state.set_feature_state("telescope_previewer", true)
+          require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+        end
+        
+        -- Enable fzf_previewer if it was in initial config
+        if state.get_state().features.initial.fzf_previewer then
+          state.set_feature_state("fzf_previewer", true)
+          require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+        end
+        
         M.shelter_buffer()
       end
     end,

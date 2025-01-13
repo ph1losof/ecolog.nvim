@@ -108,14 +108,20 @@ function M.setup_file_shelter()
   local watch_patterns = {}
 
   if not config.env_file_pattern then
-    watch_patterns = { ".env*" }
+    watch_patterns[1] = ".env*"
   else
     local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
-      or config.env_file_pattern
+      or config.env_file_pattern or {}
     for _, pattern in ipairs(patterns) do
-      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
-      table.insert(watch_patterns, glob_pattern:gsub("^%.%+/", ""))
+      if type(pattern) == "string" then
+        local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
+        watch_patterns[#watch_patterns + 1] = glob_pattern:gsub("^%.%+/", "")
+      end
     end
+  end
+
+  if #watch_patterns == 0 then
+    watch_patterns[1] = ".env*"
   end
 
   -- Agressive shelter

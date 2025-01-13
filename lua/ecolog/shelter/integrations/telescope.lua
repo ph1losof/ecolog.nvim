@@ -41,7 +41,7 @@ function M.setup_telescope_shelter()
 
         local filename = vim.fn.fnamemodify(p, ":t")
         local config = require("ecolog").get_config and require("ecolog").get_config() or {}
-        local is_env_file = utils.match_env_file(filename, config)
+        local is_env_file = shelter_utils.match_env_file(filename, config)
 
         conf.buffer_previewer_maker(p, self.state.bufnr, {
           bufname = self.state.bufname,

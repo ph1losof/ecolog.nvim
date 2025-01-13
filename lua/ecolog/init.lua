@@ -50,6 +50,8 @@ local DEFAULT_CONFIG = {
 
 local _loaded_modules = {}
 local _loading = {}
+local _setup_done = false
+local _lazy_setup_tasks = {}
 
 local function require_module(name)
   if _loaded_modules[name] then
@@ -84,6 +86,7 @@ local state = {
   selected_env_file = nil,
   _providers_loaded = false,
   _env_module = nil,
+  _file_watchers = {},
 }
 
 local function get_env_module()
@@ -94,13 +97,25 @@ local function get_env_module()
   return state._env_module
 end
 
+-- Cache for parsed env lines
+local _env_line_cache = setmetatable({}, {
+  __mode = "k" -- Make it a weak table to avoid memory leaks
+})
+
 local function parse_env_line(line, file_path)
+  local cache_key = line .. file_path
+  if _env_line_cache[cache_key] then
+    return unpack(_env_line_cache[cache_key])
+  end
+
   if not line:match(utils.PATTERNS.env_line) then
+    _env_line_cache[cache_key] = {nil}
     return nil
   end
 
   local key, value = line:match(utils.PATTERNS.key_value)
   if not (key and value) then
+    _env_line_cache[cache_key] = {nil}
     return nil
   end
 
@@ -122,7 +137,8 @@ local function parse_env_line(line, file_path)
 
   local type_name, transformed_value = types.detect_type(value)
 
-  return key,
+  local result = {
+    key,
     {
       value = transformed_value or value,
       type = type_name,
@@ -130,6 +146,80 @@ local function parse_env_line(line, file_path)
       source = file_path,
       comment = comment,
     }
+  }
+  _env_line_cache[cache_key] = result
+  return unpack(result)
+end
+
+local function cleanup_file_watchers()
+  if state.current_watcher_group then
+    pcall(api.nvim_del_augroup_by_id, state.current_watcher_group)
+  end
+  for _, watcher in pairs(state._file_watchers) do
+    pcall(api.nvim_del_autocmd, watcher)
+  end
+  state._file_watchers = {}
+end
+
+local function setup_file_watcher(opts)
+  cleanup_file_watchers()
+
+  state.current_watcher_group = api.nvim_create_augroup("EcologFileWatcher", { clear = true })
+
+  local watch_patterns = {}
+
+  if not opts.env_file_pattern then
+    watch_patterns = {
+      opts.path .. "/.env*",
+    }
+  else
+    local patterns = type(opts.env_file_pattern) == "string" and { opts.env_file_pattern } or opts.env_file_pattern
+
+    for _, pattern in ipairs(patterns) do
+      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
+      table.insert(watch_patterns, opts.path .. glob_pattern:gsub("^%.%+/", "/"))
+    end
+  end
+
+  local function handle_env_file_change()
+    state.cached_env_files = nil
+    state.last_opts = nil
+    M.refresh_env_vars(opts)
+    if state._env_module then
+      state._env_module.update_env_vars()
+    end
+  end
+
+  -- Watch for new files
+  table.insert(state._file_watchers, api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
+    group = state.current_watcher_group,
+    pattern = watch_patterns,
+    callback = function(ev)
+      local matches = utils.filter_env_files({ ev.file }, opts.env_file_pattern)
+      if #matches > 0 then
+        state.cached_env_files = nil
+        state.last_opts = nil
+
+        local env_files = find_env_files(opts)
+        if #env_files > 0 then
+          state.selected_env_file = env_files[1]
+          handle_env_file_change()
+          notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
+        end
+      end
+    end,
+  }))
+
+  if state.selected_env_file then
+    table.insert(state._file_watchers, api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
+      group = state.current_watcher_group,
+      pattern = state.selected_env_file,
+      callback = function()
+        handle_env_file_change()
+        notify("Environment file updated: " .. fn.fnamemodify(state.selected_env_file, ":t"), vim.log.levels.INFO)
+      end,
+    }))
+  end
 end
 
 local function find_env_files(opts)
@@ -199,64 +289,6 @@ local function parse_env_file(opts, force)
       end
       env_file:close()
     end
-  end
-end
-
-local function setup_file_watcher(opts)
-  if state.current_watcher_group then
-    api.nvim_del_augroup_by_id(state.current_watcher_group)
-  end
-
-  state.current_watcher_group = api.nvim_create_augroup("EcologFileWatcher", { clear = true })
-
-  local watch_patterns = {}
-
-  if not opts.env_file_pattern then
-    watch_patterns = {
-      opts.path .. "/.env*",
-    }
-  else
-    local patterns = type(opts.env_file_pattern) == "string" and { opts.env_file_pattern } or opts.env_file_pattern
-
-    for _, pattern in ipairs(patterns) do
-      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
-      table.insert(watch_patterns, opts.path .. glob_pattern:gsub("^%.%+/", "/"))
-    end
-  end
-
-  api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
-    group = state.current_watcher_group,
-    pattern = watch_patterns,
-    callback = function(ev)
-      local matches = utils.filter_env_files({ ev.file }, opts.env_file_pattern)
-      if #matches > 0 then
-        state.cached_env_files = nil
-        state.last_opts = nil
-
-        local env_files = find_env_files(opts)
-        if #env_files > 0 then
-          state.selected_env_file = env_files[1]
-          M.refresh_env_vars(opts)
-          notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
-        end
-      end
-    end,
-  })
-
-  if state.selected_env_file then
-    api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
-      group = state.current_watcher_group,
-      pattern = state.selected_env_file,
-      callback = function()
-        state.cached_env_files = nil
-        state.last_opts = nil
-        M.refresh_env_vars(opts)
-        if state._env_module then
-          state._env_module.update_env_vars()
-        end
-        notify("Environment file updated: " .. fn.fnamemodify(state.selected_env_file, ":t"), vim.log.levels.INFO)
-      end,
-    })
   end
 end
 
@@ -383,6 +415,11 @@ end
 
 ---@param opts? EcologConfig
 function M.setup(opts)
+  if _setup_done then
+    return
+  end
+  _setup_done = true
+
   -- Merge user options with defaults
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
 
@@ -405,6 +442,7 @@ function M.setup(opts)
     config.integrations.nvim_cmp = false
   end
 
+  -- Core setup
   require("ecolog.highlights").setup()
   shelter.setup({
     config = config.shelter.configuration,
@@ -415,30 +453,36 @@ function M.setup(opts)
     custom_types = config.custom_types,
   })
 
-  if config.integrations.lsp then
-    local lsp = require_module("ecolog.integrations.lsp")
-    lsp.setup()
+  -- Defer integration loading
+  local function setup_integrations()
+    if config.integrations.lsp then
+      local lsp = require_module("ecolog.integrations.lsp")
+      lsp.setup()
+    end
+
+    if config.integrations.lspsaga then
+      local lspsaga = require_module("ecolog.integrations.lspsaga")
+      lspsaga.setup()
+    end
+
+    if config.integrations.nvim_cmp then
+      local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
+      nvim_cmp.setup(opts.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+    end
+
+    if config.integrations.blink_cmp then
+      local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
+      blink_cmp.setup(opts.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+    end
+
+    if config.integrations.fzf then
+      local fzf = require("ecolog.integrations.fzf")
+      fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
+    end
   end
 
-  if config.integrations.lspsaga then
-    local lspsaga = require_module("ecolog.integrations.lspsaga")
-    lspsaga.setup()
-  end
-
-  if config.integrations.nvim_cmp then
-    local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
-    nvim_cmp.setup(opts.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
-  end
-
-  if config.integrations.blink_cmp then
-    local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
-    blink_cmp.setup(opts.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
-  end
-
-  if config.integrations.fzf then
-    local fzf = require("ecolog.integrations.fzf")
-    fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
-  end
+  -- Schedule integration setup
+  table.insert(_lazy_setup_tasks, setup_integrations)
 
   local initial_env_files = find_env_files({
     path = config.path,
@@ -467,9 +511,13 @@ function M.setup(opts)
 
   schedule(function()
     parse_env_file(config)
-  end)
+    setup_file_watcher(config)
 
-  setup_file_watcher(config)
+    -- Execute lazy setup tasks
+    for _, task in ipairs(_lazy_setup_tasks) do
+      task()
+    end
+  end)
 
   -- Create commands with the config
   local commands = {
@@ -631,7 +679,9 @@ function M.setup(opts)
   end
 
   if opts.vim_env then
-    get_env_module()
+    schedule(function()
+      get_env_module()
+    end)
   end
 end
 

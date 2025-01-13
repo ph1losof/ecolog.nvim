@@ -1,4 +1,5 @@
 local M = {}
+local utils = require("ecolog.utils")
 
 M.providers = {
   -- Double quotes completion
@@ -6,8 +7,7 @@ M.providers = {
     pattern = 'os%.getenv%("[%w_]*$',
     filetype = "lua",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('os%.getenv%("([%w_]*)$')
+      return utils.extract_env_var(line, col, 'os%.getenv%("([%w_]*)$')
     end,
     get_completion_trigger = function()
       return 'os.getenv("'
@@ -18,8 +18,7 @@ M.providers = {
     pattern = "os%.getenv%('[%w_]*$",
     filetype = "lua",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("os%.getenv%('([%w_]*)$")
+      return utils.extract_env_var(line, col, "os%.getenv%('([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "os.getenv('"
@@ -30,8 +29,7 @@ M.providers = {
     pattern = 'os%.getenv%("[%w_]+"%)?$',
     filetype = "lua",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('os%.getenv%("([%w_]+)"%)?$')
+      return utils.extract_env_var(line, col, 'os%.getenv%("([%w_]+)"%)?$')
     end,
     get_completion_trigger = function()
       return 'os.getenv("'
@@ -42,8 +40,7 @@ M.providers = {
     pattern = "os%.getenv%('[%w_]+'%)?$",
     filetype = "lua",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("os%.getenv%('([%w_]+)'%)?$")
+      return utils.extract_env_var(line, col, "os%.getenv%('([%w_]+)'%)?$")
     end,
     get_completion_trigger = function()
       return "os.getenv('"

@@ -304,4 +304,52 @@ end
 
 M.generate_example_file = generate_example_file
 
+---@param value string The value to check for quotes
+---@return string|nil quote_char The quote character if found
+---@return string|nil actual_value The value without quotes if found
+function M.extract_quoted_value(value)
+  if not value then
+    return nil, nil
+  end
+  
+  local quote_char = string.match(value, "^([\"'])")
+  if not quote_char then
+    return nil, string.match(value, "^([^%s#]+)")
+  end
+  
+  return quote_char, string.match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+end
+
+---@param line string The line to extract from
+---@param col number The column position
+---@param pattern string The pattern to match
+---@return string|nil var_name The extracted variable name
+function M.extract_env_var(line, col, pattern)
+  if not line or not col then
+    return nil
+  end
+  local before_cursor = line:sub(1, col)
+  return before_cursor:match(pattern)
+end
+
+---@param line string The line to parse
+---@return string|nil key The key if found
+---@return string|nil value The value if found
+---@return number|nil eq_pos The position of the equals sign
+function M.parse_env_line(line)
+  if not line or line:match("^%s*#") or line:match("^%s*$") then
+    return nil, nil, nil
+  end
+  
+  local eq_pos = line:find("=")
+  if not eq_pos then
+    return nil, nil, nil
+  end
+  
+  local key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
+  local value = line:sub(eq_pos + 1):match("^%s*(.-)%s*$")
+  
+  return key, value, eq_pos
+end
+
 return M

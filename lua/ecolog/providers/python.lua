@@ -1,4 +1,5 @@
 local M = {}
+local utils = require("ecolog.utils")
 
 M.providers = {
   -- os.environ.get with double quotes completion
@@ -6,8 +7,7 @@ M.providers = {
     pattern = 'os%.environ%.get%("[%w_]*$',
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('os%.environ%.get%("([%w_]*)$')
+      return utils.extract_env_var(line, col, 'os%.environ%.get%("([%w_]*)$')
     end,
     get_completion_trigger = function()
       return 'os.environ.get("'
@@ -18,8 +18,7 @@ M.providers = {
     pattern = "os%.environ%.get%('[%w_]*$",
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("os%.environ%.get%('([%w_]*)$")
+      return utils.extract_env_var(line, col, "os%.environ%.get%('([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "os.environ.get('"
@@ -30,8 +29,7 @@ M.providers = {
     pattern = 'os%.environ%.get%("[%w_]+"%)?$',
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('os%.environ%.get%("([%w_]+)"%)?$')
+      return utils.extract_env_var(line, col, 'os%.environ%.get%("([%w_]+)"%)?$')
     end,
     get_completion_trigger = function()
       return 'os.environ.get("'
@@ -42,8 +40,7 @@ M.providers = {
     pattern = "os%.environ%.get%('[%w_]+'%)?$",
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("os%.environ%.get%('([%w_]+)'%)?$")
+      return utils.extract_env_var(line, col, "os%.environ%.get%('([%w_]+)'%)?$")
     end,
     get_completion_trigger = function()
       return "os.environ.get('"
@@ -54,8 +51,7 @@ M.providers = {
     pattern = 'os%.environ%["[%w_]*$',
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('os%.environ%["([%w_]*)$')
+      return utils.extract_env_var(line, col, 'os%.environ%["([%w_]*)$')
     end,
     get_completion_trigger = function()
       return 'os.environ["'
@@ -66,8 +62,7 @@ M.providers = {
     pattern = "os%.environ%['[%w_]*$",
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("os%.environ%['([%w_]*)$")
+      return utils.extract_env_var(line, col, "os%.environ%['([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "os.environ['"
@@ -78,8 +73,7 @@ M.providers = {
     pattern = 'os%.environ%["[%w_]+"%]?$',
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('os%.environ%["([%w_]+)"%]?$')
+      return utils.extract_env_var(line, col, 'os%.environ%["([%w_]+)"%]?$')
     end,
     get_completion_trigger = function()
       return 'os.environ["'
@@ -90,8 +84,7 @@ M.providers = {
     pattern = "os%.environ%['[%w_]+'%]?$",
     filetype = "python",
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("os%.environ%['([%w_]+)'%]?$")
+      return utils.extract_env_var(line, col, "os%.environ%['([%w_]+)'%]?$")
     end,
     get_completion_trigger = function()
       return "os.environ['"

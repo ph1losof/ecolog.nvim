@@ -1,12 +1,12 @@
 local M = {}
+local utils = require("ecolog.utils")
 
 M.providers = {
   {
     pattern = "process%.env%.[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("process%.env%.([%w_]+)$")
+      return utils.extract_env_var(line, col, "process%.env%.([%w_]+)$")
     end,
     get_completion_trigger = function()
       return "process.env."
@@ -17,8 +17,7 @@ M.providers = {
     pattern = 'process%.env%["[%w_]*$',
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('process%.env%["([%w_]*)$')
+      return utils.extract_env_var(line, col, 'process%.env%["([%w_]*)$')
     end,
     get_completion_trigger = function()
       return 'process.env["'
@@ -29,8 +28,7 @@ M.providers = {
     pattern = "process%.env%['[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("process%.env%['([%w_]*)$")
+      return utils.extract_env_var(line, col, "process%.env%['([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "process.env['"
@@ -40,8 +38,7 @@ M.providers = {
     pattern = "import%.meta%.env%.[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("import%.meta%.env%.([%w_]+)$")
+      return utils.extract_env_var(line, col, "import%.meta%.env%.([%w_]+)$")
     end,
     get_completion_trigger = function()
       return "import.meta.env."
@@ -52,8 +49,7 @@ M.providers = {
     pattern = 'import%.meta%.env%["[%w_]*$',
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('import%.meta%.env%["([%w_]*)$')
+      return utils.extract_env_var(line, col, 'import%.meta%.env%["([%w_]*)$')
     end,
     get_completion_trigger = function()
       return 'import.meta.env["'
@@ -64,8 +60,7 @@ M.providers = {
     pattern = "import%.meta%.env%['[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("import%.meta%.env%['([%w_]*)$")
+      return utils.extract_env_var(line, col, "import%.meta%.env%['([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "import.meta.env['"

@@ -1,10 +1,11 @@
 local M = {}
+local utils = require("ecolog.utils")
+
 M.provider = {
   pattern = "os%.Getenv%(['\"][%w_]*['\"]?%s*%)$",
   filetype = "go",
   extract_var = function(line, col)
-    local before_cursor = line:sub(1, col + 1)
-    return before_cursor:match("os%.Getenv%(['\"]([%w_]+)['\"]?%s*%)$")
+    return utils.extract_env_var(line, col, "os%.Getenv%(['\"]([%w_]+)['\"]?%s*%)$")
   end,
   get_completion_trigger = function()
     return 'os.Getenv("'

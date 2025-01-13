@@ -1,12 +1,12 @@
 local M = {}
+local utils = require("ecolog.utils")
 
 M.providers = {
   {
     pattern = "^ENV%s+[%w_]*$",
     filetype = { "dockerfile", "Dockerfile" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("^ENV%s+([%w_]*)$")
+      return utils.extract_env_var(line, col, "^ENV%s+([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "ENV "
@@ -16,8 +16,7 @@ M.providers = {
     pattern = "^ARG%s+[%w_]*$",
     filetype = { "dockerfile", "Dockerfile" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("^ARG%s+([%w_]*)$")
+      return utils.extract_env_var(line, col, "^ARG%s+([%w_]*)$")
     end,
     get_completion_trigger = function()
       return "ARG "
@@ -28,8 +27,7 @@ M.providers = {
     pattern = "${[%w_]*}?$",
     filetype = { "dockerfile", "Dockerfile" },
     extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("${([%w_]*)}?$")
+      return utils.extract_env_var(line, col, "${([%w_]*)}?$")
     end,
     get_completion_trigger = function()
       return "${"

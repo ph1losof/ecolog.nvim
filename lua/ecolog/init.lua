@@ -200,7 +200,7 @@ local function setup_file_watcher(opts)
         state.cached_env_files = nil
         state.last_opts = nil
 
-        local env_files = find_env_files(opts)
+        local env_files = utils.find_env_files(opts)
         if #env_files > 0 then
           state.selected_env_file = env_files[1]
           handle_env_file_change()
@@ -222,27 +222,6 @@ local function setup_file_watcher(opts)
   end
 end
 
-local function find_env_files(opts)
-  opts = opts or {}
-  opts.path = opts.path or fn.getcwd()
-  opts.preferred_environment = opts.preferred_environment or ""
-
-  if
-    state.cached_env_files
-    and state.file_cache_opts
-    and state.file_cache_opts.path == opts.path
-    and state.file_cache_opts.preferred_environment == opts.preferred_environment
-    and state.file_cache_opts.env_file_pattern == opts.env_file_pattern
-    and state.file_cache_opts.sort_fn == opts.sort_fn
-  then
-    return state.cached_env_files
-  end
-
-  state.file_cache_opts = tbl_extend("force", {}, opts)
-  state.cached_env_files = utils.find_env_files(opts)
-  return state.cached_env_files
-end
-
 local function parse_env_file(opts, force)
   -- Always use full config
   opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
@@ -254,7 +233,7 @@ local function parse_env_file(opts, force)
   state.env_vars = {}
 
   if not state.selected_env_file then
-    local env_files = find_env_files(opts)
+    local env_files = utils.find_env_files(opts)
     if #env_files > 0 then
       state.selected_env_file = env_files[1]
     end
@@ -484,7 +463,7 @@ function M.setup(opts)
   -- Schedule integration setup
   table.insert(_lazy_setup_tasks, setup_integrations)
 
-  local initial_env_files = find_env_files({
+  local initial_env_files = utils.find_env_files({
     path = config.path,
     preferred_environment = config.preferred_environment,
     env_file_pattern = config.env_file_pattern,
@@ -498,7 +477,7 @@ function M.setup(opts)
       local env_suffix = fn.fnamemodify(state.selected_env_file, ":t"):gsub("^%.env%.", "")
       if env_suffix ~= ".env" then
         config.preferred_environment = env_suffix
-        local sorted_files = find_env_files(config)
+        local sorted_files = utils.find_env_files(config)
         state.selected_env_file = sorted_files[1]
       end
     end

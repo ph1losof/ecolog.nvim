@@ -155,7 +155,7 @@ function M.setup_file_shelter()
     end,
   })
 
-  api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
+  api.nvim_create_autocmd({ "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")

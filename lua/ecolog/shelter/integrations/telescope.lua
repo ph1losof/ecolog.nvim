@@ -1,0 +1,132 @@
+local M = {}
+
+local api = vim.api
+local string_find = string.find
+local string_sub = string.sub
+local string_match = string.match
+
+local state = require("ecolog.shelter.state")
+local utils = require("ecolog.shelter.utils")
+
+local namespace = api.nvim_create_namespace("ecolog_shelter")
+
+local extmarks = {}
+local function clear_extmarks()
+  for i = 1, #extmarks do
+    extmarks[i] = nil
+  end
+end
+
+function M.setup_telescope_shelter()
+  local previewers = require("telescope.previewers")
+  local from_entry = require("telescope.from_entry")
+  local conf = require("telescope.config").values
+
+  local masked_previewer = function(opts)
+    opts = opts or {}
+
+    return previewers.new_buffer_previewer({
+      title = opts.title or "File Preview",
+
+      get_buffer_by_name = function(_, entry)
+        return from_entry.path(entry, false)
+      end,
+
+      define_preview = function(self, entry, status)
+        local p = from_entry.path(entry, false)
+        if not p or p == "" then
+          return
+        end
+
+        local filename = vim.fn.fnamemodify(p, ":t")
+        local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+        local is_env_file = utils.match_env_file(filename, config)
+
+        conf.buffer_previewer_maker(p, self.state.bufnr, {
+          bufname = self.state.bufname,
+          callback = function(bufnr)
+            if not (is_env_file and state.is_enabled("telescope_previewer")) then
+              return
+            end
+
+            pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
+
+            local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            clear_extmarks()
+
+            local chunk_size = 100
+            for i = 1, #lines, chunk_size do
+              local end_idx = math.min(i + chunk_size - 1, #lines)
+
+              vim.schedule(function()
+                for j = i, end_idx do
+                  local line = lines[j]
+                  if not (string_find(line, "^%s*#") or string_find(line, "^%s*$")) then
+                    local eq_pos = string_find(line, "=")
+                    if eq_pos then
+                      local value = string_sub(line, eq_pos + 1)
+                      value = string_match(value, "^%s*(.-)%s*$")
+
+                      if value then
+                        local quote_char = string_match(value, "^([\"'])")
+                        local actual_value
+
+                        if quote_char then
+                          actual_value = string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
+                        else
+                          actual_value = string_match(value, "^([^%s#]+)")
+                        end
+
+                        if actual_value then
+                          local masked_value = utils.determine_masked_value(actual_value, {
+                            partial_mode = state.get_config().partial_mode,
+                            key = string_sub(line, 1, eq_pos - 1):match("^%s*(.-)%s*$"),
+                          })
+
+                          if masked_value and #masked_value > 0 then
+                            if quote_char then
+                              masked_value = quote_char .. masked_value .. quote_char
+                            end
+
+                            table.insert(extmarks, {
+                              j - 1,
+                              eq_pos,
+                              {
+                                virt_text = { { masked_value, state.get_config().highlight_group } },
+                                virt_text_pos = "overlay",
+                                hl_mode = "combine",
+                              },
+                            })
+                          end
+                        end
+                      end
+                    end
+                  end
+                end
+
+                if #extmarks > 0 then
+                  for _, mark in ipairs(extmarks) do
+                    api.nvim_buf_set_extmark(bufnr, namespace, mark[1], mark[2], mark[3])
+                  end
+                  clear_extmarks()
+                end
+              end)
+            end
+          end,
+        })
+      end,
+    })
+  end
+
+  if not state._original_file_previewer then
+    state._original_file_previewer = conf.file_previewer
+  end
+
+  if state.is_enabled("telescope_previewer") then
+    conf.file_previewer = masked_previewer
+  else
+    conf.file_previewer = state._original_file_previewer
+  end
+end
+
+return M 

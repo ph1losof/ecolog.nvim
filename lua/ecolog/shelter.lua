@@ -1,3 +1,4 @@
+-- PS: some parts of this code are inspired from https://github.com/laytan/cloak.nvim
 local M = {}
 
 local api = vim.api

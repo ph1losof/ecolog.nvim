@@ -237,7 +237,36 @@ local function setup_file_shelter()
     end
   end
 
-  api.nvim_create_autocmd({ "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
+  -- Agressive shelter
+  api.nvim_create_autocmd("BufReadCmd", {
+    pattern = watch_patterns,
+    group = group,
+    callback = function(ev)
+      local filename = vim.fn.fnamemodify(ev.file, ":t")
+      if not match_env_file(filename, config) then
+        return
+      end
+
+      local lines = vim.fn.readfile(ev.file)
+      local bufnr = ev.buf
+
+      api.nvim_buf_set_option(bufnr, "modifiable", true)
+      api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+      api.nvim_buf_set_option(bufnr, "modifiable", false)
+      api.nvim_buf_set_option(bufnr, "modified", false)
+
+      api.nvim_buf_set_option(bufnr, "filetype", "sh")
+
+      if state.features.enabled.files then
+        shelter_buffer()
+      end
+
+      vim.bo[bufnr].buftype = ""
+      return true
+    end,
+  })
+
+  api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")

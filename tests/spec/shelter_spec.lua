@@ -10,6 +10,8 @@ describe("shelter", function()
     shelter._config = {
       partial_mode = false,
       mask_char = "*",
+      patterns = {},
+      default_mode = "partial",
     }
     shelter._initial_state = {}
 
@@ -20,33 +22,62 @@ describe("shelter", function()
       end
 
       opts = opts or {}
-      local partial_mode = opts.partial_mode or shelter._config.partial_mode
+      local key = opts.key
+      local pattern_mode = key and shelter.matches_shelter_pattern(key)
 
-      if not partial_mode then
-        return string.rep(shelter._config.mask_char, #value)
-      else
-        local settings = type(partial_mode) == "table" and partial_mode
-          or {
-            show_start = 2,
-            show_end = 2,
-            min_mask = 3,
-          }
-
-        local show_start = settings.show_start
-        local show_end = settings.show_end
-        local min_mask = settings.min_mask
-
-        -- Handle short values
-        if #value <= (show_start + show_end) then
+      if pattern_mode then
+        if pattern_mode == "none" then
+          return value
+        elseif pattern_mode == "full" then
           return string.rep(shelter._config.mask_char, #value)
         end
-
-        -- Apply masking with min_mask requirement
-        local mask_length = math.max(min_mask, #value - show_start - show_end)
-        return string.sub(value, 1, show_start)
-          .. string.rep(shelter._config.mask_char, mask_length)
-          .. string.sub(value, -show_end)
+      else
+        if shelter._config.default_mode == "none" then
+          return value
+        elseif shelter._config.default_mode == "full" then
+          return string.rep(shelter._config.mask_char, #value)
+        end
       end
+
+      local partial_mode = opts.partial_mode or shelter._config.partial_mode
+      if not partial_mode then
+        return string.rep(shelter._config.mask_char, #value)
+      end
+
+      local settings = type(partial_mode) == "table" and partial_mode
+        or {
+          show_start = 2,
+          show_end = 2,
+          min_mask = 3,
+        }
+
+      local show_start = settings.show_start
+      local show_end = settings.show_end
+      local min_mask = settings.min_mask
+
+      if #value <= (show_start + show_end) then
+        return string.rep(shelter._config.mask_char, #value)
+      end
+
+      local mask_length = math.max(min_mask, #value - show_start - show_end)
+      return string.sub(value, 1, show_start)
+        .. string.rep(shelter._config.mask_char, mask_length)
+        .. string.sub(value, -show_end)
+    end
+
+    shelter.matches_shelter_pattern = function(key)
+      if not key or not shelter._config.patterns or vim.tbl_isempty(shelter._config.patterns) then
+        return nil
+      end
+
+      for pattern, mode in pairs(shelter._config.patterns) do
+        local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+        if key:match("^" .. lua_pattern .. "$") then
+          return mode
+        end
+      end
+
+      return nil
     end
 
     shelter.is_enabled = function(feature)
@@ -102,6 +133,13 @@ describe("shelter", function()
 
   describe("masking", function()
     it("should mask values completely when partial mode is disabled", function()
+      shelter.setup({
+        config = {
+          partial_mode = false,
+          mask_char = "*",
+          default_mode = "full",
+        },
+      })
       local value = "secret123"
       local masked = shelter.mask_value(value)
       assert.equals(string.rep(shelter._config.mask_char, #value), masked)
@@ -117,6 +155,7 @@ describe("shelter", function()
         config = {
           partial_mode = partial_mode_configuration,
           mask_char = "*",
+          default_mode = "partial",
         },
       })
 
@@ -126,6 +165,18 @@ describe("shelter", function()
     end)
 
     it("should apply partial masking when enabled", function()
+      shelter.setup({
+        config = {
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 3,
+          },
+          mask_char = "*",
+          default_mode = "partial",
+        },
+      })
+
       local value = "secret123"
       local masked = shelter.mask_value(value, {
         partial_mode = {
@@ -171,6 +222,7 @@ describe("shelter", function()
         config = {
           partial_mode = false,
           mask_char = "#",
+          default_mode = "full",
         },
         modules = {},
       })
@@ -189,6 +241,7 @@ describe("shelter", function()
             min_mask = 2,
           },
           mask_char = "*",
+          default_mode = "partial",
         },
         modules = {},
       })
@@ -288,6 +341,103 @@ describe("shelter", function()
       local masked1 = shelter.mask_value(value)
       local masked2 = shelter.mask_value(value)
       assert.equals(masked1, masked2)
+    end)
+  end)
+
+  describe("pattern-based variables", function()
+    it("should respect pattern-based masking modes", function()
+      shelter.setup({
+        config = {
+          patterns = {
+            ["*_KEY"] = "full",
+            ["*_URL"] = "none",
+            ["DB_*"] = "partial",
+          },
+          default_mode = "full",
+          mask_char = "*",
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 3,
+          },
+        },
+      })
+
+      -- Test full masking pattern
+      local api_key = shelter.mask_value("secret123", { key = "API_KEY" })
+      assert.equals(string.rep("*", #"secret123"), api_key)
+
+      -- Test no masking pattern
+      local api_url = shelter.mask_value("https://api.example.com", { key = "API_URL" })
+      assert.equals("https://api.example.com", api_url)
+
+      -- Test partial masking pattern
+      local db_password = shelter.mask_value("password123", { key = "DB_PASSWORD" })
+      assert.equals("pa*******23", db_password)
+    end)
+
+    it("should fall back to default mode when no pattern matches", function()
+      shelter.setup({
+        config = {
+          patterns = {
+            ["*_KEY"] = "full",
+          },
+          default_mode = "none",
+          mask_char = "*",
+        },
+      })
+
+      -- Test non-matching variable (should use default mode)
+      local value = shelter.mask_value("test123", { key = "SOME_VALUE" })
+      assert.equals("test123", value)
+    end)
+
+    it("should handle wildcard patterns correctly", function()
+      shelter.setup({
+        config = {
+          patterns = {
+            ["TEST_*_SECRET"] = "full",
+            ["*_PASSWORD_*"] = "partial",
+          },
+          default_mode = "none",
+          mask_char = "*",
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 3,
+          },
+        },
+      })
+
+      -- Test wildcard at end
+      local test_secret = shelter.mask_value("mysecret", { key = "TEST_APP_SECRET" })
+      assert.equals(string.rep("*", #"mysecret"), test_secret)
+
+      -- Test wildcard at start and end
+      local app_password = shelter.mask_value("mypassword", { key = "APP_PASSWORD_123" })
+      assert.equals("my******rd", app_password)
+    end)
+
+    it("should handle empty or invalid patterns", function()
+      shelter.setup({
+        config = {
+          patterns = {},
+          default_mode = "full",
+          mask_char = "*",
+        },
+      })
+
+      -- Test with empty patterns (should use default mode)
+      local value1 = shelter.mask_value("test123", { key = "TEST_KEY" })
+      assert.equals(string.rep("*", #"test123"), value1)
+
+      -- Test with nil key
+      local value2 = shelter.mask_value("test123", { key = nil })
+      assert.equals(string.rep("*", #"test123"), value2)
+
+      -- Test with empty key
+      local value3 = shelter.mask_value("test123", { key = "" })
+      assert.equals(string.rep("*", #"test123"), value3)
     end)
   end)
 end)

@@ -131,18 +131,26 @@ function M.setup_file_shelter()
       local lines = vim.fn.readfile(ev.file)
       local bufnr = ev.buf
 
-      api.nvim_buf_set_option(bufnr, "modifiable", true)
-      api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-      api.nvim_buf_set_option(bufnr, "modifiable", false)
-      api.nvim_buf_set_option(bufnr, "modified", false)
+      -- Initialize buffer options first
+      vim.bo[bufnr].buftype = ""
+      vim.bo[bufnr].filetype = "sh"
+      
+      -- Set modifiable and make changes
+      local ok, err = pcall(function()
+        vim.bo[bufnr].modifiable = true
+        api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+        vim.bo[bufnr].modified = false
+      end)
 
-      api.nvim_buf_set_option(bufnr, "filetype", "sh")
+      if not ok then
+        vim.notify("Failed to set buffer contents: " .. tostring(err), vim.log.levels.ERROR)
+        return true
+      end
 
       if state.is_enabled("files") then
         M.shelter_buffer()
       end
 
-      vim.bo[bufnr].buftype = ""
       return true
     end,
   })

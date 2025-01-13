@@ -36,6 +36,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
 - [Author Setup](#️-personal-setup)
+- [Comparisons](#-comparisons)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -1304,6 +1305,65 @@ return {
   }
 }
 ```
+
+## 🔄 Comparisons
+
+While `ecolog.nvim` has many great and unique features, here are some comparisons with other plugins in neovim ecosystem in **_their specific fields_**:
+
+### Environment Variable Completion (vs [cmp-dotenv](https://github.com/jcha0713/cmp-dotenv))
+
+| Feature                    | ecolog.nvim                                                                                    | cmp-dotenv                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Language-aware Completion  | ✅ Fully configurable context-aware triggers for multiple languages and filetypes              | ❌ Basic environment variable completion only on every char |
+| Type System                | ✅ Built-in type validation and custom types                                                   | ❌ No type system                                           |
+| Nvim-cmp support           | ✅ Nvim-cmp integration                                                                        | ✅ Nvim-cmp integration                                     |
+| Blink-cmp support          | ✅ Native blink-cmp integration                                                                | ❌ Doesn't support blink-cmp natively                       |
+| Documentation Support      | ✅ Rich documentation with type info and source                                                | 🟡 Basic documentation support                              |
+| Shell Variable Integration | ✅ Configurable shell variable loading and filtering                                           | 🟡 Basic shell variable support                             |
+| Multiple Environment Files | ✅ Priority-based loading with custom sorting and switching between multiple environment files | 🟡 Basic environment variable loading                       |
+
+### Security Features (vs [cloak.nvim](https://github.com/laytan/cloak.nvim))
+
+| Feature                          | ecolog.nvim                                                                     | cloak.nvim                                            |
+| -------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Partial Value Masking            | ✅ Configurable partial masking with patterns                                   | 🟡 Full masking only                                  |
+| Pattern-based Security           | ✅ Custom patterns for different security levels                                | 🟡 Basic pattern matching                             |
+| Preview Protection               | ✅ Telescope/FZF preview protection                                             | 🟡 Only Telescope preview protection                  |
+| Mask sensitive values on startup | ✅ Full support, never leak environment variables                               | ❌ Doesn't support masking on startup, flashes values |
+| Mask on leave                    | ✅ Supports                                                                     | ✅ Supports                                           |
+| Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                           | 🟡 Only nvim-cmp and can't disable                    |
+| Custom mask and highlights       | ✅ Supports                                                                     | ✅ Supports                                           |
+| Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
+| Filetype support                 | 🟡 Supports only `sh` and `.env` files                                          | ✅ Can work in any filetype                           |
+
+### Environment Management (vs [telescope-env.nvim](https://github.com/LinArcX/telescope-env.nvim))
+
+| Feature                     | ecolog.nvim                               | telescope-env.nvim      |
+| --------------------------- | ----------------------------------------- | ----------------------- |
+| Environment Variable Search | ✅ Basic search                           | ✅ Basic search         |
+| Customizable keymaps        | ✅ Fully customizable                     | ✅ Fully customizable   |
+| Value Preview               | ✅ Protected value preview                | 🟡 Basic value preview  |
+| Multiple Picker Support     | ✅ Both Telescope and FZF support         | 🟡 Telescope only       |
+| Security Features           | ✅ Integrated security in previews        | ❌ No security features |
+| Custom Sort/Filter          | ✅ Advanced sorting and filtering options | 🟡 Basic sorting only   |
+
+### File Management (vs [dotenv.nvim](https://github.com/ellisonleao/dotenv.nvim))
+
+| Feature                      | ecolog.nvim                                          | dotenv.nvim                  |
+| ---------------------------- | ---------------------------------------------------- | ---------------------------- |
+| Environment File Detection   | ✅ Custom patterns and priority-based loading        | 🟡 Basic env file loading    |
+| Multiple Environment Support | ✅ Advanced environment file switching               | 🟡 Basic environment support |
+| Shell Variable Integration   | ✅ Configurable shell variable loading and filtering | ❌ No shell integration      |
+
+### Key Benefits of ecolog.nvim
+
+1. **All-in-One Solution**: Most importantly it combines features from multiple plugins into a cohesive environment management suite which also opens new possibilties
+2. **Language Intelligence**: Provides language-specific completions and integrations
+3. **Advanced Security**: Offers the most comprehensive security features for sensitive data
+4. **Type System**: Unique type system for validation and documentation
+5. **Rich Integrations**: Seamless integration with LSP, Telescope, FZF, EcologPeek and more
+6. **Performance**: Optimzed for speed and efficiency in mind
+7. **Extensibility**: Custom providers and types for extending functionality
 
 ## 🤝 Contributing
 

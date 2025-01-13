@@ -56,11 +56,16 @@ local state = {
   },
   buffer = {
     revealed_lines = {},
+    disable_cmp = true,
   },
   telescope = {
     last_selection = nil,
   },
 }
+
+local has_cmp = function()
+  return vim.fn.exists(":CmpStatus") > 0
+end
 
 ---@class ShelterSetupOptions
 ---@field config? ShelterConfiguration
@@ -126,10 +131,28 @@ M.determine_masked_value = determine_masked_value
 local function unshelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
   state.buffer.revealed_lines = {}
+
+  -- Re-enable completion if it was disabled
+  if state.buffer.disable_cmp then
+    -- Re-enable blink-cmp
+    vim.b.completion = true
+
+    if has_cmp() then
+      require("cmp").setup.buffer({ enabled = true })
+    end
+  end
 end
 
 local function shelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
+
+  if state.buffer.disable_cmp then
+    vim.b.completion = false
+
+    if has_cmp() then
+      require("cmp").setup.buffer({ enabled = false })
+    end
+  end
 
   local lines = api.nvim_buf_get_lines(0, 0, -1, false)
   local extmarks = {}
@@ -179,7 +202,9 @@ local function shelter_buffer()
           i - 1,
           eq_pos,
           {
-            virt_text = { { masked_value, state.buffer.revealed_lines[i] and "String" or state.config.highlight_group } },
+            virt_text = {
+              { masked_value, state.buffer.revealed_lines[i] and "String" or state.config.highlight_group },
+            },
             virt_text_pos = "overlay",
             hl_mode = "combine",
           },
@@ -203,7 +228,8 @@ local function setup_file_shelter()
   if not config.env_file_pattern then
     watch_patterns = { ".env*" }
   else
-    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern } or config.env_file_pattern
+    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
+      or config.env_file_pattern
     for _, pattern in ipairs(patterns) do
       local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
       table.insert(watch_patterns, glob_pattern:gsub("^%.%+/", ""))
@@ -552,11 +578,13 @@ function M.setup(opts)
         state.features.enabled[feature] = true
         state.features.initial[feature] = true
         state.config.shelter_on_leave = partial[feature].shelter_on_leave
+        state.buffer.disable_cmp = partial[feature].disable_cmp ~= false
       else
         state.features.enabled[feature] = value
         state.features.initial[feature] = value
         if value then
           state.config.shelter_on_leave = true
+          state.buffer.disable_cmp = true
         end
       end
     else

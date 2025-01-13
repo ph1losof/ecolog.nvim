@@ -843,19 +843,22 @@ shelter = {
 }
 ```
 
-2. Detailed configuration with `shelter_on_leave`:
+2. Detailed configuration with options:
 
 ```lua
 shelter = {
     modules = {
         files = {
-            shelter_on_leave = false  -- Control automatic re-enabling of shelter when leaving buffer
+            shelter_on_leave = false,  -- Control automatic re-enabling of shelter when leaving buffer
+            disable_cmp = true,        -- Disable completion in sheltered buffers (default: true)
         }
     }
 }
 ```
 
 When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
+
+The `disable_cmp` option (enabled by default) will automatically disable both nvim-cmp and blink-cmp completions in sheltered buffers. This prevents sensitive values from being exposed through the completion menu while editing environment files. Completion is automatically re-enabled when unsheltering the buffer.
 
 ### Available Commands
 

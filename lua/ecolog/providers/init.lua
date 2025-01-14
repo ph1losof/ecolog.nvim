@@ -27,6 +27,9 @@ function M.load_providers()
     lua = "ecolog.providers.lua",
     go = "ecolog.providers.go",
     rust = "ecolog.providers.rust",
+    java = "ecolog.providers.java",
+    csharp = "ecolog.providers.csharp",
+    ruby = "ecolog.providers.ruby",
   }
 
   for name, module_path in pairs(providers_list) do

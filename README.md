@@ -835,19 +835,20 @@ require('lualine').setup({
 
 #### Configuration Options
 
-| Option                | Type                | Default     | Description                                                |
-| -------------------- | ------------------- | ----------- | ---------------------------------------------------------- |
-| hidden_mode          | boolean             | false       | When true, hides the statusline section if no env file is selected |
-| icons.enabled        | boolean             | true        | Enable/disable all icons in the statusline |
-| icons.env            | string              | "🌲"        | Icon for environment indicator |
-| icons.shelter        | string              | "🛡️"        | Icon for shelter mode indicator |
-| format.env_file      | function            | `name => name` | Function to format environment file name |
-| format.vars_count    | function            | `count => count .. " vars"` | Function to format variable count |
-| highlights.enabled   | boolean             | true        | Enable/disable highlighting |
-| highlights.env_file  | string              | "EcologStatusFile" | Highlight group for env file name |
-| highlights.vars_count| string              | "EcologStatusCount" | Highlight group for variable count |
+| Option                | Type     | Default                     | Description                                                        |
+| --------------------- | -------- | --------------------------- | ------------------------------------------------------------------ |
+| hidden_mode           | boolean  | false                       | When true, hides the statusline section if no env file is selected |
+| icons.enabled         | boolean  | true                        | Enable/disable all icons in the statusline                         |
+| icons.env             | string   | "🌲"                        | Icon for environment indicator                                     |
+| icons.shelter         | string   | "🛡️"                        | Icon for shelter mode indicator                                    |
+| format.env_file       | function | `name => name`              | Function to format environment file name                           |
+| format.vars_count     | function | `count => count .. " vars"` | Function to format variable count                                  |
+| highlights.enabled    | boolean  | true                        | Enable/disable highlighting                                        |
+| highlights.env_file   | string   | "EcologStatusFile"          | Highlight group for env file name                                  |
+| highlights.vars_count | string   | "EcologStatusCount"         | Highlight group for variable count                                 |
 
 The statusline shows:
+
 - Environment icon (customizable)
 - Current environment file name (customizable format)
 - Number of loaded environment variables (customizable format)
@@ -856,6 +857,7 @@ The statusline shows:
 #### Example Configurations
 
 1. Minimal Setup:
+
 ```lua
 statusline = {
   icons = { enabled = false },
@@ -864,6 +866,7 @@ statusline = {
 ```
 
 2. Custom Icons:
+
 ```lua
 statusline = {
   icons = {
@@ -874,6 +877,7 @@ statusline = {
 ```
 
 3. Custom Formatting:
+
 ```lua
 statusline = {
   format = {
@@ -888,6 +892,7 @@ statusline = {
 ```
 
 4. Custom Highlights:
+
 ```lua
 statusline = {
   highlights = {
@@ -899,33 +904,28 @@ statusline = {
 
 ## 🔧 Language Support
 
-### 🟢 Currently Supported and Tested
+### 🌍 Currently Supported
 
-| Language                    | Environment Access & Autocompletion trigger                                          | Description                                          |
-| --------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| Javascript/TypeScript/React | `import.meta.env['*`<br>`process.env[*'`<br>`import.meta.env["*`<br>`process.env[*"` | Full support for Node.js, Vite environment variables |
-| JavaScript/Typescript/React | `process.env.*`<br>`import.meta.env.*`                                               | Complete support for both types of annotations       |
-| Deno                        | `Deno.env.get("*`<br>`Deno.env.get('`                                                | Deno runtime environment variable access             |
-| Bun                         | `Bun.env.*`<br>`Bun.env["*`<br>`Bun.env['`                                           | Bun runtime environment variable access              |
-| Python                      | `os.environ.get('*`<br>`os.environ['*`<br>`os.environ["*`                            | Native Python environment variable access            |
-| Lua                         | `os.getenv("*`<br>`os.getenv('*`                                                     | Native Lua environment variable access               |
-| Rust                        | `std::env::var()`<br>`env::var()`                                                    | Rust standard library environment access             |
+| Language                    | Environment Access & Autocompletion trigger                                                                                | Description                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Javascript/TypeScript/React | `process.env.*`<br>`process.env['*`<br>`process.env["*`                                                                    | Node.js environment variable access                         |
+| Python                      | `os.environ.get('*`<br>`os.environ.get("*`<br>`os.environ['*`<br>`os.environ["*`                                           | Native Python environment variable access                   |
+| PHP                         | `getenv('*`<br>`getenv("*`<br>`$_ENV['*`<br>`$_ENV["*`<br>`$_SERVER['*`<br>`$_SERVER["*`                                   | Support for both modern and legacy PHP env access           |
+| Go                          | `os.Getenv('*`<br>`os.Getenv("*`<br>`os.LookupEnv('*`<br>`os.LookupEnv("*`                                                 | Go standard library environment access                      |
+| Rust                        | `env::var('*`<br>`env::var("*`<br>`env::var_os('*`<br>`env::var_os("*`<br>`std::env::var*`<br>`std::env::var_os*`          | Rust standard library environment access                    |
+| Ruby                        | `ENV['*`<br>`ENV["*`<br>`ENV[:*`<br>`ENV.fetch('*`<br>`ENV.fetch("*`<br>`ENV.fetch(:*`                                     | Ruby environment variable access with hash and fetch styles |
+| C#                          | `Environment.GetEnvironmentVariable("*`<br>`System.Environment.GetEnvironmentVariable("*`<br>`*.GetEnvironmentVariables()` | .NET environment variable access                            |
+| Java                        | `System.getenv("*`<br>`processBuilder.environment().get("*`<br>`env.get("*`                                                | Java environment variable access with multiple styles       |
+| Lua                         | `os.getenv('*`<br>`os.getenv("*`<br>`vim.env.*`                                                                            | Lua environment variable access with Neovim support         |
 
-### 🔴 Supported but Not Thoroughly Tested (may be broken)
+Each provider supports:
 
-| Language | Environment Access & Autocompletion trigger | Description                                       |
-| -------- | ------------------------------------------- | ------------------------------------------------- |
-| PHP      | `getenv()`<br>`_ENV[]`                      | Support for both modern and legacy PHP env access |
-| Go       | `os.Getenv("*`                              | Go standard library environment access            |
-
-### 🚧 Coming Soon
-
-| Language | Planned Support                        | Status  |
-| -------- | -------------------------------------- | ------- |
-| C#       | `Environment.GetEnvironmentVariable()` | Planned |
-| Shell    | `$VAR`, `${VAR}`                       | Planned |
-| Ruby     | `ENV[]`<br>`ENV.fetch()`               | Planned |
-| Docker   | `ARG *`<br>`ENV *`<br>`${*`            | Planned |
+- Completion while typing
+- Full pattern matching
+- Variable extraction
+- Both single and double quotes (where applicable)
+- Common language-specific idioms
+- Optional namespace prefixes (where applicable)
 
 > 💡 **Want support for another language?**  
 > Feel free to contribute by adding a new provider! Or just check out the [Custom Providers](#-custom-providers) section.

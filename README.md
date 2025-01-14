@@ -117,6 +117,16 @@ require('cmp').setup({
 
 If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
+To use the latest features and improvements, you can use the beta branch:
+
+```lua
+{
+  'philosofonusus/ecolog.nvim',
+  branch = 'beta',
+  -- ... rest of your configuration
+}
+```
+
 ## ✨ Features
 
 🔍 **Advanced Environment Variable Management**

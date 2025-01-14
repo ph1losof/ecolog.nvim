@@ -29,6 +29,7 @@ local DEFAULT_CONFIG = {
     nvim_cmp = true,
     blink_cmp = false,
     fzf = false,
+    statusline = false,
   },
   vim_env = false,
   types = true,
@@ -336,6 +337,12 @@ function M.refresh_env_vars(opts)
   -- Always use full config
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
   parse_env_file(opts, true)
+
+  -- Invalidate statusline cache only if integration is enabled
+  if opts.integrations.statusline then
+    local statusline = require("ecolog.integrations.statusline")
+    statusline.invalidate_cache()
+  end
 end
 
 function M.get_env_vars()
@@ -385,6 +392,10 @@ end
 ---@field nvim_cmp boolean Enable nvim-cmp integration for autocompletion
 ---@field blink_cmp boolean Enable Blink CMP integration for autocompletion
 ---@field fzf boolean Enable fzf-lua integration for environment variable picking
+---@field statusline boolean|StatuslineConfig Enable statusline integration
+
+---@class StatuslineConfig
+---@field hidden_mode boolean When true, hides the statusline section if no env file is selected
 
 ---@class LoadShellConfig
 ---@field enabled boolean Enable loading shell variables into environment
@@ -401,6 +412,9 @@ function M.setup(opts)
 
   -- Merge user options with defaults
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+
+  -- Add this near the start of setup
+  state.selected_env_file = nil -- Make sure this is tracked in state
 
   -- Normalize provider_patterns to table format
   if type(config.provider_patterns) == "boolean" then
@@ -457,6 +471,11 @@ function M.setup(opts)
     if config.integrations.fzf then
       local fzf = require("ecolog.integrations.fzf")
       fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
+    end
+
+    if config.integrations.statusline then
+      local statusline = require("ecolog.integrations.statusline")
+      statusline.setup(type(opts.integrations.statusline) == "table" and opts.integrations.statusline or {})
     end
   end
 
@@ -669,6 +688,37 @@ M.find_word_boundaries = utils.find_word_boundaries
 -- Get the current configuration
 function M.get_config()
   return state.last_opts or DEFAULT_CONFIG
+end
+
+-- Add these new functions
+function M.get_status()
+  if not state.last_opts or not state.last_opts.integrations.statusline then
+    return ""
+  end
+  
+  local config = state.last_opts.integrations.statusline
+  if type(config) == "table" and config.hidden_mode and not state.selected_env_file then
+    return ""
+  end
+  
+  return require("ecolog.integrations.statusline").get_statusline()
+end
+
+function M.get_lualine()
+  if not state.last_opts or not state.last_opts.integrations.statusline then
+    return ""
+  end
+  
+  local config = state.last_opts.integrations.statusline
+  if type(config) == "table" and config.hidden_mode and not state.selected_env_file then
+    return ""
+  end
+  
+  return require("ecolog.integrations.statusline").lualine()
+end
+
+function M.get_state()
+  return state
 end
 
 return M

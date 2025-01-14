@@ -29,6 +29,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
   - [FZF Integration](#fzf-integration)
+  - [Statusline Integration](#statusline-integration)
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#️-shelter-mode)
@@ -759,6 +760,70 @@ Open the environment variables picker:
 | `<C-a>`   | Append value to buffer  |
 
 All keymaps are customizable through the configuration.
+
+### Statusline Integration
+
+Ecolog provides a built-in statusline component that shows your current environment file, variable count, and shelter mode status. It supports both native statusline and lualine integration.
+
+#### Basic Usage
+
+Enable statusline integration in your setup:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    statusline = true
+  }
+})
+```
+
+#### Advanced Configuration
+
+For more control over the statusline:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    statusline = {
+      hidden_mode = true, -- Hide statusline when no env file is selected
+    }
+  }
+})
+```
+
+#### Native Statusline
+
+Add Ecolog to your statusline:
+
+```lua
+vim.opt.statusline = "%{%v:lua.require'ecolog'.get_status()%}"
+```
+
+#### Lualine Integration
+
+Add Ecolog as a lualine component:
+
+```lua
+require('lualine').setup({
+  sections = {
+    lualine_x = {
+      require('ecolog').get_lualine(),
+    }
+  }
+})
+```
+
+#### Configuration Options
+
+| Option      | Type    | Default | Description                                                |
+| ----------- | ------- | ------- | ---------------------------------------------------------- |
+| hidden_mode | boolean | false   | When true, hides the statusline section if no env file is selected |
+
+The statusline shows:
+- 🌲 Icon indicating Ecolog
+- Current environment file name
+- Number of loaded environment variables
+- 🛡️ Icon when shelter mode is active
 
 ## 🔧 Language Support
 

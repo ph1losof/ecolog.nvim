@@ -902,9 +902,7 @@ statusline = {
 }
 ```
 
-## 🔧 Language Support
-
-### 🌍 Currently Supported
+## 🌍 Language Support
 
 | Language                    | Environment Access & Autocompletion trigger                                                                                | Description                                                 |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |

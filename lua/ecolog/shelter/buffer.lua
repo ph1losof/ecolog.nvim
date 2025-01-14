@@ -26,6 +26,14 @@ function M.unshelter_buffer()
 end
 
 function M.shelter_buffer()
+  local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+  local filename = vim.fn.fnamemodify(vim.fn.bufname(), ":t")
+
+  -- Only shelter if this is an environment file
+  if not utils.match_env_file(filename, config) then
+    return
+  end
+
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
 
   if state.get_buffer_state().disable_cmp then
@@ -108,14 +116,21 @@ function M.setup_file_shelter()
   local watch_patterns = {}
 
   if not config.env_file_pattern then
-    watch_patterns = { ".env*" }
+    watch_patterns[1] = ".env*"
   else
     local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
       or config.env_file_pattern
+      or {}
     for _, pattern in ipairs(patterns) do
-      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
-      table.insert(watch_patterns, glob_pattern:gsub("^%.%+/", ""))
+      if type(pattern) == "string" then
+        local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
+        watch_patterns[#watch_patterns + 1] = glob_pattern:gsub("^%.%+/", "")
+      end
     end
+  end
+
+  if #watch_patterns == 0 then
+    watch_patterns[1] = ".env*"
   end
 
   -- Agressive shelter
@@ -134,7 +149,7 @@ function M.setup_file_shelter()
       -- Initialize buffer options first
       vim.bo[bufnr].buftype = ""
       vim.bo[bufnr].filetype = "sh"
-      
+
       -- Set modifiable and make changes
       local ok, err = pcall(function()
         vim.bo[bufnr].modifiable = true
@@ -155,7 +170,7 @@ function M.setup_file_shelter()
     end,
   })
 
-  api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
+  api.nvim_create_autocmd({ "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")
@@ -176,6 +191,19 @@ function M.setup_file_shelter()
       local filename = vim.fn.fnamemodify(ev.file, ":t")
       if utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
         state.set_feature_state("files", true)
+
+        -- Enable telescope_previewer if it was in initial config
+        if state.get_state().features.initial.telescope_previewer then
+          state.set_feature_state("telescope_previewer", true)
+          require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+        end
+
+        -- Enable fzf_previewer if it was in initial config
+        if state.get_state().features.initial.fzf_previewer then
+          state.set_feature_state("fzf_previewer", true)
+          require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+        end
+
         M.shelter_buffer()
       end
     end,
@@ -183,4 +211,5 @@ function M.setup_file_shelter()
   })
 end
 
-return M 
+return M
+

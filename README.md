@@ -105,6 +105,19 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
+To use the latest features and improvements, you can use the beta branch:
+
+```lua
+{
+  'philosofonusus/ecolog.nvim',
+  branch = 'beta',
+  -- ... rest of your configuration
+}
+```
+
+> Even though beta branch may contain more experimental changes, new and shiny features will appear faster here.
+> Consider using it as a contribution to the development of the main branch. Since you can share your feedback.
+
 Setup auto-completion with `nvim-cmp`:
 
 ```lua
@@ -116,16 +129,6 @@ require('cmp').setup({
 ```
 
 If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
-
-To use the latest features and improvements, you can use the beta branch:
-
-```lua
-{
-  'philosofonusus/ecolog.nvim',
-  branch = 'beta',
-  -- ... rest of your configuration
-}
-```
 
 ## ✨ Features
 

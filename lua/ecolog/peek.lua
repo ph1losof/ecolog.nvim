@@ -72,7 +72,12 @@ local function create_peek_content(var_name, var_info, types)
   highlights[1] = { "EcologVariable", 0, PATTERNS.label_width, PATTERNS.label_width + #var_name }
   highlights[2] = { "EcologType", 1, PATTERNS.label_width, PATTERNS.label_width + #display_type }
   highlights[3] = { "EcologSource", 2, PATTERNS.label_width, PATTERNS.label_width + #source }
-  highlights[4] = { shelter.is_enabled("peek") and shelter.get_config().highlight_group or "EcologValue", 3, PATTERNS.label_width, PATTERNS.label_width + #display_value }
+  highlights[4] = {
+    shelter.is_enabled("peek") and shelter.get_config().highlight_group or "EcologValue",
+    3,
+    PATTERNS.label_width,
+    PATTERNS.label_width + #display_value,
+  }
 
   -- Add comment if exists
   if var_info.comment then
@@ -115,9 +120,8 @@ end
 ---@field highlights table[] Highlight definitions
 
 -- Optimized peek window creation
-function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
+function M.peek_env_var(available_providers, var_name)
   local filetype = vim.bo.filetype
-  local available_providers = providers.get_providers(filetype)
   local types = require("ecolog.types")
 
   if #available_providers == 0 then
@@ -132,32 +136,37 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
     return
   end
 
-  -- Extract variable name
-  local extracted_var = var_name
-  if not extracted_var then
-    extracted_var = utils.get_var_word_under_cursor(available_providers)
-  end
-
-  if not extracted_var or #extracted_var == 0 then
-    notify("No environment variable pattern matched at cursor", vim.log.levels.WARN)
+  -- Get ecolog instance
+  local has_ecolog, ecolog = pcall(require, "ecolog")
+  if not has_ecolog then
+    notify("Ecolog not found", vim.log.levels.ERROR)
     return
   end
 
-  parse_env_file()
+  -- If no var_name provided, try to get it from under cursor
+  if not var_name or var_name == "" then
+    var_name = utils.get_var_word_under_cursor(available_providers)
+    if not var_name then
+      notify("No environment variable found under cursor", vim.log.levels.WARN)
+      return
+    end
+  end
 
-  local var = env_vars[extracted_var]
-  if not var then
-    notify(string.format("Environment variable '%s' not found", extracted_var), vim.log.levels.WARN)
+  -- Get the environment variable from ecolog
+  local env_vars = ecolog.get_env_vars()
+  local var_info = env_vars[var_name]
+  if not var_info then
+    notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
     return
   end
 
   -- Create content with optimized functions
-  local content = create_peek_content(extracted_var, var, types)
+  local content = create_peek_content(var_name, var_info, types)
   local curbuf = api.nvim_get_current_buf()
 
   -- Create peek window with batched operations
   peek.bufnr = api.nvim_create_buf(false, true)
-  
+
   -- Set all buffer options at once
   api.nvim_buf_set_option(peek.bufnr, "modifiable", true)
   api.nvim_buf_set_lines(peek.bufnr, 0, -1, false, content.lines)
@@ -191,7 +200,7 @@ function M.peek_env_value(var_name, opts, env_vars, providers, parse_env_file)
 
   -- Set up autocommands and mappings
   setup_peek_autocommands(curbuf)
-  
+
   -- Set buffer mappings efficiently
   local close_fn = function()
     if peek.winid and api.nvim_win_is_valid(peek.winid) then

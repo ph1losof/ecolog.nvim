@@ -13,55 +13,35 @@ M.providers = setmetatable({}, {
 local _provider_cache = {}
 local _provider_loading = {}
 
--- Load providers
-function M.load_providers()
-  if M._providers_loaded then
-    return
+-- Map of provider modules to their supported filetypes
+local _provider_filetype_map = {
+  typescript = { "typescript", "typescriptreact" },
+  javascript = { "javascript", "javascriptreact" },
+  python = { "python" },
+  php = { "php" },
+  lua = { "lua" },
+  go = { "go" },
+  rust = { "rust" },
+  java = { "java" },
+  csharp = { "cs", "csharp" },
+  ruby = { "ruby" },
+  shell = { "sh", "bash", "zsh" },
+}
+
+-- Reverse map of filetypes to their provider modules
+local _filetype_provider_map = {}
+for provider, filetypes in pairs(_provider_filetype_map) do
+  for _, ft in ipairs(filetypes) do
+    _filetype_provider_map[ft] = provider
   end
-
-  local providers_list = {
-    typescript = "ecolog.providers.typescript",
-    javascript = "ecolog.providers.javascript",
-    python = "ecolog.providers.python",
-    php = "ecolog.providers.php",
-    lua = "ecolog.providers.lua",
-    go = "ecolog.providers.go",
-    rust = "ecolog.providers.rust",
-    java = "ecolog.providers.java",
-    csharp = "ecolog.providers.csharp",
-    ruby = "ecolog.providers.ruby",
-  }
-
-  for name, module_path in pairs(providers_list) do
-    if not _provider_cache[name] and not _provider_loading[name] then
-      _provider_loading[name] = true
-      local ok, provider = pcall(require, module_path)
-      _provider_loading[name] = nil
-      
-      if ok then
-        _provider_cache[name] = provider
-        if type(provider) == "table" then
-          if provider.provider then
-            M.register(provider.provider)
-          else
-            M.register_many(provider)
-          end
-        else
-          M.register(provider)
-        end
-      end
-    end
-  end
-
-  M._providers_loaded = true
 end
 
--- Get a specific provider
-function M.get_provider(name)
+-- Load a specific provider module
+local function load_provider(name)
   if _provider_cache[name] then
     return _provider_cache[name]
   end
-  
+
   if _provider_loading[name] then
     return nil
   end
@@ -76,6 +56,27 @@ function M.get_provider(name)
     return provider
   end
   return nil
+end
+
+-- Load providers for a specific filetype
+function M.load_providers_for_filetype(filetype)
+  local provider_name = _filetype_provider_map[filetype]
+  if not provider_name then
+    return
+  end
+
+  local provider = load_provider(provider_name)
+  if provider then
+    if type(provider) == "table" then
+      if provider.provider then
+        M.register(provider.provider)
+      else
+        M.register_many(provider)
+      end
+    else
+      M.register(provider)
+    end
+  end
 end
 
 -- Optimized register function with validation caching
@@ -112,8 +113,11 @@ function M.register_many(providers)
   end
 end
 
--- Optimized get_providers
+-- Get providers for a specific filetype, loading them if needed
 function M.get_providers(filetype)
+  if not M.providers[filetype] or #M.providers[filetype] == 0 then
+    M.load_providers_for_filetype(filetype)
+  end
   return M.providers[filetype]
 end
 

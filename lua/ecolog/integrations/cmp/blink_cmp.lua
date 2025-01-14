@@ -165,7 +165,6 @@ end
 M.setup = function(opts, _, providers, shelter)
   _providers = providers
   _shelter = shelter
-  providers.load_providers()
 end
 
 return M

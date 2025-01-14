@@ -5,6 +5,20 @@ local fn = vim.fn
 
 local config = {
   hidden_mode = false,
+  icons = {
+    enabled = true,
+    env = "🌲",
+    shelter = "🛡️",
+  },
+  format = {
+    env_file = function(name) return name end,
+    vars_count = function(count) return string.format("%d vars", count) end,
+  },
+  highlights = {
+    enabled = true,
+    env_file = "EcologStatusFile",
+    vars_count = "EcologStatusCount",
+  },
 }
 
 local status_cache = {
@@ -47,24 +61,31 @@ local function get_cached_status()
   return status
 end
 
-local ECOLOG_ICON = "🌲"
-local SHELTER_ICON = "🛡️"
+local function setup_highlights()
+  if not config.highlights.enabled then return end
+  vim.api.nvim_set_hl(0, "EcologStatusFile", { link = "Directory" })
+  vim.api.nvim_set_hl(0, "EcologStatusCount", { link = "Number" })
+end
+
+local function format_with_hl(text, hl_group)
+  if not config.highlights.enabled then return text end
+  return string.format("%%#%s#%s%%*", hl_group, text)
+end
 
 function M.get_statusline()
   local status = get_cached_status()
+  if config.hidden_mode and not status.has_env_file then return "" end
 
-  if config.hidden_mode and not status.has_env_file then
-    return ""
+  local parts = {}
+  if config.icons.enabled then
+    table.insert(parts, config.icons.env)
   end
 
-  local parts = {
-    ECOLOG_ICON,
-    status.file,
-    string.format("%d vars", status.vars_count),
-  }
+  table.insert(parts, format_with_hl(config.format.env_file(status.file), config.highlights.env_file))
+  table.insert(parts, format_with_hl(config.format.vars_count(status.vars_count), config.highlights.vars_count))
 
-  if status.shelter_active then
-    table.insert(parts, SHELTER_ICON)
+  if status.shelter_active and config.icons.enabled then
+    table.insert(parts, config.icons.shelter)
   end
 
   return table.concat(parts, " ")
@@ -74,23 +95,27 @@ function M.lualine()
   return {
     function()
       local status = get_cached_status()
+      if config.hidden_mode and not status.has_env_file then return "" end
 
-      if config.hidden_mode and not status.has_env_file then
-        return ""
+      local parts = {}
+      if config.icons.enabled then
+        table.insert(parts, config.icons.env)
       end
 
-      return string.format(
-        "%s %s (%d)%s",
-        ECOLOG_ICON,
-        status.file,
-        status.vars_count,
-        status.shelter_active and " " .. SHELTER_ICON or ""
-      )
+      table.insert(parts, string.format(
+        "%s (%s)",
+        config.format.env_file(status.file),
+        config.format.vars_count(status.vars_count):match("^(%d+)")
+      ))
+
+      if status.shelter_active and config.icons.enabled then
+        table.insert(parts, config.icons.shelter)
+      end
+
+      return table.concat(parts, " ")
     end,
     cond = function()
-      if _ecolog then
-        return true
-      end
+      if _ecolog then return true end
       return package.loaded["ecolog"] ~= nil
     end,
   }
@@ -107,6 +132,7 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
+  setup_highlights()
 end
 
 return M

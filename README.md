@@ -785,7 +785,27 @@ For more control over the statusline:
 require('ecolog').setup({
   integrations = {
     statusline = {
-      hidden_mode = true, -- Hide statusline when no env file is selected
+      hidden_mode = true,  -- Hide statusline when no env file is selected
+      icons = {
+        enabled = true,    -- Enable/disable all icons
+        env = "🌲",        -- Environment icon
+        shelter = "🛡️",    -- Shelter mode icon
+      },
+      format = {
+        -- Custom format for env file name
+        env_file = function(name)
+          return "[ENV:" .. name .. "]"
+        end,
+        -- Custom format for variable count
+        vars_count = function(count)
+          return count .. " variables"
+        end,
+      },
+      highlights = {
+        enabled = true,           -- Enable/disable highlighting
+        env_file = "Directory",   -- Highlight group for env file name
+        vars_count = "Number",    -- Highlight group for variable count
+      },
     }
   }
 })
@@ -815,15 +835,67 @@ require('lualine').setup({
 
 #### Configuration Options
 
-| Option      | Type    | Default | Description                                                |
-| ----------- | ------- | ------- | ---------------------------------------------------------- |
-| hidden_mode | boolean | false   | When true, hides the statusline section if no env file is selected |
+| Option                | Type                | Default     | Description                                                |
+| -------------------- | ------------------- | ----------- | ---------------------------------------------------------- |
+| hidden_mode          | boolean             | false       | When true, hides the statusline section if no env file is selected |
+| icons.enabled        | boolean             | true        | Enable/disable all icons in the statusline |
+| icons.env            | string              | "🌲"        | Icon for environment indicator |
+| icons.shelter        | string              | "🛡️"        | Icon for shelter mode indicator |
+| format.env_file      | function            | `name => name` | Function to format environment file name |
+| format.vars_count    | function            | `count => count .. " vars"` | Function to format variable count |
+| highlights.enabled   | boolean             | true        | Enable/disable highlighting |
+| highlights.env_file  | string              | "EcologStatusFile" | Highlight group for env file name |
+| highlights.vars_count| string              | "EcologStatusCount" | Highlight group for variable count |
 
 The statusline shows:
-- 🌲 Icon indicating Ecolog
-- Current environment file name
-- Number of loaded environment variables
-- 🛡️ Icon when shelter mode is active
+- Environment icon (customizable)
+- Current environment file name (customizable format)
+- Number of loaded environment variables (customizable format)
+- Shelter mode icon when active (customizable)
+
+#### Example Configurations
+
+1. Minimal Setup:
+```lua
+statusline = {
+  icons = { enabled = false },
+  highlights = { enabled = false }
+}
+```
+
+2. Custom Icons:
+```lua
+statusline = {
+  icons = {
+    env = "󰙪",     -- Use different icons
+    shelter = "󰌆",
+  }
+}
+```
+
+3. Custom Formatting:
+```lua
+statusline = {
+  format = {
+    env_file = function(name)
+      return "ENV[" .. name:upper() .. "]"
+    end,
+    vars_count = function(count)
+      return string.format("(%d)", count)
+    end
+  }
+}
+```
+
+4. Custom Highlights:
+```lua
+statusline = {
+  highlights = {
+    env_file = "Special",   -- Use different highlight groups
+    vars_count = "Constant",
+  }
+}
+```
 
 ## 🔧 Language Support
 

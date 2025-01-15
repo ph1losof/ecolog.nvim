@@ -108,33 +108,20 @@ local function parse_env_line(line, file_path)
     return unpack(_env_line_cache[cache_key])
   end
 
-  if not line:match(utils.PATTERNS.env_line) then
+  -- Skip empty lines and comments
+  if line:match("^%s*$") or line:match("^%s*#") then
     _env_line_cache[cache_key] = { nil }
     return nil
   end
 
-  local key, value = line:match(utils.PATTERNS.key_value)
-  if not (key and value) then
+  -- Use the optimized pattern matching from utils
+  local key, value, comment = utils.extract_line_parts(line)
+  if not key or not value then
     _env_line_cache[cache_key] = { nil }
     return nil
   end
 
-  key = key:match(utils.PATTERNS.trim)
-
-  local comment
-  if value:match("^[\"'].-[\"']%s+(.+)$") then
-    local quoted_value = value:match("^([\"'].-[\"'])%s+.+$")
-    comment = value:match("^[\"'].-[\"']%s+#?%s*(.+)$")
-    value = quoted_value
-  elseif value:match("^[^%s]+%s+(.+)$") and not value:match("^[\"']") then
-    local main_value = value:match("^([^%s]+)%s+.+$")
-    comment = value:match("^[^%s]+%s+#?%s*(.+)$")
-    value = main_value
-  end
-
-  value = value:gsub(utils.PATTERNS.quoted, "%1")
-  value = value:match(utils.PATTERNS.trim)
-
+  -- Detect type and transform value
   local type_name, transformed_value = types.detect_type(value)
 
   local result = {

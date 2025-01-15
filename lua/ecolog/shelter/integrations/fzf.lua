@@ -8,10 +8,68 @@ local string_match = string.match
 local state = require("ecolog.shelter.state")
 local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
+local lru_cache = require("ecolog.shelter.lru_cache")
 
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 
-local processed_buffers = {}
+-- Initialize LRU cache with capacity of 100 buffers
+local processed_buffers = lru_cache.new(100)
+
+local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash)
+  local chunk_extmarks = {}
+  
+  for i = start_idx, math.min(end_idx, #lines) do
+    local line = lines[i]
+    local key, value, eq_pos = utils.parse_env_line(line)
+    
+    if key and value then
+      local quote_char, actual_value = utils.extract_quoted_value(value)
+      
+      if actual_value then
+        local masked_value = shelter_utils.determine_masked_value(actual_value, {
+          partial_mode = state.get_config().partial_mode,
+          key = key,
+        })
+
+        if masked_value and #masked_value > 0 then
+          if quote_char then
+            masked_value = quote_char .. masked_value .. quote_char
+          end
+
+          table.insert(chunk_extmarks, {
+            i - 1,
+            eq_pos,
+            {
+              virt_text = { { masked_value, state.get_config().highlight_group } },
+              virt_text_pos = "overlay",
+              hl_mode = "combine",
+            },
+          })
+        end
+      end
+    end
+  end
+
+  if #chunk_extmarks > 0 then
+    vim.schedule(function()
+      for _, mark in ipairs(chunk_extmarks) do
+        pcall(vim.api.nvim_buf_set_extmark, bufnr, namespace, mark[1], mark[2], mark[3])
+      end
+    end)
+  end
+
+  -- Process next chunk if needed
+  if end_idx < #lines then
+    vim.schedule(function()
+      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash)
+    end)
+  else
+    processed_buffers:put(bufnr, {
+      hash = content_hash,
+      timestamp = vim.loop.now(),
+    })
+  end
+end
 
 function M.setup_fzf_shelter()
   if not state.is_enabled("fzf_previewer") then
@@ -54,64 +112,13 @@ function M.setup_fzf_shelter()
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
     local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
 
-    if processed_buffers[bufnr] and processed_buffers[bufnr].hash == content_hash then
+    local cached = processed_buffers:get(bufnr)
+    if cached and cached.hash == content_hash then
       return
     end
 
-    local all_extmarks = {}
-
-    for i, line in ipairs(lines) do
-      local key, value, eq_pos = utils.parse_env_line(line)
-      
-      if key and value then
-        local quote_char, actual_value = utils.extract_quoted_value(value)
-        
-        if actual_value then
-          local masked_value = shelter_utils.determine_masked_value(actual_value, {
-            partial_mode = state.get_config().partial_mode,
-            key = key,
-          })
-
-          if masked_value and #masked_value > 0 then
-            if quote_char then
-              masked_value = quote_char .. masked_value .. quote_char
-            end
-
-            table.insert(all_extmarks, {
-              i - 1,
-              eq_pos,
-              {
-                virt_text = { { masked_value, state.get_config().highlight_group } },
-                virt_text_pos = "overlay",
-                hl_mode = "combine",
-              },
-            })
-          end
-        end
-      end
-    end
-
-    if #all_extmarks > 0 then
-      vim.schedule(function()
-        for _, mark in ipairs(all_extmarks) do
-          pcall(vim.api.nvim_buf_set_extmark, bufnr, namespace, mark[1], mark[2], mark[3])
-        end
-      end)
-    end
-
-    processed_buffers[bufnr] = {
-      hash = content_hash,
-      timestamp = vim.loop.now(),
-    }
-
-    if vim.tbl_count(processed_buffers) > 100 then
-      local current_time = vim.loop.now()
-      for buf, info in pairs(processed_buffers) do
-        if current_time - info.timestamp > 300000 then
-          processed_buffers[buf] = nil
-        end
-      end
-    end
+    -- Start processing in chunks of 50 lines
+    process_buffer_chunk(bufnr, lines, 1, 50, content_hash)
   end
 end
 

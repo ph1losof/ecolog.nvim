@@ -1,15 +1,106 @@
 local M = {}
 
+-- Optimized patterns with fewer captures and combined operations
 M.PATTERNS = {
-  env_file = "^.+/%.env$",
-  env_with_suffix = "^.+/%.env%.[^.]+$",
+  -- Combined env file patterns for single match operation
+  env_file_combined = "^.+/%.env[^.]*$",
+  -- Simpler patterns that maintain compatibility
   env_line = "^[^#](.+)$",
   key_value = "([^=]+)=(.+)",
   quoted = "^['\"](.*)['\"]$",
   trim = "^%s*(.-)%s*$",
-  word = "[%w_]",
+  word = "[%w_]+",
   env_var = "^[%w_]+$",
 }
+
+-- Pre-compile frequently used patterns for better performance
+local COMPILED_PATTERNS = {
+  env_file = vim.regex(M.PATTERNS.env_file_combined),
+  key_value = vim.regex("^([^=]+)=(.+)$"),
+  quoted = vim.regex("^(['\"])(.*)['\"]$"),
+  comment = vim.regex("#.*$"),
+}
+
+-- Helper function to extract parts using pre-compiled patterns
+function M.extract_line_parts(line)
+  -- Skip comments and empty lines
+  if line:match("^%s*#") or line:match("^%s*$") then
+    return nil
+  end
+
+  -- Extract key and value using basic pattern first
+  local key, value = line:match("^%s*([^=]+)%s*=%s*(.-)%s*$")
+  if not key or not value then
+    return nil
+  end
+
+  -- Handle comments in value
+  local comment_start = value:find("#")
+  local comment
+  if comment_start then
+    comment = value:sub(comment_start + 1):match("^%s*(.-)%s*$")
+    value = value:sub(1, comment_start - 1):match("^%s*(.-)%s*$")
+  end
+
+  -- Handle quoted values
+  local quote_char = value:match("^(['\"'])")
+  if quote_char then
+    local quoted_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
+    if quoted_value then
+      value = quoted_value
+    end
+  end
+
+  return key, value, comment
+end
+
+function M.filter_env_files(files, patterns)
+  if not files then
+    return {}
+  end
+
+  files = vim.tbl_filter(function(f)
+    return f ~= nil
+  end, files)
+
+  -- Use the optimized combined pattern if no custom patterns
+  if not patterns then
+    return vim.tbl_filter(function(file)
+      return COMPILED_PATTERNS.env_file:match_str(file) ~= nil
+    end, files)
+  end
+
+  -- Handle custom patterns
+  if type(patterns) == "string" then
+    patterns = { patterns }
+  elseif type(patterns) ~= "table" then
+    return files
+  end
+
+  if #patterns == 0 then
+    return files
+  end
+
+  -- Compile custom patterns for better performance
+  local compiled_patterns = {}
+  for _, pattern in ipairs(patterns) do
+    if type(pattern) == "string" then
+      table.insert(compiled_patterns, vim.regex(pattern))
+    end
+  end
+
+  return vim.tbl_filter(function(file)
+    if not file then
+      return false
+    end
+    for _, pattern in ipairs(compiled_patterns) do
+      if pattern:match_str(file) then
+        return true
+      end
+    end
+    return false
+  end, files)
+end
 
 local DEFAULT_ENV_PATTERNS = {
   "^.+/%.env$",

@@ -1262,6 +1262,8 @@ Ecolog provides specialized previewers for various integrations that help you sa
 
 #### Telescope Previewer
 
+Configuration:
+
 ```lua
 require('ecolog').setup({
   shelter = {

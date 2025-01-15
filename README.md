@@ -93,13 +93,14 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             mask_char = "*",   -- Character used for masking
         },
         modules = {
-            cmp = true,       -- Mask values in completion
-            peek = false,      -- Mask values in peek view
-            files = true,
-            telescope = false, -- Mask values in telescope integration
-            telescope_previewer = false, -- Mask values in telescope preview buffers
-            fzf = false,       -- Mask values in fzf picker
-            fzf_previewer = false, -- Mask values in fzf preview buffers
+            cmp = true,       -- Enabled to mask values in completion
+            peek = false,      -- Enable to mask values in peek view
+            files = true, -- Enabled to mask values in file buffers
+            telescope = false, -- Enable to mask values in telescope integration
+            telescope_previewer = false, -- Enable to mask values in telescope preview buffers
+            fzf = false,       -- Enable to mask values in fzf picker
+            fzf_previewer = false, -- Enable to mask values in fzf preview buffers
+            snacks_previewer = false,    -- Enable to mask values in snacks previewer
         }
     },
     -- true by default, enables built-in types (database_url, url, etc.)

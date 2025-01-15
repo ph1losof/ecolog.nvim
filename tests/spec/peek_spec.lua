@@ -18,6 +18,7 @@ describe("peek window", function()
     package.loaded["ecolog.shelter"] = nil
     package.loaded["ecolog.types"] = nil
     package.loaded["ecolog.providers"] = nil
+    package.loaded["ecolog"] = nil
 
     -- Mock vim API functions
     stub(api, "nvim_create_buf").returns(1)
@@ -52,10 +53,12 @@ describe("peek window", function()
 
     -- Mock providers
     mock_providers = {
-      get_providers = function() return { { extract_var = function() return "TEST_VAR" end } } end,
+      get_providers = function(filetype) return { { extract_var = function() return "TEST_VAR" end } } end,
+      load_providers_for_filetype = function(filetype) end,
     }
+    package.loaded["ecolog.providers"] = mock_providers
 
-    -- Mock environment variables
+    -- Mock ecolog module
     mock_env_vars = {
       TEST_VAR = {
         value = "test_value",
@@ -68,6 +71,9 @@ describe("peek window", function()
         source = ".env",
         comment = "This is a comment",
       },
+    }
+    package.loaded["ecolog"] = {
+      get_env_vars = function() return mock_env_vars end,
     }
 
     -- Set filetype
@@ -87,7 +93,7 @@ describe("peek window", function()
 
   describe("window creation", function()
     it("should create peek window with correct options", function()
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       -- Verify buffer creation and options
       assert.stub(api.nvim_create_buf).was_called_with(false, true)
@@ -104,7 +110,7 @@ describe("peek window", function()
     end)
 
     it("should set up autocommands for auto-closing", function()
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       assert.stub(api.nvim_create_autocmd).was_called_with(
         match._,
@@ -113,7 +119,7 @@ describe("peek window", function()
     end)
 
     it("should set up close keymapping", function()
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       assert.stub(api.nvim_buf_set_keymap).was_called_with(1, "n", "q", "", match._)
     end)
@@ -121,7 +127,7 @@ describe("peek window", function()
 
   describe("content display", function()
     it("should display variable information correctly", function()
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       assert.are.same({
         "Name    : TEST_VAR",
@@ -132,7 +138,7 @@ describe("peek window", function()
     end)
 
     it("should include comment when available", function()
-      peek.peek_env_value("COMMENTED_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "COMMENTED_VAR")
 
       assert.are.same({
         "Name    : COMMENTED_VAR",
@@ -144,7 +150,7 @@ describe("peek window", function()
     end)
 
     it("should apply correct highlights", function()
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       -- Verify highlights were applied for each line
       assert.equals("EcologVariable", mock_highlights[1].group)
@@ -160,7 +166,7 @@ describe("peek window", function()
       mock_shelter.is_enabled = function() return true end
       mock_shelter.mask_value = function() return "********" end
 
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       -- Check if value is masked
       assert.equals("Value   : ********", mock_lines[4])
@@ -170,7 +176,7 @@ describe("peek window", function()
       mock_shelter.is_enabled = function() return true end
       mock_shelter.get_config = function() return { highlight_group = "Comment" } end
 
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       -- Verify shelter highlight group is used for value
       assert.equals("Comment", mock_highlights[4].group)
@@ -181,7 +187,7 @@ describe("peek window", function()
     it("should handle unsupported filetypes", function()
       mock_providers.get_providers = function() return {} end
 
-      peek.peek_env_value("TEST_VAR", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "TEST_VAR")
 
       assert.stub(notify_stub).was_called_with(
         "EcologPeek is not available for typescript files",
@@ -190,7 +196,7 @@ describe("peek window", function()
     end)
 
     it("should handle non-existent variables", function()
-      peek.peek_env_value("NON_EXISTENT", {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), "NON_EXISTENT")
 
       assert.stub(notify_stub).was_called_with(
         "Environment variable 'NON_EXISTENT' not found",
@@ -205,10 +211,10 @@ describe("peek window", function()
         }
       end
 
-      peek.peek_env_value(nil, {}, mock_env_vars, mock_providers, function() end)
+      peek.peek_env_var(mock_providers.get_providers("typescript"), nil)
 
       assert.stub(notify_stub).was_called_with(
-        "No environment variable pattern matched at cursor",
+        "Environment variable '' not found",
         vim.log.levels.WARN
       )
     end)

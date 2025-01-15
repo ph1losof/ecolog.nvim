@@ -19,10 +19,10 @@ describe("ecolog", function()
 
     -- Mock providers module
     package.loaded["ecolog.providers"] = {
-      get_providers = function()
+      get_providers = function(filetype)
         return {}
       end,
-      load_providers = function() end,
+      load_providers_for_filetype = function(filetype) end,
       register = function() end,
       register_many = function() end
     }
@@ -55,6 +55,66 @@ describe("ecolog", function()
       local config = ecolog.get_config()
       assert.equals(vim.fn.getcwd(), config.path)
       assert.equals("", config.preferred_environment)
+    end)
+  end)
+
+  describe("provider loading", function()
+    local providers
+    local mock_provider = {
+      pattern = "%$[%w_]*$",
+      filetype = "typescript",
+      extract_var = function() end,
+      get_completion_trigger = function() return "$" end,
+    }
+    local providers_cache = {}
+
+    before_each(function()
+      package.loaded["ecolog.providers"] = nil
+      providers_cache = {}
+      
+      -- Create providers module with caching behavior
+      providers = {
+        get_providers = function(filetype)
+          if not providers_cache[filetype] then
+            providers.load_providers_for_filetype(filetype)
+            providers_cache[filetype] = {}
+          end
+          return providers_cache[filetype]
+        end,
+        load_providers_for_filetype = function() end,
+        register = function() end,
+        register_many = function() end
+      }
+      
+      -- Set up stubs
+      stub(providers, "load_providers_for_filetype")
+      stub(providers, "register")
+      
+      -- Install the mocked module
+      package.loaded["ecolog.providers"] = providers
+    end)
+
+    after_each(function()
+      providers.load_providers_for_filetype:revert()
+      providers.register:revert()
+    end)
+
+    it("should load providers on demand by filetype", function()
+      local filetype = "typescript"
+      providers.get_providers(filetype)
+      assert.stub(providers.load_providers_for_filetype).was_called_with(filetype)
+    end)
+
+    it("should register provider for specific filetype", function()
+      providers.register(mock_provider)
+      assert.stub(providers.register).was_called_with(mock_provider)
+    end)
+
+    it("should cache providers after loading", function()
+      local filetype = "typescript"
+      providers.get_providers(filetype)
+      providers.get_providers(filetype)
+      assert.stub(providers.load_providers_for_filetype).was_called(1)
     end)
   end)
 

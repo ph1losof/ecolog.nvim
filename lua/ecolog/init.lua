@@ -85,7 +85,6 @@ local state = {
   file_cache_opts = nil,
   current_watcher_group = nil,
   selected_env_file = nil,
-  _providers_loaded = false,
   _env_module = nil,
   _file_watchers = {},
 }
@@ -270,42 +269,6 @@ local function parse_env_file(opts, force)
       env_file:close()
     end
   end
-end
-
-local function load_providers()
-  if state._providers_loaded then
-    return
-  end
-
-  local provider_modules = {
-    typescript = true,
-    javascript = true,
-    python = true,
-    php = true,
-    lua = true,
-    go = true,
-    rust = true,
-  }
-
-  for name in pairs(provider_modules) do
-    local module_path = "ecolog.providers." .. name
-    local ok, provider = pcall(require_module, module_path)
-    if ok then
-      if type(provider) == "table" then
-        if provider.provider then
-          providers.register(provider.provider)
-        else
-          providers.register_many(provider)
-        end
-      else
-        providers.register(provider)
-      end
-    else
-      notify(string.format("Failed to load %s provider: %s", name, provider), vim.log.levels.WARN)
-    end
-  end
-
-  state._providers_loaded = true
 end
 
 function M.check_env_type(var_name, opts)
@@ -521,12 +484,12 @@ function M.setup(opts)
   local commands = {
     EcologPeek = {
       callback = function(args)
-        load_providers()
-        parse_env_file(config)
-        peek.peek_env_value(args.args, config, state.env_vars, providers, parse_env_file)
+        local filetype = vim.bo.filetype
+        local available_providers = providers.get_providers(filetype)
+        peek.peek_env_var(available_providers, args.args)
       end,
       nargs = "?",
-      desc = "Peek at environment variable value",
+      desc = "Peek environment variable value",
     },
     EcologGenerateExample = {
       callback = function()

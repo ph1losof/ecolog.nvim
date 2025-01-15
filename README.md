@@ -33,6 +33,13 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#️-shelter-mode)
+  - [Configuration Options](#configuration-options)
+  - [Available Commands](#available-commands)
+  - [Features](#-features)
+  - [Shelter Previewers](#-shelter-previewers)
+    - [Telescope Previewer](#telescope-previewer)
+    - [FZF Previewer](#fzf-previewer)
+    - [Snacks Previewer](#snacks-previewer)
 - [Type System](#-ecolog-types)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
@@ -1034,27 +1041,19 @@ The `disable_cmp` option (enabled by default) will automatically disable both nv
    - Masks values directly in .env files
    - Use `:EcologShelterLinePeek` to temporarily reveal values
 
-4. **Telescope Preview (`telescope_previewer = true`)**
-
-   - Masks values in telescope preview buffers
-   - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
-   - Maintains masking state across buffer refreshes
-
-5. **FZF Preview (`fzf_previewer = true`)**
-
-   - Masks values in fzf-lua preview buffers
-   - Automatically applies to any `.env` file previewed in fzf-lua with support of custom env file patterns
-   - Supports all fzf-lua commands that show previews (files, git_files, live_grep, etc.)
-   - Maintains masking state across buffer refreshes
-   - Optimized for performance with buffer content caching
-
-6. **FZF Picker (`fzf = true`)**
+4. **FZF Picker (`fzf = true`)**
 
    - Masks values in fzf-lua picker
 
-7. **Telescope Integration (`telescope = true`)**
+5. **Telescope Integration (`telescope = true`)**
 
    - Masks values in telescope picker from integration
+
+6. **Previewers**
+
+   - Specialized masking for various preview windows
+   - Supports Telescope, FZF, and Snacks previewers
+   - See [Shelter Previewers](#-shelter-previewers) for detailed configuration
 
 #### Partial Masking
 
@@ -1250,6 +1249,74 @@ Open the environment variables picker:
 
 All keymaps are customizable through the configuration.
 
+### 🔍 Shelter Previewers
+
+Ecolog provides specialized previewers for various integrations that help you safely view environment variables while maintaining security through the shelter system.
+
+#### Telescope Previewer
+
+The Telescope previewer provides a secure way to preview environment files with the following features:
+
+- Automatic value masking in preview windows
+- Support for partial masking mode
+- Real-time preview updates
+- Memory-efficient buffer handling
+
+To configure the Telescope previewer behavior:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      telescope = false,      -- Mask values in telescope integration
+      telescope_previewer = false, -- Mask values in telescope preview buffers
+    }
+  }
+})
+```
+
+#### FZF Previewer
+
+The FZF previewer offers similar functionality to the Telescope previewer:
+
+- Secure environment file previews
+- Configurable masking behavior
+- Efficient buffer management
+- Integration with fzf-lua
+
+Configuration:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      fzf = false,       -- Mask values in fzf picker
+      fzf_previewer = false, -- Mask values in fzf preview buffers
+    }
+  }
+})
+```
+
+#### Snacks Previewer
+
+The Snacks previewer provides a lightweight preview experience:
+
+- Quick value peeking
+- Minimal memory footprint
+- Simple configuration
+
+Configuration:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      snacks_previewer = false,    -- Mask values in snacks previewer
+    }
+  }
+})
+```
+
 ## 🛡 Ecolog Types
 
 Ecolog includes a flexible type system for environment variables with built-in and custom types.
@@ -1416,13 +1483,12 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't wan
 ```lua
 return {
   {
-    dir = '~/projects/ecolog.nvim',
+    'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
       { '<leader>es', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
     },
-    dependencies = { 'nvim-telescope/telescope.nvim' },
     lazy = false,
     opts = {
       preferred_environment = 'local',
@@ -1430,6 +1496,7 @@ return {
       integrations = {
         lspsaga = true,
         nvim_cmp = true,
+        statusline = true,
       },
       shelter = {
         configuration = {
@@ -1443,14 +1510,13 @@ return {
         modules = {
           files = true,
           peek = false,
-          telescope_previewer = true,
-          telescope = false,
+          snacks_previewer = true,
           cmp = true,
         },
       },
       path = vim.fn.getcwd(),
     },
-  }
+  },
 }
 ```
 

@@ -139,9 +139,7 @@ function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
     callback = function()
       local has_cmp, cmp = pcall(require, "cmp")
       if has_cmp and not M._cmp_loaded then
-        -- Load providers first
-        providers.load_providers()
-        -- Then set up completion
+        -- Set up completion
         setup_completion(cmp, opts, providers)
         M._cmp_loaded = true
       end

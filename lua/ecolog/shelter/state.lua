@@ -1,6 +1,6 @@
 local M = {}
 
-local FEATURES = { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "fzf_previewer" }
+local FEATURES = { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "fzf_previewer", "snacks_previewer" }
 local DEFAULT_PARTIAL_MODE = {
   show_start = 3,
   show_end = 3,

@@ -81,6 +81,10 @@ function M.setup(opts)
     require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
   end
 
+  if state.is_enabled("snacks_previewer") then
+    require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
+  end
+
   -- Setup line peek command
   api.nvim_create_user_command("EcologShelterLinePeek", function()
     if not state.is_enabled("files") then
@@ -172,7 +176,7 @@ function M.set_state(command, feature)
   if feature then
     if not tbl_contains(state.get_features(), feature) then
       notify(
-        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', or 'telescope_previewer'",
+        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', or 'snacks_previewer'",
         vim.log.levels.ERROR
       )
       return

@@ -99,7 +99,7 @@ end
 
 -- Cache for parsed env lines
 local _env_line_cache = setmetatable({}, {
-  __mode = "k" -- Make it a weak table to avoid memory leaks
+  __mode = "k", -- Make it a weak table to avoid memory leaks
 })
 
 local function parse_env_line(line, file_path)
@@ -109,13 +109,13 @@ local function parse_env_line(line, file_path)
   end
 
   if not line:match(utils.PATTERNS.env_line) then
-    _env_line_cache[cache_key] = {nil}
+    _env_line_cache[cache_key] = { nil }
     return nil
   end
 
   local key, value = line:match(utils.PATTERNS.key_value)
   if not (key and value) then
-    _env_line_cache[cache_key] = {nil}
+    _env_line_cache[cache_key] = { nil }
     return nil
   end
 
@@ -145,7 +145,7 @@ local function parse_env_line(line, file_path)
       raw_value = value,
       source = file_path,
       comment = comment,
-    }
+    },
   }
   _env_line_cache[cache_key] = result
   return unpack(result)
@@ -191,34 +191,40 @@ local function setup_file_watcher(opts)
   end
 
   -- Watch for new files
-  table.insert(state._file_watchers, api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
-    group = state.current_watcher_group,
-    pattern = watch_patterns,
-    callback = function(ev)
-      local matches = utils.filter_env_files({ ev.file }, opts.env_file_pattern)
-      if #matches > 0 then
-        state.cached_env_files = nil
-        state.last_opts = nil
+  table.insert(
+    state._file_watchers,
+    api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
+      group = state.current_watcher_group,
+      pattern = watch_patterns,
+      callback = function(ev)
+        local matches = utils.filter_env_files({ ev.file }, opts.env_file_pattern)
+        if #matches > 0 then
+          state.cached_env_files = nil
+          state.last_opts = nil
 
-        local env_files = utils.find_env_files(opts)
-        if #env_files > 0 then
-          state.selected_env_file = env_files[1]
-          handle_env_file_change()
-          notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
+          local env_files = utils.find_env_files(opts)
+          if #env_files > 0 then
+            state.selected_env_file = env_files[1]
+            handle_env_file_change()
+            notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
+          end
         end
-      end
-    end,
-  }))
+      end,
+    })
+  )
 
   if state.selected_env_file then
-    table.insert(state._file_watchers, api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
-      group = state.current_watcher_group,
-      pattern = state.selected_env_file,
-      callback = function()
-        handle_env_file_change()
-        notify("Environment file updated: " .. fn.fnamemodify(state.selected_env_file, ":t"), vim.log.levels.INFO)
-      end,
-    }))
+    table.insert(
+      state._file_watchers,
+      api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
+        group = state.current_watcher_group,
+        pattern = state.selected_env_file,
+        callback = function()
+          handle_env_file_change()
+          notify("Environment file updated: " .. fn.fnamemodify(state.selected_env_file, ":t"), vim.log.levels.INFO)
+        end,
+      })
+    )
   end
 end
 
@@ -629,6 +635,44 @@ function M.setup(opts)
       end,
       desc = "Open FZF environment variable picker",
     },
+    EcologCopy = {
+      callback = function(args)
+        local filetype = vim.bo.filetype
+        local var_name = args.args
+
+        if var_name == "" then
+          if config.provider_patterns.extract then
+            local available_providers = providers.get_providers(filetype)
+            var_name = utils.get_var_word_under_cursor(available_providers)
+          else
+            local word = vim.fn.expand("<cword>")
+            if word and #word > 0 then
+              var_name = word
+            end
+          end
+        end
+
+        if not var_name or #var_name == 0 then
+          notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
+          return
+        end
+
+        parse_env_file(config)
+
+        local var = state.env_vars[var_name]
+        if not var then
+          notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
+          return
+        end
+
+        local value = var.raw_value
+        vim.fn.setreg("+", value)
+        vim.fn.setreg('"', value)
+        notify(string.format("Copied raw value of '%s' to clipboard", var_name), vim.log.levels.INFO)
+      end,
+      nargs = "?",
+      desc = "Copy environment variable value to clipboard",
+    },
   }
 
   for name, cmd in pairs(commands) do
@@ -658,12 +702,12 @@ function M.get_status()
   if not state.last_opts or not state.last_opts.integrations.statusline then
     return ""
   end
-  
+
   local config = state.last_opts.integrations.statusline
   if type(config) == "table" and config.hidden_mode and not state.selected_env_file then
     return ""
   end
-  
+
   return require("ecolog.integrations.statusline").get_statusline()
 end
 
@@ -671,12 +715,12 @@ function M.get_lualine()
   if not state.last_opts or not state.last_opts.integrations.statusline then
     return ""
   end
-  
+
   local config = state.last_opts.integrations.statusline
   if type(config) == "table" and config.hidden_mode and not state.selected_env_file then
     return ""
   end
-  
+
   return require("ecolog.integrations.statusline").lualine()
 end
 

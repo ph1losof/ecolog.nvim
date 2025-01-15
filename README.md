@@ -216,6 +216,8 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 | `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
 | `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
 | `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)     |
+| `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                       |
+| `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard          |
 
 ## 📝 Environment File Priority
 
@@ -1252,7 +1254,7 @@ All keymaps are customizable through the configuration.
 
 ### 🔍 Shelter Previewers
 
-Ecolog provides specialized previewers for various integrations that help you safely view environment variables while maintaining security through the shelter system.
+`ecolog.nvim` integrates with various file pickers to provide a secure way to use file picker without leaking sensitive data, when searching for files.
 
 - Secure environment file previews
 - Configurable masking behavior
@@ -1261,6 +1263,8 @@ Ecolog provides specialized previewers for various integrations that help you sa
 - Integration with fzf-lua, telescope and snacks.picker
 
 #### Telescope Previewer
+
+Configuration:
 
 ```lua
 require('ecolog').setup({

@@ -33,6 +33,10 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#️-shelter-mode)
+- [Shelter Previewers](#-shelter-previewers)
+  - [Telescope Previewer](#telescope-previewer)
+  - [FZF Previewer](#fzf-previewer)
+  - [Snacks Previewer](#snacks-previewer)
 - [Type System](#-ecolog-types)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
@@ -1246,6 +1250,74 @@ Open the environment variables picker:
 | `<C-a>` | Append value to buffer  |
 
 All keymaps are customizable through the configuration.
+
+## 🔍 Shelter Previewers
+
+Ecolog provides specialized previewers for various integrations that help you safely view environment variables while maintaining security through the shelter system.
+
+### Telescope Previewer
+
+The Telescope previewer provides a secure way to preview environment files with the following features:
+
+- Automatic value masking in preview windows
+- Support for partial masking mode
+- Real-time preview updates
+- Memory-efficient buffer handling
+
+To configure the Telescope previewer behavior:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      telescope = false,      -- Mask values in telescope integration
+      telescope_previewer = false, -- Mask values in telescope preview buffers
+    }
+  }
+})
+```
+
+### FZF Previewer
+
+The FZF previewer offers similar functionality to the Telescope previewer:
+
+- Secure environment file previews
+- Configurable masking behavior
+- Efficient buffer management
+- Integration with fzf-lua
+
+Configuration:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      fzf = false,       -- Mask values in fzf picker
+      fzf_previewer = false, -- Mask values in fzf preview buffers
+    }
+  }
+})
+```
+
+### Snacks Previewer
+
+The Snacks previewer provides a lightweight preview experience:
+
+- Quick value peeking
+- Minimal memory footprint
+- Simple configuration
+
+Configuration:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      snacks_previewer = false,    -- Mask values in snacks previewer
+    }
+  }
+})
+```
 
 ## 🛡 Ecolog Types
 

@@ -33,10 +33,13 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Language Support](#-language-support)
 - [Custom Providers](#-custom-providers)
 - [Shelter Mode](#️-shelter-mode)
-- [Shelter Previewers](#-shelter-previewers)
-  - [Telescope Previewer](#telescope-previewer)
-  - [FZF Previewer](#fzf-previewer)
-  - [Snacks Previewer](#snacks-previewer)
+  - [Configuration Options](#configuration-options)
+  - [Available Commands](#available-commands)
+  - [Features](#-features)
+  - [Shelter Previewers](#-shelter-previewers)
+    - [Telescope Previewer](#telescope-previewer)
+    - [FZF Previewer](#fzf-previewer)
+    - [Snacks Previewer](#snacks-previewer)
 - [Type System](#-ecolog-types)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
@@ -1035,27 +1038,19 @@ The `disable_cmp` option (enabled by default) will automatically disable both nv
    - Masks values directly in .env files
    - Use `:EcologShelterLinePeek` to temporarily reveal values
 
-4. **Telescope Preview (`telescope_previewer = true`)**
-
-   - Masks values in telescope preview buffers
-   - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
-   - Maintains masking state across buffer refreshes
-
-5. **FZF Preview (`fzf_previewer = true`)**
-
-   - Masks values in fzf-lua preview buffers
-   - Automatically applies to any `.env` file previewed in fzf-lua with support of custom env file patterns
-   - Supports all fzf-lua commands that show previews (files, git_files, live_grep, etc.)
-   - Maintains masking state across buffer refreshes
-   - Optimized for performance with buffer content caching
-
-6. **FZF Picker (`fzf = true`)**
+4. **FZF Picker (`fzf = true`)**
 
    - Masks values in fzf-lua picker
 
-7. **Telescope Integration (`telescope = true`)**
+5. **Telescope Integration (`telescope = true`)**
 
    - Masks values in telescope picker from integration
+
+6. **Previewers**
+
+   - Specialized masking for various preview windows
+   - Supports Telescope, FZF, and Snacks previewers
+   - See [Shelter Previewers](#-shelter-previewers) for detailed configuration
 
 #### Partial Masking
 
@@ -1251,11 +1246,11 @@ Open the environment variables picker:
 
 All keymaps are customizable through the configuration.
 
-## 🔍 Shelter Previewers
+### 🔍 Shelter Previewers
 
 Ecolog provides specialized previewers for various integrations that help you safely view environment variables while maintaining security through the shelter system.
 
-### Telescope Previewer
+#### Telescope Previewer
 
 The Telescope previewer provides a secure way to preview environment files with the following features:
 
@@ -1277,7 +1272,7 @@ require('ecolog').setup({
 })
 ```
 
-### FZF Previewer
+#### FZF Previewer
 
 The FZF previewer offers similar functionality to the Telescope previewer:
 
@@ -1299,7 +1294,7 @@ require('ecolog').setup({
 })
 ```
 
-### Snacks Previewer
+#### Snacks Previewer
 
 The Snacks previewer provides a lightweight preview experience:
 

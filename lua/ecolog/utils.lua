@@ -155,8 +155,8 @@ local function default_sort_fn(a, b, opts)
     end
   end
 
-  local a_is_env = a:match(M.PATTERNS.env_file) ~= nil
-  local b_is_env = b:match(M.PATTERNS.env_file) ~= nil
+  local a_is_env = a:match(M.PATTERNS.env_file_combined) ~= nil
+  local b_is_env = b:match(M.PATTERNS.env_file_combined) ~= nil
   if a_is_env ~= b_is_env then
     return a_is_env
   end

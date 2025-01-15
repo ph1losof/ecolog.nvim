@@ -4,6 +4,12 @@ local api = vim.api
 local string_find = string.find
 local string_sub = string.sub
 local string_match = string.match
+local table_insert = table.insert
+local fn = vim.fn
+local bo = vim.bo
+local notify = vim.notify
+local log_levels = vim.log.levels
+local pcall = pcall
 
 local state = require("ecolog.shelter.state")
 local utils = require("ecolog.shelter.utils")
@@ -27,9 +33,8 @@ end
 
 function M.shelter_buffer()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
-  local filename = vim.fn.fnamemodify(vim.fn.bufname(), ":t")
+  local filename = fn.fnamemodify(fn.bufname(), ":t")
 
-  -- Only shelter if this is an environment file
   if not utils.match_env_file(filename, config) then
     return
   end
@@ -46,9 +51,11 @@ function M.shelter_buffer()
 
   local lines = api.nvim_buf_get_lines(0, 0, -1, false)
   local extmarks = {}
+  local config_partial_mode = state.get_config().partial_mode
+  local config_highlight_group = state.get_config().highlight_group
 
   for i, line in ipairs(lines) do
-    if string_find(line, "^%s*#") or string_find(line, "^%s*$") then
+    if string_find(line, "^%s*[#%s]") then
       goto continue
     end
 
@@ -57,11 +64,8 @@ function M.shelter_buffer()
       goto continue
     end
 
-    local key = string_sub(line, 1, eq_pos - 1)
-    local value = string_sub(line, eq_pos + 1)
-
-    key = string_match(key, "^%s*(.-)%s*$")
-    value = string_match(value, "^%s*(.-)%s*$")
+    local key = string_match(string_sub(line, 1, eq_pos - 1), "^%s*(.-)%s*$")
+    local value = string_match(string_sub(line, eq_pos + 1), "^%s*(.-)%s*$")
 
     if not (key and value) then
       goto continue
@@ -76,10 +80,11 @@ function M.shelter_buffer()
       actual_value = string_match(value, "^([^%s#]+)")
     end
 
-    if actual_value then
-      local masked_value = state.is_line_revealed(i) and actual_value
+    if actual_value and #actual_value > 0 then
+      local is_revealed = state.is_line_revealed(i)
+      local masked_value = is_revealed and actual_value
         or utils.determine_masked_value(actual_value, {
-          partial_mode = state.get_config().partial_mode,
+          partial_mode = config_partial_mode,
           key = key,
         })
 
@@ -88,12 +93,12 @@ function M.shelter_buffer()
           masked_value = quote_char .. masked_value .. quote_char
         end
 
-        table.insert(extmarks, {
+        table_insert(extmarks, {
           i - 1,
           eq_pos,
           {
             virt_text = {
-              { masked_value, state.is_line_revealed(i) and "String" or state.get_config().highlight_group },
+              { masked_value, is_revealed and "String" or config_highlight_group },
             },
             virt_text_pos = "overlay",
             hl_mode = "combine",
@@ -104,8 +109,10 @@ function M.shelter_buffer()
     ::continue::
   end
 
-  for _, mark in ipairs(extmarks) do
-    api.nvim_buf_set_extmark(0, namespace, mark[1], mark[2], mark[3])
+  if #extmarks > 0 then
+    for _, mark in ipairs(extmarks) do
+      api.nvim_buf_set_extmark(0, namespace, mark[1], mark[2], mark[3])
+    end
   end
 end
 
@@ -133,7 +140,6 @@ function M.setup_file_shelter()
     watch_patterns[1] = ".env*"
   end
 
-  -- Agressive shelter
   api.nvim_create_autocmd("BufReadCmd", {
     pattern = watch_patterns,
     group = group,
@@ -146,11 +152,9 @@ function M.setup_file_shelter()
       local lines = vim.fn.readfile(ev.file)
       local bufnr = ev.buf
 
-      -- Initialize buffer options first
       vim.bo[bufnr].buftype = ""
       vim.bo[bufnr].filetype = "sh"
 
-      -- Set modifiable and make changes
       local ok, err = pcall(function()
         vim.bo[bufnr].modifiable = true
         api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
@@ -192,13 +196,11 @@ function M.setup_file_shelter()
       if utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
         state.set_feature_state("files", true)
 
-        -- Enable telescope_previewer if it was in initial config
         if state.get_state().features.initial.telescope_previewer then
           state.set_feature_state("telescope_previewer", true)
           require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
         end
 
-        -- Enable fzf_previewer if it was in initial config
         if state.get_state().features.initial.fzf_previewer then
           state.set_feature_state("fzf_previewer", true)
           require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
@@ -212,4 +214,3 @@ function M.setup_file_shelter()
 end
 
 return M
-

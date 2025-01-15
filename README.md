@@ -1252,7 +1252,7 @@ All keymaps are customizable through the configuration.
 
 ### 🔍 Shelter Previewers
 
-Ecolog provides specialized previewers for various integrations that help you safely view environment variables while maintaining security through the shelter system.
+`ecolog.nvim` integrates with various file pickers to provide a secure way to use file picker without leaking sensitive data, when searching for files.
 
 - Secure environment file previews
 - Configurable masking behavior

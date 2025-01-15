@@ -1265,8 +1265,7 @@ To configure the Telescope previewer behavior:
 require('ecolog').setup({
   shelter = {
     modules = {
-      telescope = false,      -- Mask values in telescope integration
-      telescope_previewer = false, -- Mask values in telescope preview buffers
+      telescope_previewer = true, -- Mask values in telescope preview buffers
     }
   }
 })
@@ -1287,8 +1286,7 @@ Configuration:
 require('ecolog').setup({
   shelter = {
     modules = {
-      fzf = false,       -- Mask values in fzf picker
-      fzf_previewer = false, -- Mask values in fzf preview buffers
+      fzf_previewer = true, -- Mask values in fzf preview buffers
     }
   }
 })
@@ -1308,7 +1306,7 @@ Configuration:
 require('ecolog').setup({
   shelter = {
     modules = {
-      snacks_previewer = false,    -- Mask values in snacks previewer
+      snacks_previewer = true,    -- Mask values in snacks previewer
     }
   }
 })

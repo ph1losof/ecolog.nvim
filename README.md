@@ -216,6 +216,8 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 | `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
 | `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
 | `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)     |
+| `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                       |
+| `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard          |
 
 ## 📝 Environment File Priority
 

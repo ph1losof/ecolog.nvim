@@ -1480,13 +1480,12 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't wan
 ```lua
 return {
   {
-    dir = '~/projects/ecolog.nvim',
+    'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
       { '<leader>es', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
     },
-    dependencies = { 'nvim-telescope/telescope.nvim' },
     lazy = false,
     opts = {
       preferred_environment = 'local',
@@ -1494,6 +1493,7 @@ return {
       integrations = {
         lspsaga = true,
         nvim_cmp = true,
+        statusline = true,
       },
       shelter = {
         configuration = {
@@ -1507,14 +1507,13 @@ return {
         modules = {
           files = true,
           peek = false,
-          telescope_previewer = true,
-          telescope = false,
+          snacks_previewer = true,
           cmp = true,
         },
       },
       path = vim.fn.getcwd(),
     },
-  }
+  },
 }
 ```
 

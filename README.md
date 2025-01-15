@@ -1254,16 +1254,13 @@ All keymaps are customizable through the configuration.
 
 Ecolog provides specialized previewers for various integrations that help you safely view environment variables while maintaining security through the shelter system.
 
+- Secure environment file previews
+- Configurable masking behavior
+- Minimal memory footprint
+- Efficient buffer management
+- Integration with fzf-lua, telescope and snacks.picker
+
 #### Telescope Previewer
-
-The Telescope previewer provides a secure way to preview environment files with the following features:
-
-- Automatic value masking in preview windows
-- Support for partial masking mode
-- Real-time preview updates
-- Memory-efficient buffer handling
-
-To configure the Telescope previewer behavior:
 
 ```lua
 require('ecolog').setup({
@@ -1276,13 +1273,6 @@ require('ecolog').setup({
 ```
 
 #### FZF Previewer
-
-The FZF previewer offers similar functionality to the Telescope previewer:
-
-- Secure environment file previews
-- Configurable masking behavior
-- Efficient buffer management
-- Integration with fzf-lua
 
 Configuration:
 
@@ -1297,12 +1287,6 @@ require('ecolog').setup({
 ```
 
 #### Snacks Previewer
-
-The Snacks previewer provides a lightweight preview experience:
-
-- Quick value peeking
-- Minimal memory footprint
-- Simple configuration
 
 Configuration:
 
@@ -1541,7 +1525,7 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | -------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Partial Value Masking            | ✅ Configurable partial masking with patterns                                   | 🟡 Full masking only                                  |
 | Pattern-based Security           | ✅ Custom patterns for different security levels                                | 🟡 Basic pattern matching                             |
-| Preview Protection               | ✅ Telescope/FZF preview protection                                             | 🟡 Only Telescope preview protection                  |
+| Preview Protection               | ✅ Telescope/FZF/Snacks picker preview protection                               | 🟡 Only Telescope preview protection                  |
 | Mask sensitive values on startup | ✅ Full support, never leak environment variables                               | ❌ Doesn't support masking on startup, flashes values |
 | Mask on leave                    | ✅ Supports                                                                     | ✅ Supports                                           |
 | Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                           | 🟡 Only nvim-cmp and can't disable                    |
@@ -1551,14 +1535,14 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 
 ### Environment Management (vs [telescope-env.nvim](https://github.com/LinArcX/telescope-env.nvim))
 
-| Feature                     | ecolog.nvim                               | telescope-env.nvim      |
-| --------------------------- | ----------------------------------------- | ----------------------- |
-| Environment Variable Search | ✅ Basic search                           | ✅ Basic search         |
-| Customizable keymaps        | ✅ Fully customizable                     | ✅ Fully customizable   |
-| Value Preview               | ✅ Protected value preview                | 🟡 Basic value preview  |
-| Multiple Picker Support     | ✅ Both Telescope and FZF support         | 🟡 Telescope only       |
-| Security Features           | ✅ Integrated security in previews        | ❌ No security features |
-| Custom Sort/Filter          | ✅ Advanced sorting and filtering options | 🟡 Basic sorting only   |
+| Feature                     | ecolog.nvim                                 | telescope-env.nvim      |
+| --------------------------- | ------------------------------------------- | ----------------------- |
+| Environment Variable Search | ✅ Basic search                             | ✅ Basic search         |
+| Customizable keymaps        | ✅ Fully customizable                       | ✅ Fully customizable   |
+| Value Preview               | ✅ Protected value preview                  | 🟡 Basic value preview  |
+| Multiple Picker Support     | ✅ Telescope, Snacks picker and FZF support | 🟡 Telescope only       |
+| Security Features           | ✅ Integrated security in previews          | ❌ No security features |
+| Custom Sort/Filter          | ✅ Advanced sorting and filtering options   | 🟡 Basic sorting only   |
 
 ### File Management (vs [dotenv.nvim](https://github.com/ellisonleao/dotenv.nvim))
 

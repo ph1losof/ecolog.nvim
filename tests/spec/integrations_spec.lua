@@ -21,15 +21,15 @@ describe("integrations", function()
         return {
           provider_patterns = {
             extract = true,
-            cmp = true
-          }
+            cmp = true,
+          },
         }
       end,
       get_env_vars = function()
         return {
-          MY_TEST_VAR = { value = "test", source = ".env" }
+          MY_TEST_VAR = { value = "test", source = ".env" },
         }
-      end
+      end,
     }
 
     -- Mock utils module
@@ -40,7 +40,7 @@ describe("integrations", function()
           return "MY_TEST_VAR"
         end
         return ""
-      end
+      end,
     }
 
     -- Mock providers module
@@ -54,11 +54,11 @@ describe("integrations", function()
                 return line:match("process%.env%.([%w_]+)")
               end
               return nil
-            end
-          }
+            end,
+          },
         }
       end,
-      load_providers = function() end
+      load_providers = function() end,
     }
   end)
 
@@ -195,9 +195,118 @@ describe("integrations", function()
       )
 
       -- Trigger completion
-      source.complete({}, {}, function(result)
-        assert.equals("*********", result.items[1].detail)
+      source.complete({}, {}, function(response)
+        assert.equals("*********", response.items[1].detail)
       end)
+
+      -- Restore require
+      _G.require = old_require
+    end)
+
+    it("should format completion items with provider customizations", function()
+      local cmp = mock({
+        register_source = function() end,
+        lsp = {
+          CompletionItemKind = {
+            Variable = 1,
+          },
+        },
+      }, true)
+
+      local custom_provider = {
+        get_completion_trigger = function()
+          return "custom."
+        end,
+        pattern = "custom%.",
+        format_completion = function(item, var_name, var_info)
+          item.insertText = "custom." .. var_name
+          return item
+        end,
+      }
+
+      local providers = {
+        get_providers = function()
+          return { custom_provider }
+        end,
+        load_providers = function() end,
+      }
+
+      local source
+      cmp.register_source = function(_, src)
+        source = src
+        return source
+      end
+
+      local env_vars = {
+        TEST_VAR = {
+          value = "test_value",
+          type = "string",
+          source = ".env",
+          comment = "Test comment",
+        },
+      }
+
+      -- Mock ecolog module with required configuration
+      package.loaded["ecolog"] = {
+        get_config = function()
+          return {
+            provider_patterns = {
+              cmp = true,
+            },
+          }
+        end,
+        get_env_vars = function()
+          return env_vars
+        end,
+      }
+
+      -- Mock require to return our cmp mock
+      local old_require = _G.require
+      _G.require = function(mod)
+        if mod == "cmp" then
+          return cmp
+        end
+        return old_require(mod)
+      end
+
+      nvim_cmp.setup(
+        {
+          integrations = { nvim_cmp = true },
+        },
+        env_vars,
+        providers,
+        {
+          is_enabled = function()
+            return false
+          end,
+          mask_value = function(val)
+            return val
+          end,
+        }
+      )
+
+      -- Trigger lazy loading
+      vim.api.nvim_exec_autocmds("InsertEnter", {})
+
+      assert.is_not_nil(source, "Source should be initialized")
+
+      local callback_called = false
+      source:complete({
+        context = {
+          cursor_before_line = "custom.",
+          cursor = { 1, 7 },
+        }
+      }, function(response)
+        callback_called = true
+        local result = response.items
+        assert.equals(1, #result)
+        assert.equals("TEST_VAR", result[1].label)
+        assert.equals("custom.TEST_VAR", result[1].insertText)
+        assert.equals(".env", result[1].detail)
+        assert.matches("Test comment", result[1].documentation.value)
+      end)
+
+      assert.is_true(callback_called)
 
       -- Restore require
       _G.require = old_require
@@ -211,6 +320,139 @@ describe("integrations", function()
       assert.is_function(source.get_completions)
       assert.is_function(source.get_trigger_characters)
     end)
+
+    it("should handle completion with shelter mode", function()
+      local providers = {
+        get_providers = function()
+          return {
+            {
+              pattern = "process%.env%.",
+              get_completion_trigger = function()
+                return "process.env."
+              end,
+            },
+          }
+        end,
+      }
+
+      local shelter = {
+        is_enabled = function()
+          return true
+        end,
+        mask_value = function(val)
+          return string.rep("*", #val)
+        end,
+      }
+
+      local source = blink_cmp.new()
+      blink_cmp.setup({}, {}, providers, shelter)
+
+      local ctx = {
+        cursor = { 1, 12 },
+        line = "process.env.",
+      }
+
+      -- Mock ecolog module with test env vars
+      package.loaded["ecolog"] = {
+        get_config = function()
+          return {
+            provider_patterns = {
+              cmp = true,
+            },
+          }
+        end,
+        get_env_vars = function()
+          return {
+            SECRET_KEY = {
+              value = "secret123",
+              type = "string",
+              source = ".env",
+              comment = "API key",
+            },
+          }
+        end,
+      }
+
+      local callback_called = false
+      source:get_completions(ctx, function(result)
+        callback_called = true
+        assert.equals(1, #result.items)
+        local item = result.items[1]
+        assert.equals("SECRET_KEY", item.label)
+        assert.equals("SECRET_KEY", item.insertText)
+        assert.equals(".env", item.detail)
+        assert.matches("%*%*%*%*%*%*%*%*%*", item.documentation.value)
+        assert.matches("API key", item.documentation.value)
+      end)
+
+      assert.is_true(callback_called)
+    end)
+
+    it("should handle provider-specific completion formatting", function()
+      local custom_provider = {
+        pattern = "custom%.",
+        get_completion_trigger = function()
+          return "custom."
+        end,
+        format_completion = function(item, var_name, var_info)
+          item.insertText = "custom." .. var_name
+          item.score = 2
+          return item
+        end,
+      }
+
+      local providers = {
+        get_providers = function()
+          return { custom_provider }
+        end,
+      }
+
+      local source = blink_cmp.new()
+      blink_cmp.setup({}, {}, providers, {
+        is_enabled = function()
+          return false
+        end,
+        mask_value = function(val)
+          return val
+        end,
+      })
+
+      local ctx = {
+        cursor = { 1, 7 },
+        line = "custom.",
+      }
+
+      package.loaded["ecolog"] = {
+        get_config = function()
+          return {
+            provider_patterns = {
+              cmp = true,
+            },
+          }
+        end,
+        get_env_vars = function()
+          return {
+            API_KEY = {
+              value = "test_key",
+              type = "string",
+              source = ".env",
+            },
+          }
+        end,
+      }
+
+      local callback_called = false
+      source:get_completions(ctx, function(result)
+        callback_called = true
+        assert.equals(1, #result.items)
+        local item = result.items[1]
+        assert.equals("API_KEY", item.label)
+        assert.equals("custom.API_KEY", item.insertText)
+        assert.equals(2, item.score)
+      end)
+
+      assert.is_true(callback_called)
+    end)
   end)
 
   describe("lspsaga integration", function()
@@ -221,10 +463,10 @@ describe("integrations", function()
     before_each(function()
       package.loaded["ecolog.integrations.lspsaga"] = nil
       package.loaded["lspsaga.hover"] = {
-        render_hover_doc = function() end
+        render_hover_doc = function() end,
       }
       package.loaded["lspsaga.definition"] = {
-        init = function() end
+        init = function() end,
       }
 
       lspsaga = require("ecolog.integrations.lspsaga")
@@ -381,12 +623,12 @@ describe("integrations", function()
 
         -- Verify both new keymaps were set (without enforcing order)
         assert.stub(api.nvim_set_keymap).was_called(2)
-        
+
         -- Get all calls to nvim_set_keymap
         local calls = api.nvim_set_keymap.calls
         local hover_call_found = false
         local gd_call_found = false
-        
+
         for _, call in ipairs(calls) do
           local mode, lhs, rhs, opts = unpack(call.vals)
           if mode == "n" and lhs == "K" and rhs == "<cmd>EcologSagaHover<CR>" then
@@ -397,7 +639,7 @@ describe("integrations", function()
             gd_call_found = true
           end
         end
-        
+
         assert.is_true(hover_call_found, "Hover keymap was not set correctly")
         assert.is_true(gd_call_found, "Goto definition keymap was not set correctly")
       end)

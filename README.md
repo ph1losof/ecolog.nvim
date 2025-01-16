@@ -1117,6 +1117,7 @@ return {
     'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
+      { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
       { '<leader>es', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
     },
@@ -1127,7 +1128,10 @@ return {
       integrations = {
         lspsaga = true,
         nvim_cmp = true,
-        statusline = true,
+        statusline = {
+          hidden_mode = true,
+        },
+        snacks = true,
       },
       shelter = {
         configuration = {

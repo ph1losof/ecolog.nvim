@@ -102,6 +102,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             fzf = false,       -- Enable to mask values in fzf picker
             fzf_previewer = false, -- Enable to mask values in fzf preview buffers
             snacks_previewer = false,    -- Enable to mask values in snacks previewer
+            snacks = false,    -- Enable to mask values in snacks picker
         }
     },
     -- true by default, enables built-in types (database_url, url, etc.)
@@ -831,12 +832,12 @@ Open the environment variables picker:
 
 #### Default Keymaps
 
-| Key       | Action                  |
-| --------- | ----------------------- |
-| `<CR>`    | Insert variable name    |
-| `<C-y>`   | Copy value to clipboard |
-| `<C-n>`   | Copy name to clipboard  |
-| `<C-a>`   | Append value to buffer  |
+| Key     | Action                  |
+| ------- | ----------------------- |
+| `<CR>`  | Insert variable name    |
+| `<C-y>` | Copy value to clipboard |
+| `<C-n>` | Copy name to clipboard  |
+| `<C-a>` | Append value to buffer  |
 
 All keymaps are customizable through the configuration.
 
@@ -886,12 +887,12 @@ Open the environment variables picker:
 
 #### Default Keymaps
 
-| Key       | Action                  |
-| --------- | ----------------------- |
-| `<CR>`    | Insert variable name    |
-| `<C-y>`   | Copy value to clipboard |
-| `<C-n>`   | Copy name to clipboard  |
-| `<C-a>`   | Append value to buffer  |
+| Key     | Action                  |
+| ------- | ----------------------- |
+| `<CR>`  | Insert variable name    |
+| `<C-y>` | Copy value to clipboard |
+| `<C-n>` | Copy name to clipboard  |
+| `<C-a>` | Append value to buffer  |
 
 All keymaps are customizable through the configuration.
 

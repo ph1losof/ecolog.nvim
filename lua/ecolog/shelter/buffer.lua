@@ -208,7 +208,7 @@ function M.setup_file_shelter()
 
         if state.get_state().features.initial.snacks_previewer then
           state.set_feature_state("snacks_previewer", true)
-          require("ecolog.shelter.integrations.snacks_previewer").setup_fzf_shelter()
+          require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
         end
 
         M.shelter_buffer()

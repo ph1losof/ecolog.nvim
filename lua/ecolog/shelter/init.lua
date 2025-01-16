@@ -19,7 +19,8 @@ function M.setup(opts)
         state.get_config().default_mode = opts.config.partial_mode and "partial" or "full"
       end
     elseif type(opts.config.partial_mode) == "table" then
-      state.get_config().partial_mode = tbl_deep_extend("force", state.get_default_partial_mode(), opts.config.partial_mode)
+      state.get_config().partial_mode =
+        tbl_deep_extend("force", state.get_default_partial_mode(), opts.config.partial_mode)
       if opts.config.default_mode == nil then
         state.get_config().default_mode = "partial"
       end
@@ -217,4 +218,5 @@ function M.set_state(command, feature)
   end
 end
 
-return M 
+return M
+

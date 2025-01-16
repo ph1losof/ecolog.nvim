@@ -35,4 +35,5 @@ function M.setup_snacks_shelter()
   end
 end
 
-return M 
+return M
+

@@ -1173,17 +1173,17 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 
 ### Security Features (vs [cloak.nvim](https://github.com/laytan/cloak.nvim))
 
-| Feature                          | ecolog.nvim                                                                     | cloak.nvim                                            |
-| -------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Partial Value Masking            | ✅ Configurable partial masking with patterns                                   | 🟡 Full masking only                                  |
-| Pattern-based Security           | ✅ Custom patterns for different security levels                                | 🟡 Basic pattern matching                             |
-| Preview Protection               | ✅ Telescope/FZF/Snacks picker preview protection                               | 🟡 Only Telescope preview protection                  |
-| Mask sensitive values on startup | ✅ Full support, never leak environment variables                               | ❌ Doesn't support masking on startup, flashes values |
-| Mask on leave                    | ✅ Supports                                                                     | ✅ Supports                                           |
-| Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                           | 🟡 Only nvim-cmp and can't disable                    |
-| Custom mask and highlights       | ✅ Supports                                                                     | ✅ Supports                                           |
-| Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
-| Filetype support                 | 🟡 Supports only `sh` and `.env` files                                          | ✅ Can work in any filetype                           |
+| Feature                          | ecolog.nvim                                                                             | cloak.nvim                                            |
+| -------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Partial Value Masking            | ✅ Configurable partial masking with patterns                                           | 🟡 Full masking only                                  |
+| Pattern-based Security           | ✅ Custom patterns for different security levels                                        | 🟡 Basic pattern matching                             |
+| Preview Protection               | ✅ Telescope/FZF/Snacks picker preview protection                                       | 🟡 Only Telescope preview protection                  |
+| Mask sensitive values on startup | ✅ Full support, never leak environment variables                                       | ❌ Doesn't support masking on startup, flashes values |
+| Mask on leave                    | ✅ Supports                                                                             | ✅ Supports                                           |
+| Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                                   | 🟡 Only nvim-cmp and can't disable                    |
+| Custom mask and highlights       | ✅ Supports                                                                             | ✅ Supports                                           |
+| Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
+| Filetype support                 | 🟡 Supports only `sh` and `.env` files                                                  | ✅ Can work in any filetype                           |
 
 ### Environment Management (vs [telescope-env.nvim](https://github.com/LinArcX/telescope-env.nvim))
 

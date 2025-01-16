@@ -67,6 +67,8 @@ function M.env_picker()
       label = string.format("%-30s = %s", name, display_value),
       name = name,
       value = var.value,
+      buf = 0,
+      pos = { 1, 1 },
       data = {
         name = name,
         value = var.value,
@@ -84,6 +86,25 @@ function M.env_picker()
         preview = false,
       },
     },
+    win = {
+      input = {
+        border = "single",
+        height = 1,
+        width = 1.0,
+        row = -2,
+      },
+      list = {
+        border = "single",
+        height = 0.8,
+        width = 1.0,
+        keys = {
+          ["<C-y>"] = "copy_value",
+          ["<C-n>"] = "copy_name",
+          ["<C-a>"] = "append_value",
+          ["<C-n>"] = "append_name",
+        },
+      },
+    },
     format_item = function(item)
       return {
         text = item.label,
@@ -94,30 +115,57 @@ function M.env_picker()
         },
       }
     end,
-    on_select = function(item)
-      handle_buffer_action(item.data.name, function(var_name)
-        return var_name
-      end)
+    confirm = function(picker, item)
+      if not item then return end
+      local cursor = api.nvim_win_get_cursor(0)
+      local line = api.nvim_get_current_line()
+      local new_line = line:sub(1, cursor[2]) .. item.name .. line:sub(cursor[2] + 1)
+      api.nvim_set_current_line(new_line)
+      api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #item.name })
       notify_with_title("Appended environment name", vim.log.levels.INFO)
+      picker:close()
     end,
-    keys = {
-      ["<C-y>"] = function(item)
+    actions = {
+      copy_value = function(picker)
+        local item = picker:current()
+        if not item then return end
         local value = config.shelter.mask_on_copy and shelter.mask_value(item.data.value, "snacks") or item.data.value
         fn.setreg("+", value)
         notify_with_title(string.format("Copied value of '%s' to clipboard", item.data.name), vim.log.levels.INFO)
+        picker:close()
       end,
-      ["<C-n>"] = function(item)
+      copy_name = function(picker)
+        local item = picker:current()
+        if not item then return end
         fn.setreg("+", item.data.name)
         notify_with_title(string.format("Copied variable '%s' name to clipboard", item.data.name), vim.log.levels.INFO)
+        picker:close()
       end,
-      ["<C-a>"] = function(item)
-        handle_buffer_action(item.data.name, function(var_name)
-          local value = config.shelter.mask_on_copy and shelter.mask_value(item.data.value, "snacks") or item.data.value
-          return value
-        end)
+      append_value = function(picker)
+        local item = picker:current()
+        if not item then return end
+        local cursor = api.nvim_win_get_cursor(0)
+        local line = api.nvim_get_current_line()
+        local value = config.shelter.mask_on_copy and shelter.mask_value(item.data.value, "snacks") or item.data.value
+        local new_line = line:sub(1, cursor[2]) .. value .. line:sub(cursor[2] + 1)
+        api.nvim_set_current_line(new_line)
+        api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #value })
         notify_with_title("Appended environment value", vim.log.levels.INFO)
+        picker:close()
+      end,
+      append_name = function(picker)
+        local item = picker:current()
+        if not item then return end
+        local cursor = api.nvim_win_get_cursor(0)
+        local line = api.nvim_get_current_line()
+        local new_line = line:sub(1, cursor[2]) .. item.name .. line:sub(cursor[2] + 1)
+        api.nvim_set_current_line(new_line)
+        api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #item.name })
+        notify_with_title("Appended environment name", vim.log.levels.INFO)
+        picker:close()
       end,
     },
+    live = true,
   })
 end
 

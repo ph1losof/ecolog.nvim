@@ -9,7 +9,7 @@ local config = {
   },
   keys = {
     copy_value = "<C-y>",
-    copy_name = "<C-n>",
+    copy_name = "<C-u>",
     append_value = "<C-a>",
     append_name = "<CR>",
   },

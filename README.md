@@ -802,7 +802,7 @@ require('ecolog').setup({
       },
       keys = {
         copy_value = "<C-y>",  -- Copy variable value to clipboard
-        copy_name = "<C-n>",   -- Copy variable name to clipboard
+        copy_name = "<C-u>",   -- Copy variable name to clipboard
         append_value = "<C-a>", -- Append value at cursor position
         append_name = "<CR>",   -- Append name at cursor position
       },
@@ -837,7 +837,7 @@ Open the environment variables picker:
 | ------- | ----------------------- |
 | `<CR>`  | Insert variable name    |
 | `<C-y>` | Copy value to clipboard |
-| `<C-n>` | Copy name to clipboard  |
+| `<C-u>` | Copy name to clipboard  |
 | `<C-a>` | Append value to buffer  |
 
 All keymaps are customizable through the configuration.

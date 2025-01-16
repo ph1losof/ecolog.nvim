@@ -9,7 +9,7 @@ local config = {
   },
   keys = {
     copy_value = "<C-y>",
-    copy_name = "<C-u>",
+    copy_name = "<C-n>",
     append_value = "<C-a>",
     append_name = "<CR>",
   },
@@ -87,7 +87,7 @@ function M.env_picker()
   end
 
   local function create_keymap(action)
-    return { action, mode = { "i", "n" } }
+    return { action, mode = { "i", "n" }, remap = true }
   end
 
   local keymaps = {}

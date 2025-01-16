@@ -204,22 +204,23 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
 ### Available Commands
 
-| Command                                    | Description                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------- |
-| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                           |
-| `:EcologPeek`                              | Peek at environment variable under cursor                                 |
-| `:EcologRefresh`                           | Refresh environment variable cache                                        |
-| `:EcologSelect`                            | Open a selection window to choose environment file                        |
-| `:EcologGoto`                              | Open selected environment file in buffer                                  |
-| `:EcologGotoVar`                           | Go to specific variable definition in env file                            |
-| `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor |
-| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                         |
-| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                      |
-| `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
-| `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
-| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)     |
-| `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                       |
-| `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard          |
+| Command                                    | Description                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                                       |
+| `:EcologPeek`                              | Peek at environment variable under cursor                                             |
+| `:EcologRefresh`                           | Refresh environment variable cache                                                    |
+| `:EcologSelect`                            | Open a selection window to choose environment file                                    |
+| `:EcologGoto`                              | Open selected environment file in buffer                                              |
+| `:EcologGotoVar`                           | Go to specific variable definition in env file                                        |
+| `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor             |
+| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                                     |
+| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                                  |
+| `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                              |
+| `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)                  |
+| `:EcologSnacks`                            | Open environment variables picker using snacks.nvim (must have snacks.nvim installed) |
+| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
+| `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
+| `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
 
 ## 📝 Environment File Priority
 

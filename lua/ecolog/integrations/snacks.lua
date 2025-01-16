@@ -23,33 +23,6 @@ local function notify_with_title(msg, level)
   vim.notify(string.format("Ecolog Snacks: %s", msg), level)
 end
 
-local function safe_action(name, _fn)
-  return function(selected)
-    local ok, err = pcall(_fn, selected)
-    if not ok then
-      notify_with_title(string.format("Failed to %s: %s", name, err), vim.log.levels.ERROR)
-    end
-  end
-end
-
-local function handle_buffer_action(selected, action_fn)
-  local var_name = utils.extract_var_name(selected)
-  if not var_name then
-    return
-  end
-
-  local result = action_fn(var_name)
-  if not result then
-    return
-  end
-
-  local cursor = api.nvim_win_get_cursor(0)
-  local line = api.nvim_get_current_line()
-  local new_line = line:sub(1, cursor[2]) .. result .. line:sub(cursor[2] + 1)
-  api.nvim_set_current_line(new_line)
-  api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #result })
-end
-
 function M.env_picker()
   local has_snacks, snacks = pcall(require, "snacks.picker")
   if not has_snacks then
@@ -112,7 +85,7 @@ function M.env_picker()
         row = -2,
         keys = keymaps,
       },
-      list = {  
+      list = {
         border = "single",
         height = 0.8,
         width = 1.0,
@@ -203,7 +176,6 @@ function M.env_picker()
         picker:close()
       end,
     },
-    live = true,
   })
 end
 

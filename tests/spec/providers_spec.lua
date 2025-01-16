@@ -6,7 +6,7 @@ describe("providers", function()
   before_each(function()
     -- Reset module cache
     package.loaded["ecolog.providers"] = nil
-    package.loaded["ecolog.providers.typescript"] = nil
+    package.loaded["ecolog.providers.python"] = nil
     package.loaded["ecolog.providers.javascript"] = nil
     
     -- Mock providers
@@ -196,6 +196,86 @@ describe("providers", function()
           assert.equals(tc.expected, var)
         end)
       end
+    end)
+  end)
+
+  describe("lazy loading", function()
+    it("only loads providers when they are accessed", function()
+      -- Reset module cache
+      package.loaded["ecolog.providers"] = nil
+      package.loaded["ecolog.providers.python"] = nil
+      package.loaded["ecolog.providers.javascript"] = nil
+
+      local load_count = 0
+      -- Mock the require function to track provider loading
+      local original_require = _G.require
+      _G.require = function(module)
+        if module:match("^ecolog.providers.[^.]+$") then
+          load_count = load_count + 1
+        end
+        return original_require(module)
+      end
+
+      -- Load the main providers module
+      local providers = require("ecolog.providers")
+      
+      -- Initially, no specific providers should be loaded
+      assert.equals(0, load_count)
+
+      -- Access python provider, should trigger lazy load
+      local py_providers = providers.get_providers("python")
+      assert.equals(1, load_count)
+      assert.is_not_nil(py_providers)
+      assert.is_true(#py_providers > 0)
+
+      -- Accessing python again should not increase load count since it's cached
+      providers.get_providers("python")
+      assert.equals(1, load_count)
+
+      -- Accessing javascript should trigger another lazy load
+      local js_providers = providers.get_providers("javascript")
+      assert.equals(2, load_count)
+      assert.is_not_nil(js_providers)
+      assert.is_true(#js_providers > 0)
+
+      -- Restore original require
+      _G.require = original_require
+    end)
+
+    it("does not load other providers when accessing one provider", function()
+      -- Reset module cache
+      package.loaded["ecolog.providers"] = nil
+      package.loaded["ecolog.providers.python"] = nil
+      package.loaded["ecolog.providers.javascript"] = nil
+
+      local loaded_modules = {}
+      -- Mock the require function to track which specific modules are loaded
+      local original_require = _G.require
+      _G.require = function(module)
+        if module:match("^ecolog.providers.[^.]+$") then
+          loaded_modules[module] = true
+        end
+        return original_require(module)
+      end
+
+      -- Load the main providers module
+      local providers = require("ecolog.providers")
+      
+      -- Initially, no specific providers should be loaded
+      assert.is_nil(loaded_modules["ecolog.providers.python"])
+      assert.is_nil(loaded_modules["ecolog.providers.javascript"])
+
+      -- Access only python provider
+      local py_providers = providers.get_providers("python")
+      assert.is_not_nil(py_providers)
+      assert.is_true(#py_providers > 0)
+      
+      -- Verify python is loaded but javascript remains unloaded
+      assert.is_true(loaded_modules["ecolog.providers.python"])
+      assert.is_nil(loaded_modules["ecolog.providers.javascript"])
+
+      -- Restore original require
+      _G.require = original_require
     end)
   end)
 end) 

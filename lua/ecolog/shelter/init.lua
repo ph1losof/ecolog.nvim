@@ -176,7 +176,7 @@ function M.set_state(command, feature)
   if feature then
     if not tbl_contains(state.get_features(), feature) then
       notify(
-        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', or 'snacks_previewer'",
+        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
         vim.log.levels.ERROR
       )
       return

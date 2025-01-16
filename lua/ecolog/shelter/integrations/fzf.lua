@@ -1,9 +1,6 @@
 local M = {}
 
 local api = vim.api
-local string_find = string.find
-local string_sub = string.sub
-local string_match = string.match
 
 local state = require("ecolog.shelter.state")
 local utils = require("ecolog.utils")
@@ -17,14 +14,14 @@ local processed_buffers = lru_cache.new(100)
 
 local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash)
   local chunk_extmarks = {}
-  
+
   for i = start_idx, math.min(end_idx, #lines) do
     local line = lines[i]
     local key, value, eq_pos = utils.parse_env_line(line)
-    
+
     if key and value then
       local quote_char, actual_value = utils.extract_quoted_value(value)
-      
+
       if actual_value then
         local masked_value = shelter_utils.determine_masked_value(actual_value, {
           partial_mode = state.get_config().partial_mode,
@@ -76,7 +73,7 @@ function M.setup_fzf_shelter()
     return
   end
 
-  local ok, fzf = pcall(require, "fzf-lua")
+  local ok = pcall(require, "fzf-lua")
   if not ok then
     return
   end
@@ -122,4 +119,5 @@ function M.setup_fzf_shelter()
   end
 end
 
-return M 
+return M
+

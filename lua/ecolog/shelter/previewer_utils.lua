@@ -13,7 +13,7 @@ local processed_buffers = lru_cache.new(100)
 
 local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash)
   local chunk_extmarks = {}
-  
+
   for i = start_idx, math.min(end_idx, #lines) do
     local line = lines[i]
     local key, value, eq_pos = utils.parse_env_line(line)
@@ -115,4 +115,5 @@ function M.mask_preview_buffer(bufnr, filename, integration_name)
   process_buffer_chunk(bufnr, lines, 1, 50, content_hash)
 end
 
-return M 
+return M
+

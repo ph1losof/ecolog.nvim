@@ -806,6 +806,10 @@ require('ecolog').setup({
         append_value = "<C-a>", -- Append value at cursor position
         append_name = "<CR>",   -- Append name at cursor position
       },
+      layout = {  -- Any Snacks layout configuration
+        preset = "dropdown",
+        preview = false,
+      },
     }
   }
 })

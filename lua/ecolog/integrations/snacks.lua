@@ -6,6 +6,7 @@ local fn = vim.fn
 ---@class SnacksConfig
 ---@field shelter { mask_on_copy: boolean }
 ---@field keys { copy_value: string, copy_name: string, append_value: string, append_name: string }
+---@field layout snacks.picker.layout.Config|string|{}|fun(source:string):(snacks.picker.layout.Config|string)
 local DEFAULT_CONFIG = {
   shelter = {
     mask_on_copy = false,
@@ -15,6 +16,10 @@ local DEFAULT_CONFIG = {
     copy_name = "<C-u>",
     append_value = "<C-a>",
     append_name = "<CR>",
+  },
+  layout = {
+    preset = "dropdown",
+    preview = false,
   },
 }
 
@@ -54,7 +59,7 @@ local function append_at_cursor(text)
   if not validate_window() then
     return false
   end
-  
+
   api.nvim_set_current_win(original_winid)
   local cursor = api.nvim_win_get_cursor(original_winid)
   local line = api.nvim_get_current_line()
@@ -79,20 +84,20 @@ local function create_picker_actions()
     copy_value = function(picker)
       local item = picker:current()
       if not item then return end
-      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.data.value, "snacks") or item.data.value
-      copy_to_clipboard(value, string.format("value of '%s'", item.data.name))
+      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks") or item.value
+      copy_to_clipboard(value, string.format("value of '%s'", item.name))
       picker:close()
     end,
     copy_name = function(picker)
       local item = picker:current()
       if not item then return end
-      copy_to_clipboard(item.data.name, string.format("variable '%s' name", item.data.name))
+      copy_to_clipboard(item.name, string.format("variable '%s' name", item.name))
       picker:close()
     end,
     append_value = function(picker)
       local item = picker:current()
       if not item then return end
-      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.data.value, "snacks") or item.data.value
+      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks") or item.value
       if append_at_cursor(value) then
         notify_with_title("Appended environment value", vim.log.levels.INFO)
         picker:close()
@@ -124,45 +129,27 @@ local function create_keymaps(config)
   return keymaps
 end
 
----Format item for display in picker
----@param item table
----@return table
-local function format_picker_item(item)
-  return {
-    text = item.label,
-    hl = {
-      { "@variable", 0, #item.name },
-      { "@operator", #item.name + 1, #item.name + 3 },
-      { "@string", #item.name + 3, -1 },
-    },
-  }
-end
 
 ---Create picker items from environment variables
 ---@return table[]
+---@return integer
 local function create_picker_items()
   local ecolog = require("ecolog")
   local env_vars = ecolog.get_env_vars()
   local items = {}
+  local longest_name = 0
 
   for name, var in pairs(env_vars) do
-    local display_value = shelter.mask_value(var.value, "snacks")
+    local display_value = shelter.mask_value(var.value, "snacks", name)
     table.insert(items, {
-      id = name,
-      text = name,
-      label = string.format("%-30s = %s", name, display_value),
       name = name,
+      text = name,
       value = var.value,
-      buf = 0,
-      pos = { 1, 1 },
-      data = {
-        name = name,
-        value = var.value,
-        display_value = display_value,
-      },
+      display_value = display_value,
     })
+    longest_name = math.max(longest_name, #name)
   end
-  return items
+  return items, longest_name
 end
 
 ---Open environment variables picker
@@ -180,30 +167,24 @@ function M.env_picker()
 
   original_winid = api.nvim_get_current_win()
 
+  local items, longuest = create_picker_items()
+
   snacks.pick({
     title = "Environment Variables",
-    items = create_picker_items(),
-    layout = {
-      preset = "vscode",
-      config = {
-        preview = false,
-      },
-    },
+    items = items,
+    layout = M.config.layout,
+    format = function(item)
+      local ret = {}
+      ret[#ret + 1] = { ("%-" .. longuest .. "s"):format(item.name), "@variable" }
+      ret[#ret + 1] = { " " }
+      ret[#ret + 1] = { item.display_value or "", "@string" }
+      return ret
+    end,
     win = {
       input = {
-        border = "single",
-        height = 1,
-        width = 1.0,
-        row = -2,
         keys = create_keymaps(M.config),
       },
-      list = {
-        border = "single",
-        height = 0.8,
-        width = 1.0,
-      },
     },
-    format_item = format_picker_item,
     confirm = function(picker, item)
       if not item then return end
       if append_at_cursor(item.name) then

@@ -1488,6 +1488,7 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | Mask on leave                    | ✅ Supports                                                                             | ✅ Supports                                           |
 | Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                                   | 🟡 Only nvim-cmp and can't disable                    |
 | Custom mask and highlights       | ✅ Supports                                                                             | ✅ Supports                                           |
+| Performance                      | ✅ Better performance, especially in previewer buffers due to LRU caching               | 🟡 Minimal implementation but also good               |
 | Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
 | Filetype support                 | 🟡 Supports only `sh` and `.env` files                                                  | ✅ Can work in any filetype                           |
 

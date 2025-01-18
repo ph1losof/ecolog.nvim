@@ -16,36 +16,61 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 ## Table of Contents
 
 - [Installation](#-installation)
+  - [Plugin Setup](#plugin-setup)
 - [Features](#-features)
 - [Usage](#-usage)
+  - [Available Commands](#available-commands)
 - [Environment File Priority](#-environment-file-priority)
 - [Shell Variables Integration](#-shell-variables-integration)
-- [vim.env Integration](#-vimenv-integration)
+  - [Basic Usage](#basic-usage)
+  - [Advanced Configuration](#advanced-configuration)
+  - [Configuration Options](#configuration-options)
+  - [Features](#features)
+  - [Best Practices](#best-practices)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
+  - [Basic Usage](#basic-usage-1)
+  - [Pattern Format](#pattern-format)
+  - [Examples](#examples)
+  - [Features](#features-1)
+- [Custom Sort Function](#-custom-sort-function)
+  - [Basic Usage](#basic-usage-2)
+  - [Examples](#examples-1)
+  - [Features](#features-2)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
-  - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
+  - [LSP Integration](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
   - [FZF Integration](#fzf-integration)
   - [Snacks Integration](#snacks-integration)
   - [Statusline Integration](#statusline-integration)
-- [Language Support](#-language-support)
-- [Custom Providers](#-custom-providers)
+- [Shelter Previewers](#-shelter-previewers)
+  - [Telescope Previewer](#telescope-previewer)
+  - [FZF Previewer](#fzf-previewer)
+  - [Snacks Previewer](#snacks-previewer)
 - [Shelter Mode](#️-shelter-mode)
-  - [Configuration Options](#configuration-options)
-  - [Available Commands](#available-commands)
-  - [Features](#-features)
-  - [Shelter Previewers](#-shelter-previewers)
-    - [Telescope Previewer](#telescope-previewer)
-    - [FZF Previewer](#fzf-previewer)
-    - [Snacks Previewer](#snacks-previewer)
-- [Type System](#-ecolog-types)
+  - [Configuration](#-configuration)
+  - [Features](#-features-1)
+    - [Module-specific Masking](#module-specific-masking)
+    - [Partial Masking](#partial-masking)
+  - [Commands](#-commands)
+  - [Example](#-example)
+  - [Pattern-based Protection](#pattern-based-protection)
+  - [Customization](#-customization)
+  - [Best Practices](#-best-practices)
+- [Ecolog Types](#-ecolog-types)
+  - [Type Configuration](#type-configuration)
+  - [Custom Type Definition](#custom-type-definition)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
-- [Author Setup](#️-personal-setup)
+- [Author Setup](#️-author-setup)
 - [Comparisons](#-comparisons)
+  - [Environment Variable Completion](#environment-variable-completion-vs-cmp-dotenv)
+  - [Security Features](#security-features-vs-cloaknvim)
+  - [Environment Management](#environment-management-vs-telescope-envnvim)
+  - [File Management](#file-management-vs-dotenvnvim)
+  - [Key Benefits of ecolog.nvim](#key-benefits-of-ecolognvim)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -952,6 +977,253 @@ require('ecolog').setup({
   }
 })
 ```
+
+## 🛡️ Shelter Mode
+
+Shelter mode provides a secure way to work with sensitive environment variables by masking their values in different contexts. This feature helps prevent accidental exposure of sensitive data like API keys, passwords, tokens, and other credentials.
+
+### 🔧 Configuration
+
+```lua
+require('ecolog').setup({
+    shelter = {
+        configuration = {
+            -- Partial mode configuration:
+            -- false: completely mask values (default)
+            -- true: use default partial masking settings
+            -- table: customize partial masking
+            -- partial_mode = false,
+            -- or with custom settings:
+            partial_mode = {
+                show_start = 3,    -- Show first 3 characters
+                show_end = 3,      -- Show last 3 characters
+                min_mask = 3,      -- Minimum masked characters
+            },
+            mask_char = "*",   -- Character used for masking
+        },
+        modules = {
+            cmp = false,       -- Mask values in completion
+            peek = false,      -- Mask values in peek view
+            files = false,     -- Mask values in files
+            telescope = false, -- Mask values in telescope integration
+            telescope_previewer = false, -- Mask values in telescope preview buffers
+            fzf = false,       -- Mask values in fzf picker
+            fzf_previewer = false, -- Mask values in fzf preview buffers
+            snacks = false,    -- Mask values in snacks picker
+            snacks_previewer = false,    -- Mask values in snacks previewer
+        }
+    },
+    path = vim.fn.getcwd(), -- Path to search for .env files
+    preferred_environment = "development", -- Optional: prioritize specific env files
+})
+```
+
+### 🎯 Features
+
+#### Module-specific Masking
+
+1. **Completion Menu (`cmp = true`)**
+
+   - Masks values in nvim-cmp completion menu
+   - Protects sensitive data during autocompletion
+
+2. **Peek View (`peek = true`)**
+
+   - Masks values when using EcologPeek command
+   - Allows secure variable inspection
+
+3. **File View (`files = true`)**
+
+   - Masks values directly in .env files
+   - Use `:EcologShelterLinePeek` to temporarily reveal values
+
+4. **Telescope Preview (`telescope_previewer = true`)**
+
+   - Masks values in telescope preview buffers
+   - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
+   - Maintains masking state across buffer refreshes
+
+5. **FZF Preview (`fzf_previewer = true`)**
+
+   - Masks values in fzf-lua preview buffers
+   - Automatically applies to any `.env` file previewed in fzf-lua with support of custom env file patterns
+   - Supports all fzf-lua commands that show previews (files, git_files, live_grep, etc.)
+   - Maintains masking state across buffer refreshes
+   - Optimized for performance with buffer content caching
+
+6. **FZF Picker (`fzf = true`)**
+
+   - Masks values in fzf-lua picker
+
+7. **Telescope Integration (`telescope = true`)**
+
+   - Masks values in telescope picker from integration
+
+8. **Snacks Integration (`snacks = true`, `snacks_previewer = true`)**
+   - Masks values in snacks picker and previewer
+   - Provides secure browsing of environment variables
+
+#### Partial Masking
+
+Three modes of operation:
+
+1. **Full Masking (Default)**
+
+   ```lua
+   partial_mode = false
+   -- Example: "my-secret-key" -> "************"
+   ```
+
+2. **Default Partial Masking**
+
+   ```lua
+   partial_mode = true
+   -- Example: "my-secret-key" -> "my-***-key"
+   ```
+
+3. **Custom Partial Masking**
+   ```lua
+   partial_mode = {
+       show_start = 4,    -- Show more start characters
+       show_end = 2,      -- Show fewer end characters
+       min_mask = 3,      -- Minimum mask length
+   }
+   -- Example: "my-secret-key" -> "my-s***ey"
+   ```
+
+### 🎮 Commands
+
+`:EcologShelterToggle` provides flexible control over shelter mode:
+
+1. Basic Usage:
+
+   ```vim
+   :EcologShelterToggle              " Toggle between all-off and initial settings
+   ```
+
+2. Global Control:
+
+   ```vim
+   :EcologShelterToggle enable       " Enable all shelter modes
+   :EcologShelterToggle disable      " Disable all shelter modes
+   ```
+
+3. Feature-Specific Control:
+
+   ```vim
+   :EcologShelterToggle enable cmp   " Enable shelter for completion only
+   :EcologShelterToggle disable peek " Disable shelter for peek only
+   :EcologShelterToggle enable files " Enable shelter for file display
+   ```
+
+4. Quick Value Reveal:
+   ```vim
+   :EcologShelterLinePeek           " Temporarily reveal value on current line
+   ```
+   - Shows the actual value for the current line
+   - Value is hidden again when cursor moves away
+   - Only works when shelter mode is enabled for files
+
+### 📝 Example
+
+Original `.env` file:
+
+```env
+# Authentication
+JWT_SECRET=my-super-secret-key
+AUTH_TOKEN="bearer 1234567890"
+
+# Database Configuration
+DB_HOST=localhost
+DB_USER=admin
+DB_PASS=secure_password123
+```
+
+With full masking (partial_mode = false):
+
+```env
+# Authentication
+JWT_SECRET=********************
+AUTH_TOKEN=******************
+
+# Database Configuration
+DB_HOST=*********
+DB_USER=*****
+DB_PASS=******************
+```
+
+#### Partial Masking Examples
+
+With default settings (show_start=3, show_end=3, min_mask=3):
+
+```
+"mysecretkey"     -> "mys***key"    # Enough space for min_mask (3) characters
+"secret"          -> "******"        # Not enough space for min_mask between shown parts
+"api_key"         -> "*******"       # Would only have 1 char for masking, less than min_mask
+"very_long_key"   -> "ver*****key"   # Plenty of space for masking
+```
+
+The min_mask setting ensures that sensitive values are properly protected by requiring
+a minimum number of masked characters between the visible parts. If this minimum
+cannot be met, the entire value is masked for security.
+
+### Pattern-based Protection
+
+You can define different masking rules based on variable names or file sources:
+
+```lua
+shelter = {
+    configuration = {
+        -- Pattern-based rules take precedence
+        patterns = {
+            ["*_KEY"] = "full",      -- Always fully mask API keys
+            ["TEST_*"] = "none",     -- Never mask test variables
+        },
+        -- Source-based rules as fallback
+        sources = {
+            [".env.prod"] = "full",
+            [".env.local"] = "partial",
+            ["shell"] = "none",
+        },
+    }
+}
+```
+
+### 🎨 Customization
+
+1. **Custom Mask Character**:
+
+   ```lua
+   shelter = {
+       configuration = {
+          mask_char = "•"  -- Use dots
+       }
+   }
+   -- or
+   shelter = {
+       configuration = {
+          mask_char = "█"  -- Use blocks
+       }
+   }
+   ```
+
+2. **Custom Highlighting**:
+   ```lua
+   shelter = {
+       configuration = {
+          highlight_group = "NonText"  -- Use a different highlight group for masked values
+       }
+   }
+   ```
+
+### 💡 Best Practices
+
+1. Enable shelter mode by default for production environments
+2. Use file shelter mode during screen sharing or pair programming
+3. Enable completion shelter mode to prevent accidental exposure in screenshots
+4. Use source-based masking to protect sensitive files
+5. Apply stricter masking rules for production and staging environments
+6. Keep development and test files less restricted for better workflow
 
 ## 🛡 Ecolog Types
 

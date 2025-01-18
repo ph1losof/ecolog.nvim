@@ -2,48 +2,49 @@ local M = {}
 
 local api = vim.api
 local state = require("ecolog.shelter.state")
-local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
-local lru_cache = require("ecolog.shelter.lru_cache")
+local LRUCache = require("ecolog.shelter.lru_cache")
 
 local namespace = api.nvim_create_namespace("ecolog_shelter")
-
--- Initialize LRU cache with capacity of 100 buffers
-local processed_buffers = lru_cache.new(100)
+local processed_buffers = LRUCache.new(100)
 
 local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename)
+  if not api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  end_idx = math.min(end_idx, #lines)
   local chunk_extmarks = {}
 
-  for i = start_idx, math.min(end_idx, #lines) do
+  for i = start_idx, end_idx do
     local line = lines[i]
-    local key, value, eq_pos = utils.parse_env_line(line)
+    local eq_pos = line:find("=")
 
-    if key and value then
-      local quote_char = value:match("^([\"'])")
-      local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
+    if eq_pos then
+      local key = vim.trim(line:sub(1, eq_pos - 1))
+      local value_part = line:sub(eq_pos + 1)
+      local value, quote_char = shelter_utils.extract_value(value_part)
 
-      if actual_value then
-        local masked_value = shelter_utils.determine_masked_value(actual_value, {
-          partial_mode = state.get_config().partial_mode,
-          key = key,
-          source = filename,
-        })
+      local masked_value = shelter_utils.determine_masked_value(value, {
+        partial_mode = state.get_config().partial_mode,
+        key = key,
+        source = filename,
+      })
 
-        if masked_value and #masked_value > 0 then
-          if quote_char then
-            masked_value = quote_char .. masked_value .. quote_char
-          end
-
-          table.insert(chunk_extmarks, {
-            i - 1,
-            eq_pos,
-            {
-              virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
-              virt_text_pos = "overlay",
-              hl_mode = "combine",
-            },
-          })
+      if masked_value and #masked_value > 0 then
+        if quote_char then
+          masked_value = quote_char .. masked_value .. quote_char
         end
+
+        table.insert(chunk_extmarks, {
+          i - 1,
+          eq_pos,
+          {
+            virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
+            virt_text_pos = "overlay",
+            hl_mode = "combine",
+          },
+        })
       end
     end
   end
@@ -62,10 +63,7 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
       process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename)
     end)
   else
-    processed_buffers:put(bufnr, {
-      hash = content_hash,
-      timestamp = vim.loop.now(),
-    })
+    processed_buffers:put(bufnr, content_hash)
   end
 end
 
@@ -78,14 +76,11 @@ function M.process_buffer(bufnr)
   local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
   local filename = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
 
-  local cached = processed_buffers:get(bufnr)
-  if cached and cached.hash == content_hash then
-    return
-  end
+  -- Clear existing extmarks before processing
+  pcall(api.nvim_buf_clear_namespace, bufnr, namespace, 0, -1)
 
+  -- Always process the buffer, regardless of cache
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
-
-  -- Start processing in chunks of 50 lines
   process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
 end
 
@@ -104,18 +99,8 @@ function M.mask_preview_buffer(bufnr, filename, integration_name)
     return
   end
 
-  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
-
-  local cached = processed_buffers:get(bufnr)
-  if cached and cached.hash == content_hash then
-    return
-  end
-
-  pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
-
-  -- Start processing in chunks of 50 lines
-  process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
+  -- Always process the buffer for previews
+  M.process_buffer(bufnr)
 end
 
 return M

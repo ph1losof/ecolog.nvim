@@ -1,102 +1,110 @@
 local M = {}
 
+local config = require("ecolog.shelter.state").get_config
 local string_sub = string.sub
 local string_rep = string.rep
 
-local state = require("ecolog.shelter.state")
+---@param key string|nil
+---@param source string|nil
+---@return "none"|"partial"|"full"
+function M.determine_masking_mode(key, source)
+  local conf = config()
+  
+  -- Check pattern-based rules first (they take precedence)
+  if key and conf.patterns then
+    for pattern, mode in pairs(conf.patterns) do
+      local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+      if key:match("^" .. lua_pattern .. "$") then
+        return mode
+      end
+    end
+  end
+
+  -- Then check source-based rules
+  if source and conf.sources then
+    for pattern, mode in pairs(conf.sources) do
+      local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+      if source:match("^" .. lua_pattern .. "$") then
+        return mode
+      end
+    end
+  end
+
+  -- Fall back to default mode
+  return conf.default_mode or "partial"
+end
+
+---@param value string
+---@param settings table
+function M.determine_masked_value(value, settings)
+  if not value then
+    return ""
+  end
+
+  local mode = M.determine_masking_mode(settings.key, settings.source)
+  if mode == "none" then
+    return value
+  end
+
+  if mode == "full" or not config().partial_mode then
+    return string_rep(config().mask_char, #value)
+  end
+
+  local partial_mode = config().partial_mode
+  if type(partial_mode) ~= "table" then
+    partial_mode = {
+      show_start = 3,
+      show_end = 3,
+      min_mask = 3,
+    }
+  end
+
+  local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
+  local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
+  local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
+
+  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
+    return string_rep(config().mask_char, #value)
+  end
+
+  local mask_length = math.max(min_mask, #value - show_start - show_end)
+
+  return string_sub(value, 1, show_start) .. string_rep(config().mask_char, mask_length) .. string_sub(value, -show_end)
+end
+
+---@param value string
+---@return string, string|nil
+function M.extract_value(value_part)
+  if not value_part then
+    return "", nil
+  end
+
+  local value = vim.trim(value_part)
+  local quote_char = value:match("^([\"'])")
+  
+  if quote_char then
+    local actual_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
+    if actual_value then
+      return actual_value, quote_char
+    end
+  end
+  
+  return value, nil
+end
 
 function M.match_env_file(filename, config)
   if not filename then
     return false
   end
 
-  if filename:match("^%.env$") or filename:match("^%.env%.[^.]+$") then
-    return true
-  end
-
-  if config and config.env_file_pattern then
-    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
-      or config.env_file_pattern
-
-    for _, pattern in ipairs(patterns) do
-      if filename:match(pattern) then
-        return true
-      end
+  local patterns = config.env_file_patterns or { "%.env.*" }
+  for _, pattern in ipairs(patterns) do
+    if filename:match(pattern) then
+      return true
     end
   end
 
   return false
-end
-
-function M.matches_shelter_pattern(key)
-  local config = state.get_config()
-  if not key or not config.patterns or vim.tbl_isempty(config.patterns) then
-    return nil
-  end
-
-  for pattern, mode in pairs(config.patterns) do
-    local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
-    if key:match("^" .. lua_pattern .. "$") then
-      return mode
-    end
-  end
-
-  return nil
-end
-
-function M.determine_masked_value(value, opts)
-  if not value or value == "" then
-    return ""
-  end
-
-  opts = opts or {}
-  local key = opts.key
-  local source = opts.source
-  local config = state.get_config()
-
-  -- First check pattern-based rules (they take precedence)
-  local pattern_mode = key and M.matches_shelter_pattern(key)
-  if pattern_mode then
-    if pattern_mode == "none" then
-      return value
-    elseif pattern_mode == "full" then
-      return string_rep(config.mask_char, #value)
-    end
-  else
-    -- Then check source-based rules
-    if source and config.sources then
-      for pattern, mode in pairs(config.sources) do
-        local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
-        if source:match("^" .. lua_pattern .. "$") then
-          if mode == "none" then
-            return value
-          elseif mode == "full" then
-            return string_rep(config.mask_char, #value)
-          end
-        end
-      end
-    end
-    -- Fall back to default mode if no rules match
-    if config.default_mode == "none" then
-      return value
-    elseif config.default_mode == "full" then
-      return string_rep(config.mask_char, #value)
-    end
-  end
-
-  local settings = type(config.partial_mode) == "table" and config.partial_mode or state.get_default_partial_mode()
-
-  local show_start = math.max(0, settings.show_start or 0)
-  local show_end = math.max(0, settings.show_end or 0)
-  local min_mask = math.max(1, settings.min_mask or 1)
-
-  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    return string_rep(config.mask_char, #value)
-  end
-
-  local mask_length = math.max(min_mask, #value - show_start - show_end)
-
-  return string_sub(value, 1, show_start) .. string_rep(config.mask_char, mask_length) .. string_sub(value, -show_end)
 end
 
 function M.has_cmp()

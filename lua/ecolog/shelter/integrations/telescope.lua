@@ -2,6 +2,7 @@ local M = {}
 
 local api = vim.api
 local state = require("ecolog.shelter.state")
+local shelter_utils = require("ecolog.shelter.utils")
 local previewer_utils = require("ecolog.shelter.previewer_utils")
 
 local function create_masked_previewer(opts, preview_type)
@@ -56,7 +57,7 @@ local function get_masked_value(value, key)
     return ""
   end
 
-  return utils.determine_masked_value(value, {
+  return shelter_utils.determine_masked_value(value, {
     partial_mode = state.get_config().partial_mode,
     key = key,
     source = key and state.get_env_vars()[key] and state.get_env_vars()[key].source,

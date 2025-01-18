@@ -1,6 +1,5 @@
 local M = {}
 
-local string_match = string.match
 local string_sub = string.sub
 local string_rep = string.rep
 
@@ -54,7 +53,7 @@ function M.determine_masked_value(value, opts)
   local key = opts.key
   local source = opts.source
   local config = state.get_config()
-  
+
   -- First check pattern-based rules (they take precedence)
   local pattern_mode = key and M.matches_shelter_pattern(key)
   if pattern_mode then
@@ -65,20 +64,23 @@ function M.determine_masked_value(value, opts)
     end
   else
     -- Then check source-based rules
-    if source and config.sources and config.sources[source] then
-      local source_mode = config.sources[source]
-      if source_mode == "none" then
-        return value
-      elseif source_mode == "full" then
-        return string_rep(config.mask_char, #value)
+    if source and config.sources then
+      for pattern, mode in pairs(config.sources) do
+        local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+        if source:match("^" .. lua_pattern .. "$") then
+          if mode == "none" then
+            return value
+          elseif mode == "full" then
+            return string_rep(config.mask_char, #value)
+          end
+        end
       end
-    else
-      -- Fall back to default mode if no rules match
-      if config.default_mode == "none" then
-        return value
-      elseif config.default_mode == "full" then
-        return string_rep(config.mask_char, #value)
-      end
+    end
+    -- Fall back to default mode if no rules match
+    if config.default_mode == "none" then
+      return value
+    elseif config.default_mode == "full" then
+      return string_rep(config.mask_char, #value)
     end
   end
 
@@ -94,13 +96,12 @@ function M.determine_masked_value(value, opts)
 
   local mask_length = math.max(min_mask, #value - show_start - show_end)
 
-  return string_sub(value, 1, show_start)
-    .. string_rep(config.mask_char, mask_length)
-    .. string_sub(value, -show_end)
+  return string_sub(value, 1, show_start) .. string_rep(config.mask_char, mask_length) .. string_sub(value, -show_end)
 end
 
 function M.has_cmp()
   return vim.fn.exists(":CmpStatus") > 0
 end
 
-return M 
+return M
+

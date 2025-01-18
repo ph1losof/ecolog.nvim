@@ -18,6 +18,7 @@ local state = {
     partial_mode = false,
     mask_char = "*",
     patterns = {},
+    sources = {},
     default_mode = "full",
     shelter_on_leave = false,
     highlight_group = "Comment",

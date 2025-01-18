@@ -38,6 +38,10 @@ function M.setup(opts)
       state.get_config().patterns = opts.config.patterns
     end
 
+    if opts.config.sources then
+      state.get_config().sources = opts.config.sources
+    end
+
     if opts.config.default_mode then
       if not vim.tbl_contains({ "none", "partial", "full" }, opts.config.default_mode) then
         notify("Invalid default_mode. Using '" .. state.get_config().default_mode .. "'.", vim.log.levels.WARN)
@@ -118,7 +122,7 @@ function M.setup(opts)
   })
 end
 
-function M.mask_value(value, feature, key)
+function M.mask_value(value, feature, key, source)
   if not value then
     return ""
   end
@@ -129,6 +133,7 @@ function M.mask_value(value, feature, key)
   return utils.determine_masked_value(value, {
     partial_mode = state.get_config().partial_mode,
     key = key,
+    source = source,
   })
 end
 

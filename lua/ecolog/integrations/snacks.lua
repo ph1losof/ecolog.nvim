@@ -84,7 +84,7 @@ local function create_picker_actions()
     copy_value = function(picker)
       local item = picker:current()
       if not item then return end
-      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks") or item.value
+      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks", nil, fn.fnamemodify(item.source, ":t")) or item.value
       copy_to_clipboard(value, string.format("value of '%s'", item.name))
       picker:close()
     end,
@@ -97,7 +97,7 @@ local function create_picker_actions()
     append_value = function(picker)
       local item = picker:current()
       if not item then return end
-      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks") or item.value
+      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks", nil, fn.fnamemodify(item.source, ":t")) or item.value
       if append_at_cursor(value) then
         notify_with_title("Appended environment value", vim.log.levels.INFO)
         picker:close()
@@ -140,7 +140,7 @@ local function create_picker_items()
   local longest_name = 0
 
   for name, var in pairs(env_vars) do
-    local display_value = shelter.mask_value(var.value, "snacks", name)
+    local display_value = shelter.mask_value(var.value, "snacks", name, fn.fnamemodify(var.source, ":t"))
     table.insert(items, {
       name = name,
       text = name,

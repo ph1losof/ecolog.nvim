@@ -11,7 +11,7 @@ local namespace = api.nvim_create_namespace("ecolog_shelter")
 -- Initialize LRU cache with capacity of 100 buffers
 local processed_buffers = lru_cache.new(100)
 
-local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash)
+local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename)
   local chunk_extmarks = {}
 
   for i = start_idx, math.min(end_idx, #lines) do
@@ -25,6 +25,7 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
         local masked_value = shelter_utils.determine_masked_value(actual_value, {
           partial_mode = state.get_config().partial_mode,
           key = key,
+          source = filename,
         })
 
         if masked_value and #masked_value > 0 then
@@ -57,7 +58,7 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
   -- Process next chunk if needed
   if end_idx < #lines then
     vim.schedule(function()
-      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash)
+      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename)
     end)
   else
     processed_buffers:put(bufnr, {
@@ -74,6 +75,7 @@ function M.process_buffer(bufnr)
 
   local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
+  local filename = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
 
   local cached = processed_buffers:get(bufnr)
   if cached and cached.hash == content_hash then
@@ -83,7 +85,7 @@ function M.process_buffer(bufnr)
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
 
   -- Start processing in chunks of 50 lines
-  process_buffer_chunk(bufnr, lines, 1, 50, content_hash)
+  process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
 end
 
 ---@param bufnr number
@@ -112,7 +114,7 @@ function M.mask_preview_buffer(bufnr, filename, integration_name)
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
 
   -- Start processing in chunks of 50 lines
-  process_buffer_chunk(bufnr, lines, 1, 50, content_hash)
+  process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
 end
 
 return M

@@ -82,7 +82,7 @@ local function create_copy_value_action(env_vars, config)
       return
     end
 
-    local value = config.shelter.mask_on_copy and shelter.mask_value(selection.value, "fzf") or selection.value
+    local value = config.shelter.mask_on_copy and shelter.mask_value(selection.value, "fzf", nil, fn.fnamemodify(selection.source, ":t")) or selection.value
     fn.setreg("+", value)
     notify_with_title(string.format("Copied value of '%s' to clipboard", var_name), vim.log.levels.INFO)
   end)
@@ -124,7 +124,7 @@ local function create_append_value_action(env_vars, config)
       if not selection then
         return nil
       end
-      return config.shelter.mask_on_copy and shelter.mask_value(selection.value, "fzf") or selection.value
+      return config.shelter.mask_on_copy and shelter.mask_value(selection.value, "fzf", nil, fn.fnamemodify(selection.source, ":t")) or selection.value
     end) then
       notify_with_title("Appended environment value", vim.log.levels.INFO)
     end
@@ -151,7 +151,7 @@ end
 local function format_env_vars(env_vars)
   local results = {}
   for name, var in pairs(env_vars) do
-    local display_value = shelter.mask_value(var.value, "fzf")
+    local display_value = shelter.mask_value(var.value, "fzf", nil, fn.fnamemodify(var.source, ":t"))
     table.insert(results, string.format("%-30s = %s", name, display_value))
   end
   return results

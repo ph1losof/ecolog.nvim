@@ -52,9 +52,11 @@ function M.determine_masked_value(value, opts)
 
   opts = opts or {}
   local key = opts.key
+  local source = opts.source
   local config = state.get_config()
+  
+  -- First check pattern-based rules (they take precedence)
   local pattern_mode = key and M.matches_shelter_pattern(key)
-
   if pattern_mode then
     if pattern_mode == "none" then
       return value
@@ -62,10 +64,21 @@ function M.determine_masked_value(value, opts)
       return string_rep(config.mask_char, #value)
     end
   else
-    if config.default_mode == "none" then
-      return value
-    elseif config.default_mode == "full" then
-      return string_rep(config.mask_char, #value)
+    -- Then check source-based rules
+    if source and config.sources and config.sources[source] then
+      local source_mode = config.sources[source]
+      if source_mode == "none" then
+        return value
+      elseif source_mode == "full" then
+        return string_rep(config.mask_char, #value)
+      end
+    else
+      -- Fall back to default mode if no rules match
+      if config.default_mode == "none" then
+        return value
+      elseif config.default_mode == "full" then
+        return string_rep(config.mask_char, #value)
+      end
     end
   end
 

@@ -12,6 +12,18 @@ local namespace = api.nvim_create_namespace("ecolog_shelter")
 -- Initialize LRU cache with capacity of 100 buffers
 local processed_buffers = lru_cache.new(100)
 
+local function get_masked_value(value, key)
+  if not value then
+    return ""
+  end
+
+  return utils.determine_masked_value(value, {
+    partial_mode = state.get_config().partial_mode,
+    key = key,
+    source = key and state.get_env_vars()[key] and state.get_env_vars()[key].source,
+  })
+end
+
 local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash)
   local chunk_extmarks = {}
 
@@ -23,10 +35,7 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
       local quote_char, actual_value = utils.extract_quoted_value(value)
 
       if actual_value then
-        local masked_value = shelter_utils.determine_masked_value(actual_value, {
-          partial_mode = state.get_config().partial_mode,
-          key = key,
-        })
+        local masked_value = get_masked_value(actual_value, key)
 
         if masked_value and #masked_value > 0 then
           if quote_char then

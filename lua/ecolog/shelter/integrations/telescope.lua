@@ -51,6 +51,18 @@ local function create_masked_previewer(opts, preview_type)
   })
 end
 
+local function get_masked_value(value, key)
+  if not value then
+    return ""
+  end
+
+  return utils.determine_masked_value(value, {
+    partial_mode = state.get_config().partial_mode,
+    key = key,
+    source = key and state.get_env_vars()[key] and state.get_env_vars()[key].source,
+  })
+end
+
 function M.setup_telescope_shelter()
   local conf = require("telescope.config").values
 

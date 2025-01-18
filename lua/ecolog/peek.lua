@@ -54,7 +54,7 @@ local function create_peek_content(var_name, var_info, types)
 
   -- Use the re-detected type and value, or fall back to stored ones
   local display_type = type_name or var_info.type
-  local display_value = shelter.mask_value(value or var_info.value, "peek", var_name)
+  local display_value = shelter.mask_value(value or var_info.value, "peek", var_name, fn.fnamemodify(var_info.source, ":t"))
   local source = fn.fnamemodify(var_info.source, ":t")
 
   -- Pre-allocate table for better performance

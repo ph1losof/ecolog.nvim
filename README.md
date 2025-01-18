@@ -1053,8 +1053,14 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
                    show_start = 3,    -- Number of characters to show at start
                    show_end = 3,      -- Number of characters to show at end
                    min_mask = 3,      -- Minimum number of mask characters
-               }
-              mask_char = "*",   -- Character used for masking
+               },
+               mask_char = "*",   -- Character used for masking
+               -- Mask all values from production files
+               sources = {
+                   [".env.prod"] = "full",
+                   [".env.local"] = "partial",
+                   ["shell"] = "none",
+               },
            },
            modules = {
                cmp = true,       -- Mask values in completion
@@ -1070,7 +1076,27 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
    end
    ```
 
-2. **Custom Masking**: Use different characters for masking:
+2. **Source-based Protection**: Use different masking levels based on file sources:
+
+   ```lua
+   shelter = {
+       configuration = {
+           -- Mask values based on their source file
+           sources = {
+               [".env.prod"] = "full",
+               [".env.local"] = "partial",
+               ["shell"] = "none",
+           },
+           -- Pattern-based rules take precedence
+           patterns = {
+               ["*_KEY"] = "full",      -- Always fully mask API keys
+               ["TEST_*"] = "none",     -- Never mask test variables
+           },
+       }
+   }
+   ```
+
+3. **Custom Masking**: Use different characters for masking:
 
    ```lua
    shelter = {
@@ -1094,12 +1120,15 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
 
    The `highlight_group` option allows you to customize the highlight group used for masked values. By default, it uses the `Comment` highlight group. You can use any valid Neovim highlight group name.
 
-3. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
+4. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
 
-4. **Security Best Practices**:
+5. **Security Best Practices**:
    - Enable shelter mode by default for production environments
    - Use file shelter mode during screen sharing or pair programming
    - Enable completion shelter mode to prevent accidental exposure in screenshots
+   - Use source-based masking to protect sensitive files
+   - Apply stricter masking rules for production and staging environments
+   - Keep development and test files less restricted for better workflow
 
 ## 🎨 Theme Integration
 

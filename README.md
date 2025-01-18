@@ -1181,8 +1181,8 @@ shelter = {
         },
         -- Source-based rules as fallback
         sources = {
-            [".env.prod"] = "full",
-            [".env.local"] = "partial",
+            [".env.*"] = "full",
+            [".env.local"] = "none",
             ["shell"] = "none",
         },
     }

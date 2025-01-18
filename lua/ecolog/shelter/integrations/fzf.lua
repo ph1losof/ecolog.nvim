@@ -17,11 +17,23 @@ local function get_masked_value(value, key)
     return ""
   end
 
-  return utils.determine_masked_value(value, {
+  local quote_char = value:match("^([\"'])")
+  local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
+
+  if not actual_value then
+    return value
+  end
+
+  local masked = shelter_utils.determine_masked_value(actual_value, {
     partial_mode = state.get_config().partial_mode,
     key = key,
     source = key and state.get_env_vars()[key] and state.get_env_vars()[key].source,
   })
+
+  if quote_char then
+    return quote_char .. masked .. quote_char
+  end
+  return masked
 end
 
 local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash)
@@ -32,26 +44,20 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
     local key, value, eq_pos = utils.parse_env_line(line)
 
     if key and value then
-      local quote_char, actual_value = utils.extract_quoted_value(value)
+      local masked_value = get_masked_value(value, key)
+      local quote_char = value:match("^([\"'])")
+      local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
 
-      if actual_value then
-        local masked_value = get_masked_value(actual_value, key)
-
-        if masked_value and #masked_value > 0 then
-          if quote_char then
-            masked_value = quote_char .. masked_value .. quote_char
-          end
-
-          table.insert(chunk_extmarks, {
-            i - 1,
-            eq_pos,
-            {
-              virt_text = { { masked_value, state.get_config().highlight_group } },
-              virt_text_pos = "overlay",
-              hl_mode = "combine",
-            },
-          })
-        end
+      if masked_value and #masked_value > 0 then
+        table.insert(chunk_extmarks, {
+          i - 1,
+          eq_pos,
+          {
+            virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
+            virt_text_pos = "overlay",
+            hl_mode = "combine",
+          },
+        })
       end
     end
   end

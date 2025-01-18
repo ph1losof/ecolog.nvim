@@ -19,7 +19,8 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
     local key, value, eq_pos = utils.parse_env_line(line)
 
     if key and value then
-      local quote_char, actual_value = utils.extract_quoted_value(value)
+      local quote_char = value:match("^([\"'])")
+      local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
 
       if actual_value then
         local masked_value = shelter_utils.determine_masked_value(actual_value, {
@@ -37,7 +38,7 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
             i - 1,
             eq_pos,
             {
-              virt_text = { { masked_value, state.get_config().highlight_group } },
+              virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
               virt_text_pos = "overlay",
               hl_mode = "combine",
             },

@@ -9,7 +9,7 @@ local types = require("ecolog.types")
 local M = {}
 
 ---@param config boolean|LoadShellConfig
----@return table<string, table>, LoadShellConfig
+---@return table<string, table>
 function M.load_shell_vars(config)
   -- Normalize config to table format
   local shell_config = type(config) == "table" and config or { enabled = config, override = false }
@@ -43,7 +43,7 @@ function M.load_shell_vars(config)
     }
   end
 
-  return shell_vars, shell_config
+  return shell_vars
 end
 
 return M 

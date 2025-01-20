@@ -269,7 +269,9 @@ local function update_environment(secrets, override)
   
   state.is_refreshing = true
   state.skip_load = true
-  ecolog.add_env_vars(secrets)
+  
+  M._apply_env_updates(secrets, override)
+  
   state.skip_load = false
   state.is_refreshing = false
 end
@@ -278,195 +280,187 @@ end
 ---@param env_vars table<string, any>
 ---@param override boolean
 function M.update_env_vars(env_vars, override)
+  -- First refresh the environment to ensure we have latest state
   ecolog.refresh_env_vars()
   
+  -- If we're currently loading secrets, queue the update
   if state.loading or state.loading_lock then
     table.insert(state.pending_env_updates, function()
-      local env_from_file = env_vars or {}
-      local aws_vars = state.loaded_secrets or {}
-      local current_env = ecolog.get_env_vars() or {}
+      M._apply_env_updates(env_vars, override)
+    end)
+    return
+  end
+
+  -- Otherwise apply updates immediately
+  M._apply_env_updates(env_vars, override)
+end
+
+-- Extract core update logic to separate function for reuse
+function M._apply_env_updates(env_vars, override)
+  -- Start with AWS secrets as base if override is false
+  local final_vars = override and {} or vim.deepcopy(state.loaded_secrets or {})
+  
+  -- Add current environment vars
+  local current_env = ecolog.get_env_vars() or {}
+  for k, v in pairs(current_env) do
+    final_vars[k] = v
+  end
+  
+  -- Add new env vars, overriding existing ones
+  local new_vars = env_vars or {}
+  for k, v in pairs(new_vars) do
+    final_vars[k] = v
+  end
+
+  -- Refresh environment state
+  ecolog.refresh_env_vars()
+  
+  -- Apply all updates atomically
+  for k, v in pairs(final_vars) do
+    if type(v) == "table" and v.value ~= nil then
+      vim.env[k] = tostring(v.value)
+    else
+      vim.env[k] = tostring(v)
+    end
+  end
+  
+  -- Update ecolog's internal state
+  ecolog.add_env_vars(final_vars)
+end
+
+---Process secrets sequentially to avoid race conditions
+---@param aws_config LoadAwsSecretsConfig
+---@param aws_secrets table<string, table>
+---@param current_index number
+---@param loaded_secrets number
+---@param failed_secrets number
+local function process_secrets_sequentially(aws_config, aws_secrets, current_index, loaded_secrets, failed_secrets)
+  if not state.loading_lock then
+    vim.notify("Loading lock released, stopping processing", vim.log.levels.DEBUG)
+    return
+  end
+
+  -- All secrets processed
+  if current_index > #aws_config.secrets then
+    vim.notify("All secrets processed. Total loaded: " .. loaded_secrets .. ", failed: " .. failed_secrets, vim.log.levels.DEBUG)
+    if loaded_secrets > 0 or failed_secrets > 0 then
+      local msg = string.format("AWS Secrets Manager: Loaded %d secret%s",
+        loaded_secrets,
+        loaded_secrets == 1 and "" or "s"
+      )
+      if failed_secrets > 0 then
+        msg = msg .. string.format(", %d failed", failed_secrets)
+      end
+      vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+
+      state.loaded_secrets = aws_secrets
+      state.initialized = true
       
-      local final_vars = vim.tbl_extend("force", {}, aws_vars)
-      final_vars = vim.tbl_extend("force", final_vars, current_env)
-      final_vars = vim.tbl_extend("force", final_vars, env_from_file)
+      vim.notify("Processing " .. #state.pending_env_updates .. " pending env updates", vim.log.levels.DEBUG)
       
+      -- Process any pending env updates with the loaded secrets
+      local updates_to_process = state.pending_env_updates
+      state.pending_env_updates = {} -- Clear before processing to avoid recursion
+      
+      -- Update environment with loaded secrets
       ecolog.refresh_env_vars()
-      
-      for k, v in pairs(final_vars) do
+      for k, v in pairs(aws_secrets) do
         if type(v) == "table" and v.value then
           vim.env[k] = tostring(v.value)
         else
           vim.env[k] = tostring(v)
         end
       end
-    end)
-  else
-    local env_from_file = env_vars or {}
-    local aws_vars = state.loaded_secrets or {}
-    local current_env = ecolog.get_env_vars() or {}
-    
-    local final_vars = vim.tbl_extend("force", {}, aws_vars)
-    final_vars = vim.tbl_extend("force", final_vars, current_env)
-    final_vars = vim.tbl_extend("force", final_vars, env_from_file)
-    
-    ecolog.refresh_env_vars()
-    
-    for k, v in pairs(final_vars) do
-      if type(v) == "table" and v.value then
-        vim.env[k] = tostring(v.value)
-      else
-        vim.env[k] = tostring(v)
+      
+      -- Process any pending merges
+      for _, update_fn in ipairs(updates_to_process) do
+        update_fn()
       end
-    end
-  end
-end
 
----Process a batch of secrets
----@param start_idx number
----@param aws_config LoadAwsSecretsConfig
----@param aws_secrets table<string, table>
----@param loaded_secrets number
----@param failed_secrets number
----@param total_batches number
----@param current_batch number
-local function process_batch(start_idx, aws_config, aws_secrets, loaded_secrets, failed_secrets, total_batches, current_batch)
-  -- Check if our lock is still valid
-  if not state.loading_lock then
+      cleanup_state()
+    end
     return
   end
 
-  current_batch = current_batch + 1
-  local end_idx = math.min(start_idx + AWS_BATCH_SIZE - 1, #aws_config.secrets)
-  local remaining_in_batch = end_idx - start_idx + 1
+  local secret_name = aws_config.secrets[current_index]
+  vim.notify("Processing secret " .. current_index .. "/" .. #aws_config.secrets .. ": " .. secret_name, vim.log.levels.DEBUG)
+  
+  local cmd = {
+    "aws", "secretsmanager", "get-secret-value",
+    "--query", "SecretString", "--output", "text",
+    "--secret-id", secret_name,
+    "--region", aws_config.region
+  }
+  
+  if aws_config.profile then
+    table.insert(cmd, "--profile")
+    table.insert(cmd, aws_config.profile)
+  end
+
+  local stdout = ""
+  local stderr = ""
   local retry_count = 0
-
-  for i = start_idx, end_idx do
-    local secret_name = aws_config.secrets[i]
-    local cmd = {
-      "aws", "secretsmanager", "get-secret-value",
-      "--query", "SecretString", "--output", "text",
-      "--secret-id", secret_name,
-      "--region", aws_config.region
-    }
-    
-    if aws_config.profile then
-      table.insert(cmd, "--profile")
-      table.insert(cmd, aws_config.profile)
-    end
-
-    local stdout = ""
-    local stderr = ""
-    
-    local job_id = vim.fn.jobstart(cmd, {
-      on_stdout = function(_, data)
-        if data then
-          stdout = stdout .. table.concat(data, "\n")
+  
+  local function process_next()
+    vim.defer_fn(function()
+      process_secrets_sequentially(aws_config, aws_secrets, current_index + 1, loaded_secrets, failed_secrets)
+    end, 100) -- Small delay between secrets to avoid rate limiting
+  end
+  
+  local job_id = vim.fn.jobstart(cmd, {
+    on_stdout = function(_, data)
+      if data then
+        stdout = stdout .. table.concat(data, "\n")
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        stderr = stderr .. table.concat(data, "\n")
+      end
+    end,
+    on_exit = function(_, code)
+      untrack_job(job_id)
+      vim.schedule(function()
+        if not state.loading_lock then
+          return
         end
-      end,
-      on_stderr = function(_, data)
-        if data then
-          stderr = stderr .. table.concat(data, "\n")
-        end
-      end,
-      on_exit = function(_, code)
-        untrack_job(job_id)
-        vim.schedule(function()
-          -- Check if our lock is still valid
-          if not state.loading_lock then
+
+        if code ~= 0 then
+          if retry_count < AWS_MAX_RETRIES and (
+            stderr:match("Could not connect to the endpoint URL") or
+            stderr:match("ThrottlingException") or
+            stderr:match("RequestTimeout")
+          ) then
+            retry_count = retry_count + 1
+            vim.defer_fn(function()
+              process_secrets_sequentially(aws_config, aws_secrets, current_index, loaded_secrets, failed_secrets)
+            end, 1000 * retry_count)
             return
           end
 
-          remaining_in_batch = remaining_in_batch - 1
-          
-          if code ~= 0 then
-            if retry_count < AWS_MAX_RETRIES and (
-              stderr:match("Could not connect to the endpoint URL") or
-              stderr:match("ThrottlingException") or
-              stderr:match("RequestTimeout")
-            ) then
-              retry_count = retry_count + 1
-              vim.defer_fn(function()
-                process_batch(start_idx, aws_config, aws_secrets, loaded_secrets, failed_secrets, total_batches, current_batch)
-              end, 1000 * retry_count) -- Exponential backoff
-              return
-            end
-
-            failed_secrets = failed_secrets + 1
-            local err = process_aws_error(stderr, secret_name)
-            vim.notify(err.message, err.level)
-          else
-            local secret_value = stdout:gsub("^%s*(.-)%s*$", "%1")
-            local loaded, failed = process_secret_value(secret_value, secret_name, aws_config, aws_secrets)
-            loaded_secrets = loaded_secrets + loaded
-            failed_secrets = failed_secrets + failed
-          end
-
-          -- Process next batch if current batch is complete
-          if remaining_in_batch == 0 then
-            if current_batch < total_batches then
-              -- Add a small delay between batches to prevent rate limiting
-              vim.defer_fn(function()
-                process_batch(start_idx + AWS_BATCH_SIZE, aws_config, aws_secrets, loaded_secrets, failed_secrets, total_batches, current_batch)
-              end, 100)
-            else
-              -- All batches complete
-              if state.loading_lock then -- Check if we haven't timed out
-                if loaded_secrets > 0 or failed_secrets > 0 then
-                  local msg = string.format("AWS Secrets Manager: Loaded %d secret%s",
-                    loaded_secrets,
-                    loaded_secrets == 1 and "" or "s"
-                  )
-                  if failed_secrets > 0 then
-                    msg = msg .. string.format(", %d failed", failed_secrets)
-                  end
-                  vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
-
-                  state.loaded_secrets = aws_secrets
-                  state.initialized = true
-                  
-                  vim.notify(string.format("[AWS Debug] Finished loading secrets, processing %d pending updates", #state.pending_env_updates), vim.log.levels.DEBUG)
-                  -- Process any pending env updates with the loaded secrets
-                  local updates_to_process = state.pending_env_updates
-                  state.pending_env_updates = {} -- Clear before processing to avoid recursion
-                  
-                  -- First add AWS secrets to environment
-                  ecolog.refresh_env_vars()
-                  -- Also update the global environment
-                  for k, v in pairs(aws_secrets) do
-                    if type(v) == "table" and v.value then
-                      vim.env[k] = tostring(v.value)
-                    else
-                      vim.env[k] = tostring(v)
-                    end
-                  end
-                  vim.notify(string.format("[AWS Debug] Added %d AWS secrets to environment", vim.tbl_count(aws_secrets)), vim.log.levels.DEBUG)
-                  
-                  -- Then process any pending merges
-                  for _, update_fn in ipairs(updates_to_process) do
-                    update_fn()
-                  end
-
-                  cleanup_state()
-                end
-              end
-            end
-          end
-        end)
-      end
-    })
-
-    if job_id > 0 then
-      track_job(job_id)
-    else
-      vim.schedule(function()
-        failed_secrets = failed_secrets + 1
-        vim.notify(string.format("Failed to start AWS CLI command for secret %s", secret_name), vim.log.levels.ERROR)
-        remaining_in_batch = remaining_in_batch - 1
-        if remaining_in_batch == 0 and current_batch == total_batches then
-          cleanup_state()
+          failed_secrets = failed_secrets + 1
+          local err = process_aws_error(stderr, secret_name)
+          vim.notify(err.message, err.level)
+          process_next()
+        else
+          local secret_value = stdout:gsub("^%s*(.-)%s*$", "%1")
+          local loaded, failed = process_secret_value(secret_value, secret_name, aws_config, aws_secrets)
+          loaded_secrets = loaded_secrets + loaded
+          failed_secrets = failed_secrets + failed
+          process_next()
         end
       end)
     end
+  })
+
+  if job_id > 0 then
+    track_job(job_id)
+  else
+    vim.schedule(function()
+      failed_secrets = failed_secrets + 1
+      vim.notify(string.format("Failed to start AWS CLI command for secret %s", secret_name), vim.log.levels.ERROR)
+      process_next()
+    end)
   end
 end
 
@@ -589,9 +583,6 @@ function M.load_aws_secrets(config)
   state.selected_secrets = vim.deepcopy(aws_config.secrets)
 
   local aws_secrets = {}
-  local loaded_secrets = 0
-  local failed_secrets = 0
-
   local loading_msg = vim.notify("Loading AWS secrets...", vim.log.levels.INFO)
 
   state.timeout_timer = vim.fn.timer_start(AWS_TIMEOUT_MS, function()
@@ -614,8 +605,7 @@ function M.load_aws_secrets(config)
       return
     end
 
-    local total_batches = math.ceil(#aws_config.secrets / AWS_BATCH_SIZE)
-    process_batch(1, aws_config, aws_secrets, loaded_secrets, failed_secrets, total_batches, 0)
+    process_secrets_sequentially(aws_config, aws_secrets, 1, 0, 0)
   end)
 
   return state.loaded_secrets or {}
@@ -670,24 +660,152 @@ local function select_secrets(config)
         return
       end
 
-      vim.ui.select(secrets, {
-        prompt = "Select AWS secret to load:",
-        format_item = function(item)
-          return item
-        end,
-      }, function(choice)
-        if choice then
-          state.selected_secrets = { choice }
+      -- State for selection
+      local selected = {}
+      local cursor_idx = 1
+
+      -- Function to update content
+      local function get_content()
+        local content = {}
+        for i, secret in ipairs(secrets) do
+          local prefix = selected[secret] and " ✓ " or "   "
+          if i == cursor_idx then
+            prefix = prefix:sub(1, 1) .. "→" .. prefix:sub(3)
+          end
+          table.insert(content, string.format("%s%s", prefix, secret))
+        end
+        return content
+      end
+
+      -- Function to update buffer content and cursor
+      local function update_buffer(bufnr, winid)
+        local content = get_content()
+        api.nvim_buf_set_option(bufnr, "modifiable", true)
+        api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
+        api.nvim_buf_set_option(bufnr, "modifiable", false)
+
+        -- Update highlights
+        api.nvim_buf_clear_namespace(bufnr, -1, 0, -1)
+        for i = 1, #content do
+          local hl_group = selected[secrets[i]] and "EcologVariable" or "EcologSelected"
+          if i == cursor_idx then
+            hl_group = "EcologCursor"
+          end
+          api.nvim_buf_add_highlight(bufnr, -1, hl_group, i - 1, 0, -1)
+        end
+
+        -- Update cursor position
+        api.nvim_win_set_cursor(winid, { cursor_idx, 4 })
+      end
+
+      local float_opts = utils.create_minimal_win_opts(60, #secrets)
+      local original_guicursor = vim.opt.guicursor:get()
+      local bufnr = api.nvim_create_buf(false, true)
+
+      -- Set buffer options
+      api.nvim_buf_set_option(bufnr, "buftype", "nofile")
+      api.nvim_buf_set_option(bufnr, "bufhidden", "wipe")
+      api.nvim_buf_set_option(bufnr, "modifiable", true)
+      api.nvim_buf_set_option(bufnr, "filetype", "ecolog")
+
+      -- Set initial content
+      api.nvim_buf_set_lines(bufnr, 0, -1, false, get_content())
+      api.nvim_buf_set_option(bufnr, "modifiable", false)
+
+      -- Create window
+      local winid = api.nvim_open_win(bufnr, true, float_opts)
+
+      -- Set window options
+      api.nvim_win_set_option(winid, "conceallevel", 2)
+      api.nvim_win_set_option(winid, "concealcursor", "niv")
+      api.nvim_win_set_option(winid, "cursorline", true)
+      api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+
+      -- Set initial cursor position and highlight
+      update_buffer(bufnr, winid)
+
+      -- Movement keymaps
+      vim.keymap.set("n", "j", function()
+        if cursor_idx < #secrets then
+          cursor_idx = cursor_idx + 1
+          update_buffer(bufnr, winid)
+        end
+      end, { buffer = bufnr, nowait = true })
+
+      vim.keymap.set("n", "k", function()
+        if cursor_idx > 1 then
+          cursor_idx = cursor_idx - 1
+          update_buffer(bufnr, winid)
+        end
+      end, { buffer = bufnr, nowait = true })
+
+      -- Toggle selection with space
+      vim.keymap.set("n", "<space>", function()
+        local current_secret = secrets[cursor_idx]
+        selected[current_secret] = not selected[current_secret]
+        vim.notify("Toggled " .. current_secret .. (selected[current_secret] and " ON" or " OFF"), vim.log.levels.DEBUG)
+        update_buffer(bufnr, winid)
+      end, { buffer = bufnr, nowait = true })
+
+      -- Selection and exit keymaps
+      local function close_window()
+        if api.nvim_win_is_valid(winid) then
+          vim.opt.guicursor = original_guicursor
+          api.nvim_win_close(winid, true)
+        end
+      end
+
+      local function load_selected_secrets()
+        local chosen_secrets = {}
+        for secret, is_selected in pairs(selected) do
+          if is_selected then
+            table.insert(chosen_secrets, secret)
+          end
+        end
+        
+        -- If nothing explicitly selected, use current cursor position
+        if #chosen_secrets == 0 then
+          chosen_secrets = { secrets[cursor_idx] }
+        end
+
+        vim.notify("Selected secrets: " .. vim.inspect(chosen_secrets), vim.log.levels.DEBUG)
+        
+        if #chosen_secrets > 0 then
+          state.selected_secrets = chosen_secrets
           state.initialized = false
           state.loaded_secrets = {}
-          M.load_aws_secrets(vim.tbl_extend("force", state.config, { 
+          
+          local debug_config = vim.tbl_extend("force", state.config, { 
             secrets = state.selected_secrets,
             enabled = true,
             region = config.region,
             profile = config.profile
-          }))
+          })
+          vim.notify("Loading with config: " .. vim.inspect(debug_config), vim.log.levels.DEBUG)
+          
+          M.load_aws_secrets(debug_config)
         end
-      end)
+      end
+
+      vim.keymap.set("n", "<CR>", function()
+        close_window()
+        load_selected_secrets()
+      end, { buffer = bufnr, nowait = true })
+
+      vim.keymap.set("n", "q", function()
+        close_window()
+      end, { buffer = bufnr, nowait = true })
+
+      vim.keymap.set("n", "<ESC>", function()
+        close_window()
+      end, { buffer = bufnr, nowait = true })
+
+      -- Autoclose on buffer leave
+      api.nvim_create_autocmd("BufLeave", {
+        buffer = bufnr,
+        once = true,
+        callback = close_window,
+      })
     end
   })
 

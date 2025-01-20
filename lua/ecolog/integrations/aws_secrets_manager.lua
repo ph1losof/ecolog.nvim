@@ -572,8 +572,20 @@ local function select_secrets(config)
         return
       end
 
+      -- Initialize selected with currently loaded secrets
       local selected = {}
+      for _, secret_name in ipairs(state.selected_secrets) do
+        selected[secret_name] = true
+      end
       local cursor_idx = 1
+
+      -- Set cursor to first selected secret if any
+      for i, secret in ipairs(secrets) do
+        if selected[secret] then
+          cursor_idx = i
+          break
+        end
+      end
 
       local function get_content()
         local content = {}
@@ -678,9 +690,17 @@ local function select_secrets(config)
         end
         
         if #chosen_secrets > 0 then
+          -- Unload secrets that are no longer selected
+          local new_loaded_secrets = {}
+          for key, value in pairs(state.loaded_secrets) do
+            local secret_name = value.source and value.source:match("^asm:(.+)$")
+            if secret_name and selected[secret_name] then
+              new_loaded_secrets[key] = value
+            end
+          end
+          state.loaded_secrets = new_loaded_secrets
           state.selected_secrets = chosen_secrets
           state.initialized = false
-          state.loaded_secrets = {}
           
           M.load_aws_secrets(vim.tbl_extend("force", state.config, { 
             secrets = state.selected_secrets,

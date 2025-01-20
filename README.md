@@ -931,9 +931,9 @@ All keymaps are customizable through the configuration.
 
 The AWS Secrets Manager integration allows you to load secrets from AWS Secrets Manager into your environment variables. This integration requires the AWS CLI to be installed and configured with appropriate credentials.
 
-> > Warning: Currenlty it is highly WIP feature.
+> ⚠️ **Note**: This is a beta feature and may have breaking changes in future releases.
 
-Configuration:
+#### Configuration
 
 ```lua
 require('ecolog').setup({
@@ -958,15 +958,55 @@ require('ecolog').setup({
 })
 ```
 
-The integration supports both JSON and plain text secrets:
+#### Features
 
-- For JSON secrets (key-value pairs), each key-value pair will be loaded as a separate environment variable
-- For plain text secrets, the last part of the secret name will be used as the environment variable name
+- Load secrets from AWS Secrets Manager into your environment variables
+- Support for both JSON and plain text secrets:
+  - JSON secrets: Each key-value pair becomes a separate environment variable
+  - Plain text secrets: The last part of the secret name is used as the variable name
+- Interactive secret selection with visual feedback
+- Integration with shelter mode for sensitive data protection
+- Automatic credential validation and error handling
+- Support for AWS profiles and regions
 
-Requirements:
+#### Interactive Secret Selection
+
+The `:EcologAWSSelect` command opens an interactive picker that allows you to:
+
+- Browse all available secrets in your AWS region
+- Select multiple secrets using the space key
+- See which secrets are currently selected with a checkmark (✓)
+- Navigate through secrets with j/k keys
+- Confirm selection with Enter
+- Cancel selection with q or Escape
+
+Default keybindings in the picker:
+
+| Key       | Action                                |
+| --------- | ------------------------------------- |
+| `j`/`k`   | Navigate through secrets              |
+| `<space>` | Toggle selection of current secret    |
+| `<CR>`    | Confirm selection and load secrets    |
+| `q`/`ESC` | Close picker without loading secrets  |
+
+#### Requirements
 
 - AWS CLI installed and configured
 - Appropriate AWS credentials with permissions to access the specified secrets
+- One of the following credential configurations:
+  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
+  - Configured AWS credentials file (~/.aws/credentials)
+  - IAM role with appropriate permissions
+
+#### Error Handling
+
+The integration provides clear error messages for common issues:
+
+- Invalid or missing AWS credentials
+- Network connectivity problems
+- Access denied errors
+- Region configuration issues
+- Missing or invalid secrets
 
 ### 🔍 Shelter Previewers
 

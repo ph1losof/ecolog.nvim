@@ -697,7 +697,7 @@ function M.setup(opts)
       nargs = "?",
       desc = "Copy environment variable value to clipboard",
     },
-    EcologAWSSecrets = {
+    EcologAWSSelect = {
       callback = function()
         local aws_secrets = require("ecolog.integrations.aws_secrets_manager")
         aws_secrets.select()

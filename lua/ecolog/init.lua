@@ -33,6 +33,7 @@ local DEFAULT_CONFIG = {
     fzf = false,
     statusline = false,
     snacks = false,
+    aws_secrets_manager = false,
   },
   vim_env = false,
   types = true,
@@ -235,6 +236,16 @@ local function parse_env_file(opts, force)
     end
   end
 
+  -- Load AWS Secrets Manager secrets if configured
+  if opts.integrations and opts.integrations.aws_secrets_manager then
+    local aws_secrets = require("ecolog.integrations.aws_secrets_manager").load_aws_secrets(opts.integrations.aws_secrets_manager)
+    for key, var_info in pairs(aws_secrets) do
+      if opts.integrations.aws_secrets_manager.override or not state.env_vars[key] then
+        state.env_vars[key] = var_info
+      end
+    end
+  end
+
   if
     opts.load_shell
     and (
@@ -360,6 +371,7 @@ end
 ---@field fzf boolean Enable fzf-lua integration for environment variable picking
 ---@field statusline boolean|StatuslineConfig Enable statusline integration
 ---@field snacks boolean Enable snacks integration
+---@field aws_secrets_manager boolean Enable AWS Secrets Manager integration
 
 ---@class StatuslineConfig
 ---@field hidden_mode boolean When true, hides the statusline section if no env file is selected
@@ -675,6 +687,13 @@ function M.setup(opts)
       end,
       nargs = "?",
       desc = "Copy environment variable value to clipboard",
+    },
+    EcologAWSSecrets = {
+      callback = function()
+        local aws_secrets = require("ecolog.integrations.aws_secrets_manager")
+        aws_secrets.select()
+      end,
+      desc = "Select AWS Secrets Manager secrets to load",
     },
   }
 

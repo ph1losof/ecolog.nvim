@@ -45,6 +45,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [FZF Integration](#fzf-integration)
   - [Snacks Integration](#snacks-integration)
   - [Statusline Integration](#statusline-integration)
+  - [AWS Secrets Manager](#aws-secrets-manager)
 - [Shelter Previewers](#-shelter-previewers)
   - [Telescope Previewer](#telescope-previewer)
   - [FZF Previewer](#fzf-previewer)
@@ -925,6 +926,47 @@ Open the environment variables picker:
 | `<C-a>` | Append value to buffer  |
 
 All keymaps are customizable through the configuration.
+
+### AWS Secrets Manager
+
+The AWS Secrets Manager integration allows you to load secrets from AWS Secrets Manager into your environment variables. This integration requires the AWS CLI to be installed and configured with appropriate credentials.
+
+> > Warning: Currenlty it is highly WIP feature.
+
+Configuration:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    aws_secrets_manager = {
+      enabled = true, -- Enable AWS Secrets Manager integration
+      override = false, -- When true, AWS secrets take precedence over .env files and shell variables
+      region = "us-west-2", -- Required: AWS region where your secrets are stored
+      profile = "default", -- Optional: AWS profile to use
+      secrets = { -- Required: List of secret names to fetch
+        "my-app/dev/database",
+        "my-app/dev/api"
+      },
+      filter = function(key, value) -- Optional: Filter function for secrets
+        return true -- Return true to include the secret, false to exclude it
+      end,
+      transform = function(key, value) -- Optional: Transform function for secret values
+        return value -- Return the transformed value
+      end
+    }
+  }
+})
+```
+
+The integration supports both JSON and plain text secrets:
+
+- For JSON secrets (key-value pairs), each key-value pair will be loaded as a separate environment variable
+- For plain text secrets, the last part of the secret name will be used as the environment variable name
+
+Requirements:
+
+- AWS CLI installed and configured
+- Appropriate AWS credentials with permissions to access the specified secrets
 
 ### 🔍 Shelter Previewers
 

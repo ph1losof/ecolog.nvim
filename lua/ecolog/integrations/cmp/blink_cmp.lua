@@ -126,7 +126,7 @@ function M:get_completions(ctx, callback)
 
   local items = {}
   for var_name, var_info in pairs(env_vars) do
-    local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name, fn.fnamemodify(var_info.source, ":t")) or var_info.value
+    local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source) or var_info.value
 
     local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
     if var_info.comment then
@@ -138,7 +138,7 @@ function M:get_completions(ctx, callback)
       kind = vim.lsp.protocol.CompletionItemKind.Variable,
       insertTextFormat = vim.lsp.protocol.InsertTextFormat.PlainText,
       insertText = var_name,
-      detail = vim.fn.fnamemodify(var_info.source, ":t"),
+      detail = var_info.source,
       documentation = {
         kind = vim.lsp.protocol.MarkupKind.Markdown,
         value = doc_value,

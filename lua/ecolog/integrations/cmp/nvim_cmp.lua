@@ -94,7 +94,7 @@ local function setup_completion(cmp, opts, providers)
       local items = {}
       for var_name, var_info in pairs(env_vars) do
         -- Get masked value if shelter is enabled
-        local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name, fn.fnamemodify(var_info.source, ":t"))
+        local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
           or var_info.value
 
         -- Create documentation string with comment if available
@@ -107,7 +107,7 @@ local function setup_completion(cmp, opts, providers)
         local item = {
           label = var_name,
           kind = cmp.lsp.CompletionItemKind.Variable,
-          detail = fn.fnamemodify(var_info.source, ":t"),
+          detail = var_info.source,
           documentation = {
             kind = "markdown",
             value = doc_value,

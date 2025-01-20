@@ -108,11 +108,10 @@ function M.setup_fzf_shelter()
       return
     end
 
-    local filename = entry and (entry.path or entry.filename or entry.name)
+    local filename = entry.path or entry.filename or entry.name
     if not filename then
       return
     end
-    filename = vim.fn.fnamemodify(filename, ":t")
 
     local config = require("ecolog").get_config and require("ecolog").get_config() or {}
     local is_env_file = shelter_utils.match_env_file(filename, config)

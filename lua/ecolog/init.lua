@@ -134,7 +134,7 @@ local function parse_env_line(line, file_path)
       value = transformed_value or value,
       type = type_name,
       raw_value = value,
-      source = file_path,
+      source = fn.fnamemodify(file_path, ":t"),
       comment = comment,
     },
   }
@@ -293,7 +293,7 @@ function M.check_env_type(var_name, opts)
         "Environment variable '%s' exists with type: %s (from %s)",
         var_name,
         var.type,
-        fn.fnamemodify(var.source, ":t")
+        var.source
       ),
       vim.log.levels.INFO
     )

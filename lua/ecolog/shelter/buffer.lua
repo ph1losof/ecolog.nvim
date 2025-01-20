@@ -80,7 +80,7 @@ function M.shelter_buffer()
         or utils.determine_masked_value(actual_value, {
           partial_mode = config_partial_mode,
           key = key,
-          source = fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"),
+          source = vim.api.nvim_buf_get_name(0),
         })
 
       if masked_value and #masked_value > 0 then

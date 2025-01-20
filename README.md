@@ -991,12 +991,13 @@ Default keybindings in the picker:
 
 #### Requirements
 
-- AWS CLI installed and configured
-- Appropriate AWS credentials with permissions to access the specified secrets
-- One of the following credential configurations:
-  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
-  - Configured AWS credentials file (~/.aws/credentials)
+- AWS CLI v2 installed and configured (`aws --version` should show version 2.x.x)
+- AWS CLI must be authenticated with valid credentials using one of:
+  - `aws configure` to set up credentials
+  - AWS SSO login (`aws sso login`)
+  - Environment variables (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)
   - IAM role with appropriate permissions
+- Appropriate AWS credentials with permissions to access the specified secrets
 
 #### Error Handling
 

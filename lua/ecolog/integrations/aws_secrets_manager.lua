@@ -6,7 +6,7 @@ local types = require("ecolog.types")
 local ecolog = require("ecolog")
 
 ---@class AwsSecretsState
----@field selected_secrets string[]
+---@field selected_secrets string[] List of currently selected AWS secret names
 ---@field config LoadAwsSecretsConfig|nil
 ---@field loading boolean
 ---@field loaded_secrets table<string, table>
@@ -336,13 +336,11 @@ end
 ---@param failed_secrets number
 local function process_secrets_sequentially(aws_config, aws_secrets, current_index, loaded_secrets, failed_secrets)
   if not state.loading_lock then
-    vim.notify("Loading lock released, stopping processing", vim.log.levels.DEBUG)
     return
   end
 
   -- All secrets processed
   if current_index > #aws_config.secrets then
-    vim.notify("All secrets processed. Total loaded: " .. loaded_secrets .. ", failed: " .. failed_secrets, vim.log.levels.DEBUG)
     if loaded_secrets > 0 or failed_secrets > 0 then
       local msg = string.format("AWS Secrets Manager: Loaded %d secret%s",
         loaded_secrets,
@@ -355,8 +353,6 @@ local function process_secrets_sequentially(aws_config, aws_secrets, current_ind
 
       state.loaded_secrets = aws_secrets
       state.initialized = true
-      
-      vim.notify("Processing " .. #state.pending_env_updates .. " pending env updates", vim.log.levels.DEBUG)
       
       -- Process any pending env updates with the loaded secrets
       local updates_to_process = state.pending_env_updates
@@ -383,7 +379,6 @@ local function process_secrets_sequentially(aws_config, aws_secrets, current_ind
   end
 
   local secret_name = aws_config.secrets[current_index]
-  vim.notify("Processing secret " .. current_index .. "/" .. #aws_config.secrets .. ": " .. secret_name, vim.log.levels.DEBUG)
   
   local cmd = {
     "aws", "secretsmanager", "get-secret-value",
@@ -583,7 +578,7 @@ function M.load_aws_secrets(config)
   state.selected_secrets = vim.deepcopy(aws_config.secrets)
 
   local aws_secrets = {}
-  local loading_msg = vim.notify("Loading AWS secrets...", vim.log.levels.INFO)
+  vim.notify("Loading AWS secrets...", vim.log.levels.INFO)
 
   state.timeout_timer = vim.fn.timer_start(AWS_TIMEOUT_MS, function()
     if state.loading_lock then
@@ -599,7 +594,7 @@ function M.load_aws_secrets(config)
 
     if not ok then
       vim.schedule(function()
-        vim.notify(err, vim.log.levels.ERROR, { replace = loading_msg })
+        vim.notify(err, vim.log.levels.ERROR)
         cleanup_state()
       end)
       return
@@ -668,9 +663,11 @@ local function select_secrets(config)
       local function get_content()
         local content = {}
         for i, secret in ipairs(secrets) do
-          local prefix = selected[secret] and " ✓ " or "   "
-          if i == cursor_idx then
-            prefix = prefix:sub(1, 1) .. "→" .. prefix:sub(3)
+          local prefix
+          if selected[secret] then
+            prefix = " ✓ "
+          else
+            prefix = i == cursor_idx and " → " or "   "
           end
           table.insert(content, string.format("%s%s", prefix, secret))
         end
@@ -743,7 +740,6 @@ local function select_secrets(config)
       vim.keymap.set("n", "<space>", function()
         local current_secret = secrets[cursor_idx]
         selected[current_secret] = not selected[current_secret]
-        vim.notify("Toggled " .. current_secret .. (selected[current_secret] and " ON" or " OFF"), vim.log.levels.DEBUG)
         update_buffer(bufnr, winid)
       end, { buffer = bufnr, nowait = true })
 
@@ -767,23 +763,18 @@ local function select_secrets(config)
         if #chosen_secrets == 0 then
           chosen_secrets = { secrets[cursor_idx] }
         end
-
-        vim.notify("Selected secrets: " .. vim.inspect(chosen_secrets), vim.log.levels.DEBUG)
         
         if #chosen_secrets > 0 then
           state.selected_secrets = chosen_secrets
           state.initialized = false
           state.loaded_secrets = {}
           
-          local debug_config = vim.tbl_extend("force", state.config, { 
+          M.load_aws_secrets(vim.tbl_extend("force", state.config, { 
             secrets = state.selected_secrets,
             enabled = true,
             region = config.region,
             profile = config.profile
-          })
-          vim.notify("Loading with config: " .. vim.inspect(debug_config), vim.log.levels.DEBUG)
-          
-          M.load_aws_secrets(debug_config)
+          }))
         end
       end
 

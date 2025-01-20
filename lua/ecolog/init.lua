@@ -227,7 +227,16 @@ local function parse_env_file(opts, force)
     return
   end
 
-  state.env_vars = {}
+  local existing_vars = {}
+  if state.env_vars then
+    for key, var_info in pairs(state.env_vars) do
+      if var_info.source == "shell" or var_info.source:match("^asm:") then
+        existing_vars[key] = var_info
+      end
+    end
+  end
+
+  state.env_vars = existing_vars
 
   if not state.selected_env_file then
     local env_files = utils.find_env_files(opts)

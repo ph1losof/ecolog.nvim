@@ -45,6 +45,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [FZF Integration](#fzf-integration)
   - [Snacks Integration](#snacks-integration)
   - [Statusline Integration](#statusline-integration)
+  - [AWS Secrets Manager](#aws-secrets-manager)
 - [Shelter Previewers](#-shelter-previewers)
   - [Telescope Previewer](#telescope-previewer)
   - [FZF Previewer](#fzf-previewer)
@@ -925,6 +926,87 @@ Open the environment variables picker:
 | `<C-a>` | Append value to buffer  |
 
 All keymaps are customizable through the configuration.
+
+### AWS Secrets Manager
+
+The AWS Secrets Manager integration allows you to load secrets from AWS Secrets Manager into your environment variables. This integration requires the AWS CLI to be installed and configured with appropriate credentials.
+
+> ⚠️ **Note**: This is a beta feature and may have breaking changes in future releases.
+
+#### Configuration
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    aws_secrets_manager = {
+      enabled = true, -- Enable AWS Secrets Manager integration
+      override = false, -- When true, AWS secrets take precedence over .env files and shell variables
+      region = "us-west-2", -- Required: AWS region where your secrets are stored
+      profile = "default", -- Optional: AWS profile to use
+      secrets = { -- Required: List of secret names to fetch
+        "my-app/dev/database",
+        "my-app/dev/api"
+      },
+      filter = function(key, value) -- Optional: Filter function for secrets
+        return true -- Return true to include the secret, false to exclude it
+      end,
+      transform = function(key, value) -- Optional: Transform function for secret values
+        return value -- Return the transformed value
+      end
+    }
+  }
+})
+```
+
+#### Features
+
+- Load secrets from AWS Secrets Manager into your environment variables
+- Support for both JSON and plain text secrets:
+  - JSON secrets: Each key-value pair becomes a separate environment variable
+  - Plain text secrets: The last part of the secret name is used as the variable name
+- Interactive secret selection with visual feedback
+- Integration with shelter mode for sensitive data protection
+- Automatic credential validation and error handling
+- Support for AWS profiles and regions
+
+#### Interactive Secret Selection
+
+The `:EcologAWSSelect` command opens an interactive picker that allows you to:
+
+- Browse all available secrets in your AWS region
+- Select multiple secrets using the space key
+- See which secrets are currently selected with a checkmark (✓)
+- Navigate through secrets with j/k keys
+- Confirm selection with Enter
+- Cancel selection with q or Escape
+
+Default keybindings in the picker:
+
+| Key       | Action                                |
+| --------- | ------------------------------------- |
+| `j`/`k`   | Navigate through secrets              |
+| `<space>` | Toggle selection of current secret    |
+| `<CR>`    | Confirm selection and load secrets    |
+| `q`/`ESC` | Close picker without loading secrets  |
+
+#### Requirements
+
+- AWS CLI installed and configured
+- Appropriate AWS credentials with permissions to access the specified secrets
+- One of the following credential configurations:
+  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables
+  - Configured AWS credentials file (~/.aws/credentials)
+  - IAM role with appropriate permissions
+
+#### Error Handling
+
+The integration provides clear error messages for common issues:
+
+- Invalid or missing AWS credentials
+- Network connectivity problems
+- Access denied errors
+- Region configuration issues
+- Missing or invalid secrets
 
 ### 🔍 Shelter Previewers
 

@@ -39,7 +39,7 @@ local function get_masked_value(value, key)
   if not value then
     return ""
   end
-  return shelter.mask_value(value, "telescope", key, key and env_vars[key] and fn.fnamemodify(env_vars[key].source, ":t"))
+  return shelter.mask_value(value, "telescope", key, key and env_vars[key] and env_vars[key].source)
 end
 
 local function env_picker(opts)

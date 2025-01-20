@@ -18,7 +18,7 @@ LRUCache.__index = LRUCache
 ---Create a new LRU cache with the specified capacity
 ---@param capacity integer
 ---@return LRUCache
-function M.new(capacity)
+function LRUCache.new(capacity)
   local self = setmetatable({}, LRUCache)
   self.capacity = capacity
   self.size = 0
@@ -108,12 +108,6 @@ function LRUCache:keys()
   return keys
 end
 
----Clear the cache
-function LRUCache:clear()
-  self.size = 0
-  self.cache = {}
-  self.head.next = self.tail
-  self.tail.prev = self.head
-end
-
-return M 
+return {
+  new = LRUCache.new,
+} 

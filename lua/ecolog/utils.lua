@@ -402,12 +402,12 @@ function M.extract_quoted_value(value)
   if not value then
     return nil, nil
   end
-  
+
   local quote_char = string.match(value, "^([\"'])")
   if not quote_char then
     return nil, string.match(value, "^([^%s#]+)")
   end
-  
+
   return quote_char, string.match(value, "^" .. quote_char .. "(.-)" .. quote_char)
 end
 
@@ -431,15 +431,15 @@ function M.parse_env_line(line)
   if not line or line:match("^%s*#") or line:match("^%s*$") then
     return nil, nil, nil
   end
-  
+
   local eq_pos = line:find("=")
   if not eq_pos then
     return nil, nil, nil
   end
-  
+
   local key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
   local value = line:sub(eq_pos + 1):match("^%s*(.-)%s*$")
-  
+
   return key, value, eq_pos
 end
 

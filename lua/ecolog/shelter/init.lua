@@ -19,7 +19,8 @@ function M.setup(opts)
         state.get_config().default_mode = opts.config.partial_mode and "partial" or "full"
       end
     elseif type(opts.config.partial_mode) == "table" then
-      state.get_config().partial_mode = tbl_deep_extend("force", state.get_default_partial_mode(), opts.config.partial_mode)
+      state.get_config().partial_mode =
+        tbl_deep_extend("force", state.get_default_partial_mode(), opts.config.partial_mode)
       if opts.config.default_mode == nil then
         state.get_config().default_mode = "partial"
       end
@@ -35,6 +36,10 @@ function M.setup(opts)
 
     if opts.config.patterns then
       state.get_config().patterns = opts.config.patterns
+    end
+
+    if opts.config.sources then
+      state.get_config().sources = opts.config.sources
     end
 
     if opts.config.default_mode then
@@ -117,7 +122,7 @@ function M.setup(opts)
   })
 end
 
-function M.mask_value(value, feature, key)
+function M.mask_value(value, feature, key, source)
   if not value then
     return ""
   end
@@ -128,6 +133,7 @@ function M.mask_value(value, feature, key)
   return utils.determine_masked_value(value, {
     partial_mode = state.get_config().partial_mode,
     key = key,
+    source = source,
   })
 end
 
@@ -176,7 +182,7 @@ function M.set_state(command, feature)
   if feature then
     if not tbl_contains(state.get_features(), feature) then
       notify(
-        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', or 'snacks_previewer'",
+        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
         vim.log.levels.ERROR
       )
       return
@@ -217,4 +223,5 @@ function M.set_state(command, feature)
   end
 end
 
-return M 
+return M
+

@@ -71,14 +71,8 @@ function M.shelter_buffer()
       goto continue
     end
 
-    local actual_value
     local quote_char = string_match(value, "^([\"'])")
-
-    if quote_char then
-      actual_value = string_match(value, "^" .. quote_char .. "(.-)" .. quote_char)
-    else
-      actual_value = string_match(value, "^([^%s#]+)")
-    end
+    local actual_value = quote_char and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char) or value
 
     if actual_value and #actual_value > 0 then
       local is_revealed = state.is_line_revealed(i)
@@ -86,6 +80,7 @@ function M.shelter_buffer()
         or utils.determine_masked_value(actual_value, {
           partial_mode = config_partial_mode,
           key = key,
+          source = fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"),
         })
 
       if masked_value and #masked_value > 0 then
@@ -98,7 +93,7 @@ function M.shelter_buffer()
           eq_pos,
           {
             virt_text = {
-              { masked_value, is_revealed and "String" or config_highlight_group },
+              { masked_value, (is_revealed or masked_value == value) and "String" or config_highlight_group },
             },
             virt_text_pos = "overlay",
             hl_mode = "combine",
@@ -204,6 +199,11 @@ function M.setup_file_shelter()
         if state.get_state().features.initial.fzf_previewer then
           state.set_feature_state("fzf_previewer", true)
           require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+        end
+
+        if state.get_state().features.initial.snacks_previewer then
+          state.set_feature_state("snacks_previewer", true)
+          require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
         end
 
         M.shelter_buffer()

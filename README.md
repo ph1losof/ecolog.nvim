@@ -16,35 +16,61 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 ## Table of Contents
 
 - [Installation](#-installation)
+  - [Plugin Setup](#plugin-setup)
 - [Features](#-features)
 - [Usage](#-usage)
+  - [Available Commands](#available-commands)
 - [Environment File Priority](#-environment-file-priority)
 - [Shell Variables Integration](#-shell-variables-integration)
-- [vim.env Integration](#-vimenv-integration)
+  - [Basic Usage](#basic-usage)
+  - [Advanced Configuration](#advanced-configuration)
+  - [Configuration Options](#configuration-options)
+  - [Features](#features)
+  - [Best Practices](#best-practices)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
+  - [Basic Usage](#basic-usage-1)
+  - [Pattern Format](#pattern-format)
+  - [Examples](#examples)
+  - [Features](#features-1)
+- [Custom Sort Function](#-custom-sort-function)
+  - [Basic Usage](#basic-usage-2)
+  - [Examples](#examples-1)
+  - [Features](#features-2)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
-  - [LSP Integration (Reccomended to check out)](#lsp-integration-experimental)
+  - [LSP Integration](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
   - [FZF Integration](#fzf-integration)
+  - [Snacks Integration](#snacks-integration)
   - [Statusline Integration](#statusline-integration)
-- [Language Support](#-language-support)
-- [Custom Providers](#-custom-providers)
+- [Shelter Previewers](#-shelter-previewers)
+  - [Telescope Previewer](#telescope-previewer)
+  - [FZF Previewer](#fzf-previewer)
+  - [Snacks Previewer](#snacks-previewer)
 - [Shelter Mode](#️-shelter-mode)
-  - [Configuration Options](#configuration-options)
-  - [Available Commands](#available-commands)
-  - [Features](#-features)
-  - [Shelter Previewers](#-shelter-previewers)
-    - [Telescope Previewer](#telescope-previewer)
-    - [FZF Previewer](#fzf-previewer)
-    - [Snacks Previewer](#snacks-previewer)
-- [Type System](#-ecolog-types)
+  - [Configuration](#-configuration)
+  - [Features](#-features-1)
+    - [Module-specific Masking](#module-specific-masking)
+    - [Partial Masking](#partial-masking)
+  - [Commands](#-commands)
+  - [Example](#-example)
+  - [Pattern-based Protection](#pattern-based-protection)
+  - [Customization](#-customization)
+  - [Best Practices](#-best-practices)
+- [Ecolog Types](#-ecolog-types)
+  - [Type Configuration](#type-configuration)
+  - [Custom Type Definition](#custom-type-definition)
 - [Tips](#-tips)
 - [Theme Integration](#-theme-integration)
-- [Author Setup](#️-personal-setup)
+- [Author Setup](#️-author-setup)
 - [Comparisons](#-comparisons)
+  - [Environment Variable Completion](#environment-variable-completion-vs-cmp-dotenv)
+  - [Security Features](#security-features-vs-cloaknvim)
+  - [Environment Management](#environment-management-vs-telescope-envnvim)
+  - [File Management](#file-management-vs-dotenvnvim)
+  - [Key Benefits of ecolog.nvim](#key-benefits-of-ecolognvim)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -101,6 +127,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             fzf = false,       -- Enable to mask values in fzf picker
             fzf_previewer = false, -- Enable to mask values in fzf preview buffers
             snacks_previewer = false,    -- Enable to mask values in snacks previewer
+            snacks = false,    -- Enable to mask values in snacks picker
         }
     },
     -- true by default, enables built-in types (database_url, url, etc.)
@@ -202,22 +229,23 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
 ### Available Commands
 
-| Command                                    | Description                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------------- |
-| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                           |
-| `:EcologPeek`                              | Peek at environment variable under cursor                                 |
-| `:EcologRefresh`                           | Refresh environment variable cache                                        |
-| `:EcologSelect`                            | Open a selection window to choose environment file                        |
-| `:EcologGoto`                              | Open selected environment file in buffer                                  |
-| `:EcologGotoVar`                           | Go to specific variable definition in env file                            |
-| `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor |
-| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                         |
-| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                      |
-| `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                  |
-| `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)      |
-| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)     |
-| `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                       |
-| `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard          |
+| Command                                    | Description                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `:EcologPeek [variable_name]`              | Peek at environment variable value and metadata                                       |
+| `:EcologPeek`                              | Peek at environment variable under cursor                                             |
+| `:EcologRefresh`                           | Refresh environment variable cache                                                    |
+| `:EcologSelect`                            | Open a selection window to choose environment file                                    |
+| `:EcologGoto`                              | Open selected environment file in buffer                                              |
+| `:EcologGotoVar`                           | Go to specific variable definition in env file                                        |
+| `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor             |
+| `:EcologShelterToggle [command] [feature]` | Control shelter mode for masking sensitive values                                     |
+| `:EcologShelterLinePeek`                   | Temporarily reveal value on current line in env file                                  |
+| `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                              |
+| `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)                  |
+| `:EcologSnacks`                            | Open environment variables picker using snacks.nvim (must have snacks.nvim installed) |
+| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
+| `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
+| `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
 
 ## 📝 Environment File Priority
 
@@ -784,196 +812,167 @@ Open the environment variables picker:
 
 All keymaps are customizable through the configuration.
 
+### Snacks Integration
+
+Ecolog integrates with [snacks.nvim](https://github.com/folke/snacks.nvim) to provide a modern and beautiful picker interface for environment variables.
+
+#### Setup
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    snacks = {
+      shelter = {
+        mask_on_copy = false, -- Whether to mask values when copying
+      },
+      keys = {
+        copy_value = "<C-y>",  -- Copy variable value to clipboard
+        copy_name = "<C-u>",   -- Copy variable name to clipboard
+        append_value = "<C-a>", -- Append value at cursor position
+        append_name = "<CR>",   -- Append name at cursor position
+      },
+      layout = {  -- Any Snacks layout configuration
+        preset = "dropdown",
+        preview = false,
+      },
+    }
+  }
+})
+```
+
+You can trigger the Snacks picker using `:EcologSnacks` command.
+
+#### Features
+
+- 🎨 Beautiful VSCode-like interface
+- 🔍 Real-time fuzzy search
+- 📋 Copy variable names or values to clipboard
+- ⌨️ Insert variables into your code
+- 🛡️ Integrated with shelter mode for sensitive data protection
+- 📝 Live updates when environment files change
+- 🎯 Syntax highlighting for better readability
+
+#### Usage
+
+Open the environment variables picker:
+
+```vim
+:EcologSnacks
+```
+
+#### Default Keymaps
+
+| Key     | Action                  |
+| ------- | ----------------------- |
+| `<CR>`  | Insert variable name    |
+| `<C-y>` | Copy value to clipboard |
+| `<C-u>` | Copy name to clipboard  |
+| `<C-a>` | Append value to buffer  |
+
+All keymaps are customizable through the configuration.
+
 ### Statusline Integration
 
 Ecolog provides a built-in statusline component that shows your current environment file, variable count, and shelter mode status. It supports both native statusline and lualine integration.
 
-#### Basic Usage
-
-Enable statusline integration in your setup:
+#### Setup
 
 ```lua
 require('ecolog').setup({
   integrations = {
-    statusline = true
-  }
-})
-```
-
-#### Advanced Configuration
-
-For more control over the statusline:
-
-```lua
-require('ecolog').setup({
-  integrations = {
-    statusline = {
-      hidden_mode = true,  -- Hide statusline when no env file is selected
-      icons = {
-        enabled = true,    -- Enable/disable all icons
-        env = "🌲",        -- Environment icon
-        shelter = "🛡️",    -- Shelter mode icon
+    snacks = {
+      shelter = {
+        mask_on_copy = false, -- Whether to mask values when copying
       },
-      format = {
-        -- Custom format for env file name
-        env_file = function(name)
-          return "[ENV:" .. name .. "]"
-        end,
-        -- Custom format for variable count
-        vars_count = function(count)
-          return count .. " variables"
-        end,
-      },
-      highlights = {
-        enabled = true,           -- Enable/disable highlighting
-        env_file = "Directory",   -- Highlight group for env file name
-        vars_count = "Number",    -- Highlight group for variable count
+      keys = {
+        copy_value = "<C-y>",  -- Copy variable value to clipboard
+        copy_name = "<C-n>",   -- Copy variable name to clipboard
+        append_value = "<C-a>", -- Append value at cursor position
+        append_name = "<CR>",   -- Append name at cursor position
       },
     }
   }
 })
 ```
 
-#### Native Statusline
+You can trigger the Snacks picker using `:EcologSnacks` command.
 
-Add Ecolog to your statusline:
+#### Features
 
-```lua
-vim.opt.statusline = "%{%v:lua.require'ecolog'.get_status()%}"
+- 🎨 Beautiful VSCode-like interface
+- 🔍 Real-time fuzzy search
+- 📋 Copy variable names or values to clipboard
+- ⌨️ Insert variables into your code
+- 🛡️ Integrated with shelter mode for sensitive data protection
+- 📝 Live updates when environment files change
+- 🎯 Syntax highlighting for better readability
+
+#### Usage
+
+Open the environment variables picker:
+
+```vim
+:EcologSnacks
 ```
 
-#### Lualine Integration
+#### Default Keymaps
 
-Add Ecolog as a lualine component:
+| Key     | Action                  |
+| ------- | ----------------------- |
+| `<CR>`  | Insert variable name    |
+| `<C-y>` | Copy value to clipboard |
+| `<C-n>` | Copy name to clipboard  |
+| `<C-a>` | Append value to buffer  |
+
+All keymaps are customizable through the configuration.
+
+### 🔍 Shelter Previewers
+
+`ecolog.nvim` integrates with various file pickers to provide a secure way to use file picker without leaking sensitive data, when searching for files.
+
+- Secure environment file previews
+- Configurable masking behavior
+- Minimal memory footprint
+- Efficient buffer management
+- Integration with fzf-lua, telescope and snacks.picker
+
+#### Telescope Previewer
+
+Configuration:
 
 ```lua
-require('lualine').setup({
-  sections = {
-    lualine_x = {
-      require('ecolog').get_lualine(),
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      telescope_previewer = true, -- Mask values in telescope preview buffers
     }
   }
 })
 ```
 
-#### Configuration Options
+#### FZF Previewer
 
-| Option                | Type     | Default                     | Description                                                        |
-| --------------------- | -------- | --------------------------- | ------------------------------------------------------------------ |
-| hidden_mode           | boolean  | false                       | When true, hides the statusline section if no env file is selected |
-| icons.enabled         | boolean  | true                        | Enable/disable all icons in the statusline                         |
-| icons.env             | string   | "🌲"                        | Icon for environment indicator                                     |
-| icons.shelter         | string   | "🛡️"                        | Icon for shelter mode indicator                                    |
-| format.env_file       | function | `name => name`              | Function to format environment file name                           |
-| format.vars_count     | function | `count => count .. " vars"` | Function to format variable count                                  |
-| highlights.enabled    | boolean  | true                        | Enable/disable highlighting                                        |
-| highlights.env_file   | string   | "EcologStatusFile"          | Highlight group for env file name                                  |
-| highlights.vars_count | string   | "EcologStatusCount"         | Highlight group for variable count                                 |
-
-The statusline shows:
-
-- Environment icon (customizable)
-- Current environment file name (customizable format)
-- Number of loaded environment variables (customizable format)
-- Shelter mode icon when active (customizable)
-
-#### Example Configurations
-
-1. Minimal Setup:
-
-```lua
-statusline = {
-  icons = { enabled = false },
-  highlights = { enabled = false }
-}
-```
-
-2. Custom Icons:
-
-```lua
-statusline = {
-  icons = {
-    env = "󰙪",     -- Use different icons
-    shelter = "󰌆",
-  }
-}
-```
-
-3. Custom Formatting:
-
-```lua
-statusline = {
-  format = {
-    env_file = function(name)
-      return "ENV[" .. name:upper() .. "]"
-    end,
-    vars_count = function(count)
-      return string.format("(%d)", count)
-    end
-  }
-}
-```
-
-4. Custom Highlights:
-
-```lua
-statusline = {
-  highlights = {
-    env_file = "Special",   -- Use different highlight groups
-    vars_count = "Constant",
-  }
-}
-```
-
-## 🌍 Language Support
-
-| Language                    | Environment Access & Autocompletion trigger                                                                                | Description                                                 |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Javascript/TypeScript/React | `process.env.*`<br>`process.env['*`<br>`process.env["*`                                                                    | Node.js environment variable access                         |
-| Python                      | `os.environ.get('*`<br>`os.environ.get("*`<br>`os.environ['*`<br>`os.environ["*`                                           | Native Python environment variable access                   |
-| PHP                         | `getenv('*`<br>`getenv("*`<br>`$_ENV['*`<br>`$_ENV["*`<br>`$_SERVER['*`<br>`$_SERVER["*`                                   | Support for both modern and legacy PHP env access           |
-| Go                          | `os.Getenv('*`<br>`os.Getenv("*`<br>`os.LookupEnv('*`<br>`os.LookupEnv("*`                                                 | Go standard library environment access                      |
-| Rust                        | `env::var('*`<br>`env::var("*`<br>`env::var_os('*`<br>`env::var_os("*`<br>`std::env::var*`<br>`std::env::var_os*`          | Rust standard library environment access                    |
-| Ruby                        | `ENV['*`<br>`ENV["*`<br>`ENV[:*`<br>`ENV.fetch('*`<br>`ENV.fetch("*`<br>`ENV.fetch(:*`                                     | Ruby environment variable access with hash and fetch styles |
-| C#                          | `Environment.GetEnvironmentVariable("*`<br>`System.Environment.GetEnvironmentVariable("*`<br>`*.GetEnvironmentVariables()` | .NET environment variable access                            |
-| Java                        | `System.getenv("*`<br>`processBuilder.environment().get("*`<br>`env.get("*`                                                | Java environment variable access with multiple styles       |
-| Lua                         | `os.getenv('*`<br>`os.getenv("*`<br>`vim.env.*`                                                                            | Lua environment variable access with Neovim support         |
-
-Each provider supports:
-
-- Completion while typing
-- Full pattern matching
-- Variable extraction
-- Both single and double quotes (where applicable)
-- Common language-specific idioms
-- Optional namespace prefixes (where applicable)
-
-> 💡 **Want support for another language?**  
-> Feel free to contribute by adding a new provider! Or just check out the [Custom Providers](#-custom-providers) section.
-
-## 🔌 Custom Providers
-
-You can add support for additional languages by registering custom providers. Each provider defines how environment variables are detected and extracted in specific file types.
-
-### Example: Adding Ruby Support
+Configuration:
 
 ```lua
 require('ecolog').setup({
-  providers = {
-    {
-      -- Pattern to match environment variable access
-      pattern = "ENV%[['\"]%w['\"]%]",
-      -- Filetype(s) this provider supports (string or table)
-      filetype = "ruby",
-      -- Function to extract variable name from the line
-      extract_var = function(line, col)
-        local before_cursor = line:sub(1, col + 1)
-        return before_cursor:match("ENV%['\"['\"]%]$")
-      end,
-      -- Function to return completion trigger pattern
-      get_completion_trigger = function()
-        return "ENV['"
-      end
+  shelter = {
+    modules = {
+      fzf_previewer = true, -- Mask values in fzf preview buffers
+    }
+  }
+})
+```
+
+#### Snacks Previewer
+
+Configuration:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      snacks_previewer = true,    -- Mask values in snacks previewer
     }
   }
 })
@@ -981,49 +980,43 @@ require('ecolog').setup({
 
 ## 🛡️ Shelter Mode
 
-Shelter mode provides enhanced security for sensitive environment variables by masking their values. This is particularly useful during:
+Shelter mode provides a secure way to work with sensitive environment variables by masking their values in different contexts. This feature helps prevent accidental exposure of sensitive data like API keys, passwords, tokens, and other credentials.
 
-- Screen sharing sessions
-- Recording tutorials
-- Live coding streams
-- Collaborative development
-
-### Configuration Options
-
-The `files` module can be configured in two ways:
-
-1. Simple boolean configuration:
+### 🔧 Configuration
 
 ```lua
-shelter = {
-    modules = {
-        files = true  -- Simply enable/disable files module
-    }
-}
-```
-
-2. Detailed configuration with options:
-
-```lua
-shelter = {
-    modules = {
-        files = {
-            shelter_on_leave = false,  -- Control automatic re-enabling of shelter when leaving buffer
-            disable_cmp = true,        -- Disable completion in sheltered buffers (default: true)
+require('ecolog').setup({
+    shelter = {
+        configuration = {
+            -- Partial mode configuration:
+            -- false: completely mask values (default)
+            -- true: use default partial masking settings
+            -- table: customize partial masking
+            -- partial_mode = false,
+            -- or with custom settings:
+            partial_mode = {
+                show_start = 3,    -- Show first 3 characters
+                show_end = 3,      -- Show last 3 characters
+                min_mask = 3,      -- Minimum masked characters
+            },
+            mask_char = "*",   -- Character used for masking
+        },
+        modules = {
+            cmp = false,       -- Mask values in completion
+            peek = false,      -- Mask values in peek view
+            files = false,     -- Mask values in files
+            telescope = false, -- Mask values in telescope integration
+            telescope_previewer = false, -- Mask values in telescope preview buffers
+            fzf = false,       -- Mask values in fzf picker
+            fzf_previewer = false, -- Mask values in fzf preview buffers
+            snacks = false,    -- Mask values in snacks picker
+            snacks_previewer = false,    -- Mask values in snacks previewer
         }
-    }
-}
+    },
+    path = vim.fn.getcwd(), -- Path to search for .env files
+    preferred_environment = "development", -- Optional: prioritize specific env files
+})
 ```
-
-When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
-
-The `disable_cmp` option (enabled by default) will automatically disable both nvim-cmp and blink-cmp completions in sheltered buffers. This prevents sensitive values from being exposed through the completion menu while editing environment files. Completion is automatically re-enabled when unsheltering the buffer.
-
-### Available Commands
-
-`:EcologShelterToggle` - Toggle all shelter modes
-`:EcologShelterToggle enable/disable [feature]` - Enable/disable specific features
-`:EcologShelterLinePeek` - Temporarily reveal value on current line
 
 ### 🎯 Features
 
@@ -1044,19 +1037,31 @@ The `disable_cmp` option (enabled by default) will automatically disable both nv
    - Masks values directly in .env files
    - Use `:EcologShelterLinePeek` to temporarily reveal values
 
-4. **FZF Picker (`fzf = true`)**
+4. **Telescope Preview (`telescope_previewer = true`)**
+
+   - Masks values in telescope preview buffers
+   - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
+   - Maintains masking state across buffer refreshes
+
+5. **FZF Preview (`fzf_previewer = true`)**
+
+   - Masks values in fzf-lua preview buffers
+   - Automatically applies to any `.env` file previewed in fzf-lua with support of custom env file patterns
+   - Supports all fzf-lua commands that show previews (files, git_files, live_grep, etc.)
+   - Maintains masking state across buffer refreshes
+   - Optimized for performance with buffer content caching
+
+6. **FZF Picker (`fzf = true`)**
 
    - Masks values in fzf-lua picker
 
-5. **Telescope Integration (`telescope = true`)**
+7. **Telescope Integration (`telescope = true`)**
 
    - Masks values in telescope picker from integration
 
-6. **Previewers**
-
-   - Specialized masking for various preview windows
-   - Supports Telescope, FZF, and Snacks previewers
-   - See [Shelter Previewers](#-shelter-previewers) for detailed configuration
+8. **Snacks Integration (`snacks = true`, `snacks_previewer = true`)**
+   - Masks values in snacks picker and previewer
+   - Provides secure browsing of environment variables
 
 #### Partial Masking
 
@@ -1077,7 +1082,6 @@ Three modes of operation:
    ```
 
 3. **Custom Partial Masking**
-
    ```lua
    partial_mode = {
        show_start = 4,    -- Show more start characters
@@ -1086,64 +1090,6 @@ Three modes of operation:
    }
    -- Example: "my-secret-key" -> "my-s***ey"
    ```
-
-4. **Pattern-Based Masking**
-
-   ```lua
-   patterns = {
-       ["*_TOKEN"] = "full",      -- Always fully mask TOKEN variables
-       ["*_API_KEY"] = "partial", -- Use partial masking for API keys
-       ["*_PUBLIC_*"] = "none",   -- Don't mask public variables
-   }
-   ```
-
-   Pattern modes:
-
-   - `"full"`: Always fully mask the value
-   - `"partial"`: Use partial masking (according to partial_mode settings)
-   - `"none"`: Don't mask the value
-
-   If a variable name doesn't match any pattern, the `default_mode` setting is used.
-   This can be set to:
-
-   - `"partial"`: Use partial masking (default)
-   - `"full"`: Fully mask all unmatched variables
-   - `"none"`: Don't mask unmatched variables
-
-   Patterns support glob-style matching with `*` for any characters.
-
-#### 1. Completion Protection (cmp)
-
-- Masks sensitive values in the completion menu
-- Preserves variable names and types for context
-- Integrates seamlessly with nvim-cmp
-- Example completion item:
-  ```
-  DB_PASSWORD  Type: string
-  Value: ********
-  ```
-
-#### 2. Peek Window Protection
-
-- Masks values when using `:EcologPeek`
-- Shows metadata (type, source) while protecting the value
-- Example peek window:
-  ```
-  Name     : DB_PASSWORD
-  Type     : string
-  Source   : .env.development
-  Value    : ********
-  Comment  : Very important value
-  ```
-
-#### 3. File Content Protection
-
-- Visually masks values in .env files
-- Preserves the actual file content (masks are display-only)
-- Updates automatically on file changes
-- Maintains file structure and comments
-- Only masks the value portion after `=`
-- Supports quoted and unquoted values
 
 ### 🎮 Commands
 
@@ -1221,88 +1167,63 @@ The min_mask setting ensures that sensitive values are properly protected by req
 a minimum number of masked characters between the visible parts. If this minimum
 cannot be met, the entire value is masked for security.
 
-### Telescope Integration
+### Pattern-based Protection
 
-The plugin provides a Telescope extension for searching and managing environment variables.
-
-#### Usage
-
-Open the environment variables picker:
-
-```vim
-:Telescope ecolog env
-```
-
-#### Features
-
-- 🔍 Search through all environment variables
-- 📋 Copy variable names or values to clipboard
-- ⌨️ Insert variables into your code
-- 🛡️ Integrated with shelter mode for sensitive data protection
-- 📝 Shows variable metadata (type, source file)
-
-#### Default Keymaps
-
-| Key     | Action                  |
-| ------- | ----------------------- |
-| `<CR>`  | Insert variable name    |
-| `<C-y>` | Copy value to clipboard |
-| `<C-n>` | Copy name to clipboard  |
-| `<C-a>` | Append value to buffer  |
-
-All keymaps are customizable through the configuration.
-
-### 🔍 Shelter Previewers
-
-`ecolog.nvim` integrates with various file pickers to provide a secure way to use file picker without leaking sensitive data, when searching for files.
-
-- Secure environment file previews
-- Configurable masking behavior
-- Minimal memory footprint
-- Efficient buffer management
-- Integration with fzf-lua, telescope and snacks.picker
-
-#### Telescope Previewer
-
-Configuration:
+You can define different masking rules based on variable names or file sources:
 
 ```lua
-require('ecolog').setup({
-  shelter = {
-    modules = {
-      telescope_previewer = true, -- Mask values in telescope preview buffers
+shelter = {
+    configuration = {
+        -- Pattern-based rules take precedence
+        patterns = {
+            ["*_KEY"] = "full",      -- Always fully mask API keys
+            ["TEST_*"] = "none",     -- Never mask test variables
+        },
+        -- Source-based rules as fallback
+        sources = {
+            [".env.*"] = "full",
+            [".env.local"] = "none",
+            ["shell"] = "none",
+        },
     }
-  }
-})
+}
 ```
 
-#### FZF Previewer
+### 🎨 Customization
 
-Configuration:
+1. **Custom Mask Character**:
 
-```lua
-require('ecolog').setup({
-  shelter = {
-    modules = {
-      fzf_previewer = true, -- Mask values in fzf preview buffers
-    }
-  }
-})
-```
+   ```lua
+   shelter = {
+       configuration = {
+          mask_char = "•"  -- Use dots
+       }
+   }
+   -- or
+   shelter = {
+       configuration = {
+          mask_char = "█"  -- Use blocks
+       }
+   }
+   ```
 
-#### Snacks Previewer
+2. **Custom Highlighting**:
+   ```lua
+   shelter = {
+       configuration = {
+          highlight_group = "NonText"  -- Use a different highlight group for masked values
+       }
+   }
+   ```
 
-Configuration:
+### 💡 Best Practices
 
-```lua
-require('ecolog').setup({
-  shelter = {
-    modules = {
-      snacks_previewer = true,    -- Mask values in snacks previewer
-    }
-  }
-})
-```
+1. Enable shelter mode by default for production environments
+2. Use file shelter mode during screen sharing or pair programming
+3. Enable completion shelter mode to prevent accidental exposure in screenshots
+4. Use source-based masking to protect sensitive files
+5. Apply stricter masking rules for production and staging environments
+6. Keep development and test files less restricted for better workflow
 
 ## 🛡 Ecolog Types
 
@@ -1404,8 +1325,14 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
                    show_start = 3,    -- Number of characters to show at start
                    show_end = 3,      -- Number of characters to show at end
                    min_mask = 3,      -- Minimum number of mask characters
-               }
-              mask_char = "*",   -- Character used for masking
+               },
+               mask_char = "*",   -- Character used for masking
+               -- Mask all values from production files
+               sources = {
+                   [".env.prod"] = "full",
+                   [".env.local"] = "partial",
+                   ["shell"] = "none",
+               },
            },
            modules = {
                cmp = true,       -- Mask values in completion
@@ -1421,7 +1348,27 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
    end
    ```
 
-2. **Custom Masking**: Use different characters for masking:
+2. **Source-based Protection**: Use different masking levels based on file sources:
+
+   ```lua
+   shelter = {
+       configuration = {
+           -- Mask values based on their source file
+           sources = {
+               [".env.prod"] = "full",
+               [".env.local"] = "partial",
+               ["shell"] = "none",
+           },
+           -- Pattern-based rules take precedence
+           patterns = {
+               ["*_KEY"] = "full",      -- Always fully mask API keys
+               ["TEST_*"] = "none",     -- Never mask test variables
+           },
+       }
+   }
+   ```
+
+3. **Custom Masking**: Use different characters for masking:
 
    ```lua
    shelter = {
@@ -1445,12 +1392,15 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
 
    The `highlight_group` option allows you to customize the highlight group used for masked values. By default, it uses the `Comment` highlight group. You can use any valid Neovim highlight group name.
 
-3. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
+4. **Temporary Viewing**: Use `:EcologShelterToggle disable` temporarily when you need to view values, then re-enable with `:EcologShelterToggle enable`
 
-4. **Security Best Practices**:
+5. **Security Best Practices**:
    - Enable shelter mode by default for production environments
    - Use file shelter mode during screen sharing or pair programming
    - Enable completion shelter mode to prevent accidental exposure in screenshots
+   - Use source-based masking to protect sensitive files
+   - Apply stricter masking rules for production and staging environments
+   - Keep development and test files less restricted for better workflow
 
 ## 🎨 Theme Integration
 
@@ -1473,6 +1423,7 @@ return {
     'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
+      { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
       { '<leader>es', '<cmd>EcologShelterToggle<cr>', desc = 'Ecolog shelter toggle' },
     },
@@ -1483,7 +1434,10 @@ return {
       integrations = {
         lspsaga = true,
         nvim_cmp = true,
-        statusline = true,
+        statusline = {
+          hidden_mode = true,
+        },
+        snacks = true,
       },
       shelter = {
         configuration = {
@@ -1525,17 +1479,19 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 
 ### Security Features (vs [cloak.nvim](https://github.com/laytan/cloak.nvim))
 
-| Feature                          | ecolog.nvim                                                                     | cloak.nvim                                            |
-| -------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Partial Value Masking            | ✅ Configurable partial masking with patterns                                   | 🟡 Full masking only                                  |
-| Pattern-based Security           | ✅ Custom patterns for different security levels                                | 🟡 Basic pattern matching                             |
-| Preview Protection               | ✅ Telescope/FZF/Snacks picker preview protection                               | 🟡 Only Telescope preview protection                  |
-| Mask sensitive values on startup | ✅ Full support, never leak environment variables                               | ❌ Doesn't support masking on startup, flashes values |
-| Mask on leave                    | ✅ Supports                                                                     | ✅ Supports                                           |
-| Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                           | 🟡 Only nvim-cmp and can't disable                    |
-| Custom mask and highlights       | ✅ Supports                                                                     | ✅ Supports                                           |
-| Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
-| Filetype support                 | 🟡 Supports only `sh` and `.env` files                                          | ✅ Can work in any filetype                           |
+| Feature                          | ecolog.nvim                                                                             | cloak.nvim                                            |
+| -------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Partial Value Masking            | ✅ Configurable partial masking with patterns                                           | 🟡 Full masking only                                  |
+| Pattern-based Security           | ✅ Custom patterns for different security levels                                        | 🟡 Basic pattern matching                             |
+| Preview Protection               | ✅ Telescope/FZF/Snacks picker preview protection                                       | 🟡 Only Telescope preview protection                  |
+| Mask sensitive values on startup | ✅ Full support, never leak environment variables                                       | ❌ Doesn't support masking on startup, flashes values |
+| Mask on leave                    | ✅ Supports                                                                             | ✅ Supports                                           |
+| Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                                   | 🟡 Only nvim-cmp and can't disable                    |
+| Custom mask and highlights       | ✅ Supports                                                                             | ✅ Supports                                           |
+| Performance                      | ✅ Better performance, especially in previewer buffers due to LRU caching               | 🟡 Minimal implementation but also good               |
+| Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
+| Static mask length               | ❌ Chose not to support it due to neovim limitations                                    | 🟡 Supports but have caveats                          |
+| Filetype support                 | 🟡 Supports only `sh` and `.env` files                                                  | ✅ Can work in any filetype                           |
 
 ### Environment Management (vs [telescope-env.nvim](https://github.com/LinArcX/telescope-env.nvim))
 

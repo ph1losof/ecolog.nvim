@@ -1,6 +1,7 @@
 local M = {}
 
-local FEATURES = { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "fzf_previewer", "snacks_previewer" }
+local FEATURES =
+  { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "fzf_previewer", "snacks_previewer", "snacks" }
 local DEFAULT_PARTIAL_MODE = {
   show_start = 3,
   show_end = 3,
@@ -9,7 +10,7 @@ local DEFAULT_PARTIAL_MODE = {
 
 -- State cache with weak keys to avoid memory leaks
 local _state_cache = setmetatable({}, {
-  __mode = "k"
+  __mode = "k",
 })
 
 local state = {
@@ -17,6 +18,7 @@ local state = {
     partial_mode = false,
     mask_char = "*",
     patterns = {},
+    sources = {},
     default_mode = "full",
     shelter_on_leave = false,
     highlight_group = "Comment",
@@ -83,7 +85,7 @@ end
 
 -- Buffer state management with optimized caching
 local _buffer_cache = setmetatable({}, {
-  __mode = "k" -- Weak keys
+  __mode = "k", -- Weak keys
 })
 
 function M.update_buffer_state(key, value)
@@ -114,4 +116,5 @@ function M.is_line_revealed(line_num)
   return _buffer_cache.revealed_lines[line_num]
 end
 
-return M 
+return M
+

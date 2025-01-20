@@ -21,6 +21,8 @@ local DEFAULT_CONFIG = {
       telescope_previewer = false,
       fzf = false,
       fzf_previewer = false,
+      snacks = false,
+      snacks_previewer = false,
     },
   },
   integrations = {
@@ -30,6 +32,7 @@ local DEFAULT_CONFIG = {
     blink_cmp = false,
     fzf = false,
     statusline = false,
+    snacks = false,
   },
   vim_env = false,
   types = true,
@@ -239,7 +242,9 @@ local function parse_env_file(opts, force)
       or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
     )
   then
-    local shell_vars, shell_config = shell.load_shell_vars(opts.load_shell)
+    local shell_config = type(opts.load_shell) == "boolean" and { enabled = true, override = false } or opts.load_shell
+
+    local shell_vars = shell.load_shell_vars(shell_config)
 
     for key, var_info in pairs(shell_vars) do
       if shell_config.override or not state.env_vars[key] then
@@ -254,7 +259,10 @@ local function parse_env_file(opts, force)
       for line in env_file:lines() do
         local key, var_info = parse_env_line(line, state.selected_env_file)
         if key then
-          if not opts.load_shell or not opts.load_shell.override or not state.env_vars[key] then
+          local shell_config = type(opts.load_shell) == "boolean" and { enabled = opts.load_shell, override = false }
+            or opts.load_shell
+
+          if not opts.load_shell or not shell_config.override or not state.env_vars[key] then
             state.env_vars[key] = var_info
           end
         end
@@ -337,6 +345,8 @@ end
 ---@field telescope_previewer boolean Mask values in telescope preview buffers
 ---@field fzf boolean Mask values in fzf picker
 ---@field fzf_previewer boolean Mask values in fzf preview buffers
+---@field snacks boolean Mask values in snacks picker
+---@field snacks_previewer boolean Mask values in snacks preview buffers
 
 ---@class FilesModuleConfig
 ---@field enabled boolean Enable masking in environment files
@@ -349,6 +359,7 @@ end
 ---@field blink_cmp boolean Enable Blink CMP integration for autocompletion
 ---@field fzf boolean Enable fzf-lua integration for environment variable picking
 ---@field statusline boolean|StatuslineConfig Enable statusline integration
+---@field snacks boolean Enable snacks integration
 
 ---@class StatuslineConfig
 ---@field hidden_mode boolean When true, hides the statusline section if no env file is selected
@@ -432,6 +443,11 @@ function M.setup(opts)
     if config.integrations.statusline then
       local statusline = require("ecolog.integrations.statusline")
       statusline.setup(type(opts.integrations.statusline) == "table" and opts.integrations.statusline or {})
+    end
+
+    if config.integrations.snacks then
+      local snacks = require("ecolog.integrations.snacks")
+      snacks.setup(type(opts.integrations.snacks) == "table" and opts.integrations.snacks or {})
     end
   end
 

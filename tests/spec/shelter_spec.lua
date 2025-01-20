@@ -23,12 +23,20 @@ describe("shelter", function()
 
       opts = opts or {}
       local key = opts.key
+      local source = opts.source
       local pattern_mode = key and shelter.matches_shelter_pattern(key)
+      local source_mode = not pattern_mode and source and shelter.matches_shelter_source(source)
 
       if pattern_mode then
         if pattern_mode == "none" then
           return value
         elseif pattern_mode == "full" then
+          return string.rep(shelter._config.mask_char, #value)
+        end
+      elseif source_mode then
+        if source_mode == "none" then
+          return value
+        elseif source_mode == "full" then
           return string.rep(shelter._config.mask_char, #value)
         end
       else
@@ -73,6 +81,21 @@ describe("shelter", function()
       for pattern, mode in pairs(shelter._config.patterns) do
         local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
         if key:match("^" .. lua_pattern .. "$") then
+          return mode
+        end
+      end
+
+      return nil
+    end
+
+    shelter.matches_shelter_source = function(source)
+      if not source or not shelter._config.sources or vim.tbl_isempty(shelter._config.sources) then
+        return nil
+      end
+
+      for pattern, mode in pairs(shelter._config.sources) do
+        local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+        if source:match("^" .. lua_pattern .. "$") then
           return mode
         end
       end
@@ -437,6 +460,131 @@ describe("shelter", function()
 
       -- Test with empty key
       local value3 = shelter.mask_value("test123", { key = "" })
+      assert.equals(string.rep("*", #"test123"), value3)
+    end)
+  end)
+
+  describe("source-based variables", function()
+    it("should respect source-based masking modes", function()
+      shelter.setup({
+        config = {
+          sources = {
+            ["*.env"] = "full",
+            ["*.local"] = "none",
+            ["config.*"] = "partial",
+          },
+          default_mode = "full",
+          mask_char = "*",
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 3,
+          },
+        },
+      })
+
+      -- Test full masking source
+      local secret_env = shelter.mask_value("secret123", { source = "secrets.env" })
+      assert.equals(string.rep("*", #"secret123"), secret_env)
+
+      -- Test no masking source
+      local local_secret = shelter.mask_value("localvalue", { source = "dev.local" })
+      assert.equals("localvalue", local_secret)
+
+      -- Test partial masking source
+      local config_secret = shelter.mask_value("configsecret", { source = "config.yaml" })
+      assert.equals("co********et", config_secret)
+    end)
+
+    it("should prioritize pattern-based over source-based masking", function()
+      shelter.setup({
+        config = {
+          patterns = {
+            ["*_KEY"] = "full",
+          },
+          sources = {
+            ["*.env"] = "none",
+          },
+          default_mode = "partial",
+          mask_char = "*",
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 3,
+          },
+        },
+      })
+
+      -- Pattern-based rule should take precedence
+      local api_key = shelter.mask_value("secret123", { key = "API_KEY", source = "dev.env" })
+      assert.equals(string.rep("*", #"secret123"), api_key)
+
+      -- Source-based rule should apply when no pattern matches
+      local other_var = shelter.mask_value("othervalue", { key = "OTHER_VAR", source = "dev.env" })
+      assert.equals("othervalue", other_var)
+    end)
+
+    it("should fall back to default mode when no source matches", function()
+      shelter.setup({
+        config = {
+          sources = {
+            ["*.env"] = "full",
+          },
+          default_mode = "none",
+          mask_char = "*",
+        },
+      })
+
+      -- Test non-matching source (should use default mode)
+      local value = shelter.mask_value("test123", { source = "config.yaml" })
+      assert.equals("test123", value)
+    end)
+
+    it("should handle wildcard patterns in sources correctly", function()
+      shelter.setup({
+        config = {
+          sources = {
+            ["test.*_secret"] = "full",
+            ["*_config_*.yaml"] = "partial",
+          },
+          default_mode = "none",
+          mask_char = "*",
+          partial_mode = {
+            show_start = 2,
+            show_end = 2,
+            min_mask = 3,
+          },
+        },
+      })
+
+      -- Test wildcard in middle
+      local test_secret = shelter.mask_value("mysecret", { source = "test.app_secret" })
+      assert.equals(string.rep("*", #"mysecret"), test_secret)
+
+      -- Test multiple wildcards
+      local app_config = shelter.mask_value("configvalue", { source = "app_config_dev.yaml" })
+      assert.equals("co*******ue", app_config)
+    end)
+
+    it("should handle empty or invalid sources", function()
+      shelter.setup({
+        config = {
+          sources = {},
+          default_mode = "full",
+          mask_char = "*",
+        },
+      })
+
+      -- Test with empty sources (should use default mode)
+      local value1 = shelter.mask_value("test123", { source = "test.env" })
+      assert.equals(string.rep("*", #"test123"), value1)
+
+      -- Test with nil source
+      local value2 = shelter.mask_value("test123", { source = nil })
+      assert.equals(string.rep("*", #"test123"), value2)
+
+      -- Test with empty source
+      local value3 = shelter.mask_value("test123", { source = "" })
       assert.equals(string.rep("*", #"test123"), value3)
     end)
   end)

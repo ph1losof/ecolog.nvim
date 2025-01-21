@@ -503,7 +503,6 @@ end
 function M._apply_env_updates(env_vars, override)
   local final_vars = override and {} or vim.deepcopy(state.loaded_secrets or {})
 
-  -- Track which AWS secrets variables should be kept
   local keep_vars = {}
   for k, v in pairs(final_vars) do
     if v.source and v.source:match("^asm:") then
@@ -513,7 +512,6 @@ function M._apply_env_updates(env_vars, override)
 
   local current_env = ecolog.get_env_vars() or {}
   for k, v in pairs(current_env) do
-    -- Only keep non-AWS variables or AWS variables that are in final_vars
     if not (v.source and v.source:match("^asm:")) or keep_vars[k] then
       final_vars[k] = v
     end
@@ -525,8 +523,16 @@ function M._apply_env_updates(env_vars, override)
   end
 
   ecolog.refresh_env_vars()
+  local ecolog_state = ecolog.get_state()
+  ecolog_state.env_vars = final_vars
 
-  ecolog.add_env_vars(final_vars)
+  for k, v in pairs(final_vars) do
+    if type(v) == "table" and v.value then
+      vim.env[k] = tostring(v.value)
+    else
+      vim.env[k] = tostring(v)
+    end
+  end
 end
 
 ---Check AWS credentials
@@ -747,31 +753,51 @@ local function select_secrets(config)
           end
         end
 
-        if #chosen_secrets > 0 then
-          -- Unload secrets that are no longer selected
-          local new_loaded_secrets = {}
+        -- Unload all secrets if nothing is selected
+        if #chosen_secrets == 0 then
+          -- Keep only non-AWS variables
+          local current_env = ecolog.get_env_vars() or {}
+          local final_vars = {}
 
-          -- First identify which variables to keep
-          for key, value in pairs(state.loaded_secrets) do
-            local secret_name = value.source and value.source:match("^asm:(.+)$")
-            if secret_name and selected[secret_name] then
-              new_loaded_secrets[key] = value
+          for key, value in pairs(current_env) do
+            if not (value.source and value.source:match("^asm:")) then
+              final_vars[key] = value
             end
           end
 
-          -- Update state
-          state.loaded_secrets = new_loaded_secrets
-          state.selected_secrets = chosen_secrets
+          state.selected_secrets = {}
+          state.loaded_secrets = {}
           state.initialized = false
 
-          -- Load new configuration
-          M.load_aws_secrets(vim.tbl_extend("force", state.config, {
-            secrets = state.selected_secrets,
-            enabled = true,
-            region = config.region,
-            profile = config.profile,
-          }))
+          ecolog.refresh_env_vars()
+          M._apply_env_updates(final_vars, false)
+          vim.notify("All AWS secrets unloaded", vim.log.levels.INFO)
+          return
         end
+
+        -- Unload secrets that are no longer selected
+        local new_loaded_secrets = {}
+
+        -- First identify which variables to keep
+        for key, value in pairs(state.loaded_secrets) do
+          local secret_name = value.source and value.source:match("^asm:(.+)$")
+          if secret_name and selected[secret_name] then
+            new_loaded_secrets[key] = value
+          end
+        end
+
+        -- Update state
+        state.loaded_secrets = new_loaded_secrets
+        state.selected_secrets = chosen_secrets
+        state.initialized = false
+
+        -- Load new configuration
+        M.load_aws_secrets(vim.tbl_extend("force", state.config, {
+          secrets = state.selected_secrets,
+          enabled = true,
+          region = config.region,
+          profile = config.profile,
+        }))
       end
 
       vim.keymap.set("n", "<CR>", function()

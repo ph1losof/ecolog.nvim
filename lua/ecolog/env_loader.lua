@@ -1,6 +1,9 @@
 local M = {}
 
 local fn = vim.fn
+local utils = require("ecolog.utils")
+local types = require("ecolog.types")
+local shell = require("ecolog.shell")
 
 ---@class EnvVarInfo
 ---@field value any The processed value of the environment variable
@@ -20,9 +23,11 @@ local fn = vim.fn
 ---@return string? key The environment variable key if found
 ---@return EnvVarInfo? var_info The environment variable info if found
 local function parse_env_line(line, file_path, _env_line_cache)
-  local cache_key = line .. file_path
-  if _env_line_cache[cache_key] then
-    return unpack(_env_line_cache[cache_key])
+  -- Use table as cache key to avoid string concatenation
+  local cache_key = { line = line, path = file_path }
+  local cache_entry = _env_line_cache[cache_key]
+  if cache_entry then
+    return unpack(cache_entry)
   end
 
   -- Skip empty lines and comments
@@ -31,8 +36,6 @@ local function parse_env_line(line, file_path, _env_line_cache)
     return nil
   end
 
-  local utils = require("ecolog.utils")
-  local types = require("ecolog.types")
   local key, value, comment = utils.extract_line_parts(line)
   if not key or not value then
     _env_line_cache[cache_key] = { nil }
@@ -66,59 +69,59 @@ local function load_env_file(file_path, _env_line_cache)
     return env_vars
   end
 
-  for line in env_file:lines() do
-    local key, var_info = parse_env_line(line, file_path, _env_line_cache)
+  -- Read file in chunks for better performance
+  local buffer = ""
+  local chunk_size = 4096 -- 4KB chunks
+  while true do
+    local chunk = env_file:read(chunk_size)
+    if not chunk then break end
+    buffer = buffer .. chunk
+    
+    -- Process complete lines
+    local start = 1
+    local line_end = buffer:find("\n", start)
+    while line_end do
+      local line = buffer:sub(start, line_end - 1)
+      local key, var_info = parse_env_line(line, file_path, _env_line_cache)
+      if key then
+        env_vars[key] = var_info
+      end
+      start = line_end + 1
+      line_end = buffer:find("\n", start)
+    end
+    
+    -- Keep remaining partial line in buffer
+    buffer = buffer:sub(start)
+  end
+
+  -- Process any remaining content
+  if #buffer > 0 then
+    local key, var_info = parse_env_line(buffer, file_path, _env_line_cache)
     if key then
       env_vars[key] = var_info
     end
   end
+
   env_file:close()
   return env_vars
 end
 
----@param opts table The configuration options
----@param env_vars table<string, EnvVarInfo> Current environment variables
----@return table<string, EnvVarInfo>
-local function merge_shell_vars(opts, env_vars)
-  if not opts.load_shell or (
-    type(opts.load_shell) == "table" and not opts.load_shell.enabled
-  ) then
-    return env_vars
-  end
-
-  local shell = require("ecolog.shell")
-  local shell_config = type(opts.load_shell) == "boolean" 
-    and { enabled = true, override = false } 
-    or opts.load_shell
-
-  local shell_vars = shell.load_shell_vars(shell_config)
-  for key, var_info in pairs(shell_vars) do
-    if shell_config.override or not env_vars[key] then
-      env_vars[key] = var_info
+---@param target table<string, EnvVarInfo> Target table to merge into
+---@param source table<string, EnvVarInfo> Source table to merge from
+---@param override boolean Whether source values should override target values
+local function merge_vars(target, source, override)
+  if override then
+    for k, v in pairs(source) do
+      target[k] = v
+    end
+  else
+    for k, v in pairs(source) do
+      if not target[k] then
+        target[k] = v
+      end
     end
   end
-
-  return env_vars
-end
-
----@param opts table The configuration options
----@param env_vars table<string, EnvVarInfo> Current environment variables
----@return table<string, EnvVarInfo>
-local function merge_aws_secrets(opts, env_vars)
-  if not (opts.integrations and opts.integrations.aws_secrets_manager) then
-    return env_vars
-  end
-
-  local aws_secrets = require("ecolog.integrations.aws_secrets_manager")
-    .load_aws_secrets(opts.integrations.aws_secrets_manager)
-
-  for key, var_info in pairs(aws_secrets) do
-    if opts.integrations.aws_secrets_manager.override or not env_vars[key] then
-      env_vars[key] = var_info
-    end
-  end
-
-  return env_vars
+  return target
 end
 
 ---@param opts table The configuration options
@@ -133,7 +136,6 @@ function M.load_environment(opts, state, force)
 
   -- Find and set selected env file if not already set
   if not state.selected_env_file then
-    local utils = require("ecolog.utils")
     local env_files = utils.find_env_files(opts)
     if #env_files > 0 then
       state.selected_env_file = env_files[1]
@@ -141,20 +143,22 @@ function M.load_environment(opts, state, force)
   end
 
   local env_vars = {}
+  local shell_enabled = opts.load_shell and (
+    (type(opts.load_shell) == "boolean" and opts.load_shell) or
+    (type(opts.load_shell) == "table" and opts.load_shell.enabled)
+  )
+  local shell_override = shell_enabled and type(opts.load_shell) == "table" and opts.load_shell.override
 
   -- Load variables in the correct order based on override settings
-  if opts.load_shell and type(opts.load_shell) == "table" and opts.load_shell.override then
+  if shell_override then
     -- Load shell vars first if they should override
-    env_vars = merge_shell_vars(opts, env_vars)
+    local shell_vars = shell_enabled and shell.load_shell_vars(opts.load_shell) or {}
+    merge_vars(env_vars, shell_vars, true)
     
     -- Then load env file vars
     if state.selected_env_file then
       local file_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
-      for key, var_info in pairs(file_vars) do
-        if not env_vars[key] then
-          env_vars[key] = var_info
-        end
-      end
+      merge_vars(env_vars, file_vars, false)
     end
   else
     -- Load env file vars first
@@ -163,11 +167,20 @@ function M.load_environment(opts, state, force)
     end
     
     -- Then load shell vars
-    env_vars = merge_shell_vars(opts, env_vars)
+    if shell_enabled then
+      local shell_vars = shell.load_shell_vars(opts.load_shell)
+      merge_vars(env_vars, shell_vars, false)
+    end
   end
 
   -- Always load AWS secrets last
-  env_vars = merge_aws_secrets(opts, env_vars)
+  if opts.integrations and opts.integrations.aws_secrets_manager then
+    local ok, aws_secrets = pcall(require, "ecolog.integrations.aws_secrets_manager")
+    if ok then
+      local secrets = aws_secrets.load_aws_secrets(opts.integrations.aws_secrets_manager)
+      merge_vars(env_vars, secrets, opts.integrations.aws_secrets_manager.override)
+    end
+  end
 
   state.env_vars = env_vars
   return env_vars

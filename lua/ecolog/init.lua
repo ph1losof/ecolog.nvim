@@ -6,6 +6,19 @@ local notify = vim.notify
 local schedule = vim.schedule
 local tbl_extend = vim.tbl_deep_extend
 
+---@class EcologConfig
+---@field path string Path to search for .env files
+---@field shelter ShelterConfig Shelter mode configuration
+---@field integrations IntegrationsConfig Integration settings
+---@field types boolean|table Enable all types or specific type configuration
+---@field custom_types table Custom type definitions
+---@field preferred_environment string Preferred environment name
+---@field load_shell LoadShellConfig Shell variables loading configuration
+---@field env_file_pattern string|string[] Custom pattern(s) for matching env files
+---@field sort_fn? function Custom function for sorting env files
+---@field provider_patterns table|boolean Controls how environment variables are extracted from code
+---@field vim_env boolean Enable vim.env integration
+
 local DEFAULT_CONFIG = {
   path = vim.fn.getcwd(),
   shelter = {
@@ -53,6 +66,31 @@ local DEFAULT_CONFIG = {
   sort_fn = nil,
 }
 
+---@class EcologState
+---@field env_vars table<string, EnvVarInfo>
+---@field cached_env_files string[]?
+---@field last_opts EcologConfig?
+---@field file_cache_opts table?
+---@field current_watcher_group number?
+---@field selected_env_file string?
+---@field _env_module table?
+---@field _file_watchers number[]
+---@field _env_line_cache table
+
+-- Initialize state with weak cache for line parsing
+local state = {
+  env_vars = {},
+  cached_env_files = nil,
+  last_opts = nil,
+  file_cache_opts = nil,
+  current_watcher_group = nil,
+  selected_env_file = nil,
+  _env_module = nil,
+  _file_watchers = {},
+  _env_line_cache = setmetatable({}, { __mode = "k" }),
+}
+
+-- Module loading with circular dependency protection
 local _loaded_modules = {}
 local _loading = {}
 local _setup_done = false
@@ -74,6 +112,7 @@ local function require_module(name)
   return module
 end
 
+-- Core module loading
 local utils = require_module("ecolog.utils")
 local providers = utils.get_module("ecolog.providers")
 local select = utils.get_module("ecolog.select")
@@ -83,18 +122,7 @@ local types = utils.get_module("ecolog.types")
 local env_loader = require_module("ecolog.env_loader")
 local file_watcher = require_module("ecolog.file_watcher")
 
-local state = {
-  env_vars = {},
-  cached_env_files = nil,
-  last_opts = nil,
-  file_cache_opts = nil,
-  current_watcher_group = nil,
-  selected_env_file = nil,
-  _env_module = nil,
-  _file_watchers = {},
-  _env_line_cache = setmetatable({}, { __mode = "k" }),
-}
-
+-- Lazy load vim.env integration
 local function get_env_module()
   if not state._env_module then
     state._env_module = require("ecolog.env")
@@ -103,160 +131,7 @@ local function get_env_module()
   return state._env_module
 end
 
-local function parse_env_line(line, file_path)
-  local cache_key = line .. file_path
-  if state._env_line_cache[cache_key] then
-    return unpack(state._env_line_cache[cache_key])
-  end
-
-  if line:match("^%s*$") or line:match("^%s*#") then
-    state._env_line_cache[cache_key] = { nil }
-    return nil
-  end
-
-  local key, value, comment = utils.extract_line_parts(line)
-  if not key or not value then
-    state._env_line_cache[cache_key] = { nil }
-    return nil
-  end
-
-  local type_name, transformed_value = types.detect_type(value)
-
-  local result = {
-    key,
-    {
-      value = transformed_value or value,
-      type = type_name,
-      raw_value = value,
-      source = fn.fnamemodify(file_path, ":t"),
-      comment = comment,
-    },
-  }
-  state._env_line_cache[cache_key] = result
-  return unpack(result)
-end
-
-local function cleanup_file_watchers()
-  if state.current_watcher_group then
-    pcall(api.nvim_del_augroup_by_id, state.current_watcher_group)
-  end
-  for _, watcher in pairs(state._file_watchers) do
-    pcall(api.nvim_del_autocmd, watcher)
-  end
-  state._file_watchers = {}
-end
-
-local function setup_file_watcher(opts)
-  cleanup_file_watchers()
-
-  state.current_watcher_group = api.nvim_create_augroup("EcologFileWatcher", { clear = true })
-
-  local watch_patterns = {}
-
-  if not opts.env_file_pattern then
-    watch_patterns = {
-      opts.path .. "/.env*",
-    }
-  else
-    local patterns = type(opts.env_file_pattern) == "string" and { opts.env_file_pattern } or opts.env_file_pattern
-
-    for _, pattern in ipairs(patterns) do
-      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
-      table.insert(watch_patterns, opts.path .. glob_pattern:gsub("^%.%+/", "/"))
-    end
-  end
-
-  local function handle_env_file_change()
-    state.cached_env_files = nil
-    state.last_opts = nil
-    M.refresh_env_vars(opts)
-    if state._env_module then
-      state._env_module.update_env_vars()
-    end
-  end
-
-  table.insert(
-    state._file_watchers,
-    api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
-      group = state.current_watcher_group,
-      pattern = watch_patterns,
-      callback = function(ev)
-        local matches = utils.filter_env_files({ ev.file }, opts.env_file_pattern)
-        if #matches > 0 then
-          state.cached_env_files = nil
-          state.last_opts = nil
-
-          local env_files = utils.find_env_files(opts)
-          if #env_files > 0 then
-            state.selected_env_file = env_files[1]
-            handle_env_file_change()
-            notify("New environment file detected: " .. fn.fnamemodify(ev.file, ":t"), vim.log.levels.INFO)
-          end
-        end
-      end,
-    })
-  )
-
-  if state.selected_env_file then
-    table.insert(
-      state._file_watchers,
-      api.nvim_create_autocmd({ "BufWritePost", "FileChangedShellPost" }, {
-        group = state.current_watcher_group,
-        pattern = state.selected_env_file,
-        callback = function()
-          handle_env_file_change()
-          notify("Environment file updated: " .. fn.fnamemodify(state.selected_env_file, ":t"), vim.log.levels.INFO)
-        end,
-      })
-    )
-  end
-end
-
-local function load_aws_secrets(opts, env_vars)
-  if opts.integrations and opts.integrations.aws_secrets_manager then
-    local aws_secrets = require("ecolog.integrations.aws_secrets_manager").load_aws_secrets(opts.integrations.aws_secrets_manager)
-    for key, var_info in pairs(aws_secrets) do
-      if opts.integrations.aws_secrets_manager.override or not env_vars[key] then
-        env_vars[key] = var_info
-      end
-    end
-  end
-  return env_vars
-end
-
-local function load_shell_vars(opts, env_vars)
-  if opts.load_shell and (
-    (type(opts.load_shell) == "boolean" and opts.load_shell)
-    or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
-  ) then
-    local shell_config = type(opts.load_shell) == "boolean" and { enabled = true, override = false } or opts.load_shell
-    local shell_vars = require("ecolog.shell").load_shell_vars(shell_config)
-
-    for key, var_info in pairs(shell_vars) do
-      if shell_config.override or not env_vars[key] then
-        env_vars[key] = var_info
-      end
-    end
-  end
-  return env_vars
-end
-
-function M.check_env_type(var_name, opts)
-  local env_vars = env_loader.load_environment(opts, state)
-
-  local var = env_vars[var_name]
-  if var then
-    notify(
-      string.format("Environment variable '%s' exists with type: %s (from %s)", var_name, var.type, var.source),
-      vim.log.levels.INFO
-    )
-    return var.type
-  end
-
-  notify(string.format("Environment variable '%s' does not exist", var_name), vim.log.levels.WARN)
-  return nil
-end
-
+-- Environment variable management
 function M.refresh_env_vars(opts)
   state.cached_env_files = nil
   state.file_cache_opts = nil
@@ -274,187 +149,83 @@ function M.refresh_env_vars(opts)
 end
 
 function M.get_env_vars()
+  -- Check if selected file exists
+  if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
+    state.selected_env_file = nil
+    state.env_vars = {}
+    state._env_line_cache = {}
+    env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state, true)
+  end
+
   if next(state.env_vars) == nil then
     env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
   end
   return state.env_vars
 end
 
----@class EcologConfig
----@field path string Path to search for .env files
----@field shelter ShelterConfig Shelter mode configuration
----@field integrations IntegrationsConfig Integration settings
----@field types boolean|table Enable all types or specific type configuration
----@field custom_types table Custom type definitions
----@field preferred_environment string Preferred environment name
----@field load_shell LoadShellConfig Shell variables loading configuration
----@field env_file_pattern string|string[] Custom pattern(s) for matching env files
----@field sort_fn? function Custom function for sorting env files
----@field provider_patterns table|boolean Controls how environment variables are extracted from code. When table, contains 'extract' (default: true) and 'cmp' (default: true) fields. When boolean, sets both fields to that value. 'extract' controls whether variables are extracted through language-specific patterns, 'cmp' controls whether completion is enabled.
-
----@class ShelterConfig
----@field configuration ShelterConfiguration Configuration for shelter mode
----@field modules ShelterModules Module-specific shelter settings
-
----@class ShelterConfiguration
----@field partial_mode boolean|table Partial masking configuration. When false (default), completely masks values. When true, uses default partial masking. When table, customizes partial masking.
----@field mask_char string Character used for masking sensitive values
----@field highlight_group string The highlight group to use for masked values (default: "Comment")
-
----@class ShelterModules
----@field cmp boolean Mask values in completion menu
----@field peek boolean Mask values in peek view
----@field files boolean|FilesModuleConfig Mask values in environment files
----@field telescope boolean Mask values in telescope picker
----@field telescope_previewer boolean Mask values in telescope preview buffers
----@field fzf boolean Mask values in fzf picker
----@field fzf_previewer boolean Mask values in fzf preview buffers
----@field snacks boolean Mask values in snacks picker
----@field snacks_previewer boolean Mask values in snacks preview buffers
-
----@class FilesModuleConfig
----@field enabled boolean Enable masking in environment files
----@field shelter_on_leave boolean Re-enable shelter when leaving buffer even if disabled by user
-
----@class IntegrationsConfig
----@field lsp boolean Enable LSP integration for hover and goto-definition
----@field lspsaga boolean Enable LSP Saga integration for hover and goto-definition
----@field nvim_cmp boolean Enable nvim-cmp integration for autocompletion
----@field blink_cmp boolean Enable Blink CMP integration for autocompletion
----@field fzf boolean Enable fzf-lua integration for environment variable picking
----@field statusline boolean|StatuslineConfig Enable statusline integration
----@field snacks boolean Enable snacks integration
----@field aws_secrets_manager boolean Enable AWS Secrets Manager integration
-
----@class StatuslineConfig
----@field hidden_mode boolean When true, hides the statusline section if no env file is selected
-
----@class LoadShellConfig
----@field enabled boolean Enable loading shell variables into environment
----@field override boolean When true, shell variables take precedence over .env files
----@field filter? function Optional function to filter which shell variables to load
----@field transform? function Optional function to transform shell variable values
-
----@param opts? EcologConfig
-function M.setup(opts)
-  if _setup_done then
-    return
+-- File selection and environment handling
+local function handle_env_file_change()
+  state.cached_env_files = nil
+  M.refresh_env_vars(state.last_opts)
+  if state._env_module then
+    state._env_module.update_env_vars()
   end
-  _setup_done = true
+end
 
-  -- Merge user options with defaults
-  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+local function handle_env_file_selection(file, config)
+  if file then
+    state.selected_env_file = file
+    config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
+    file_watcher.setup_watcher(config, state, M.refresh_env_vars)
+    state.cached_env_files = nil
+    M.refresh_env_vars(config)
+    if state._env_module then
+      state._env_module.update_env_vars()
+    end
+    notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
+  end
+end
 
-  -- Add this near the start of setup
-  state.selected_env_file = nil -- Make sure this is tracked in state
-
-  -- Normalize provider_patterns to table format
-  if type(config.provider_patterns) == "boolean" then
-    config.provider_patterns = {
-      extract = config.provider_patterns,
-      cmp = config.provider_patterns,
-    }
-  elseif type(config.provider_patterns) == "table" then
-    config.provider_patterns = vim.tbl_deep_extend("force", {
-      extract = true,
-      cmp = true,
-    }, config.provider_patterns)
+-- Integration setup
+local function setup_integrations(config)
+  if config.integrations.lsp then
+    local lsp = require_module("ecolog.integrations.lsp")
+    lsp.setup()
   end
 
-  state.last_opts = config
+  if config.integrations.lspsaga then
+    local lspsaga = require_module("ecolog.integrations.lspsaga")
+    lspsaga.setup()
+  end
+
+  if config.integrations.nvim_cmp then
+    local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
+    nvim_cmp.setup(config.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+  end
 
   if config.integrations.blink_cmp then
-    config.integrations.nvim_cmp = false
+    local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
+    blink_cmp.setup(config.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
-  -- Core setup
-  require("ecolog.highlights").setup()
-  shelter.setup({
-    config = config.shelter.configuration,
-    partial = config.shelter.modules,
-  })
-  types.setup({
-    types = config.types,
-    custom_types = config.custom_types,
-  })
-
-  -- Defer integration loading
-  local function setup_integrations()
-    if config.integrations.lsp then
-      local lsp = require_module("ecolog.integrations.lsp")
-      lsp.setup()
-    end
-
-    if config.integrations.lspsaga then
-      local lspsaga = require_module("ecolog.integrations.lspsaga")
-      lspsaga.setup()
-    end
-
-    if config.integrations.nvim_cmp then
-      local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
-      nvim_cmp.setup(opts.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
-    end
-
-    if config.integrations.blink_cmp then
-      local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
-      blink_cmp.setup(opts.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
-    end
-
-    if config.integrations.fzf then
-      local fzf = require("ecolog.integrations.fzf")
-      fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
-    end
-
-    if config.integrations.statusline then
-      local statusline = require("ecolog.integrations.statusline")
-      statusline.setup(type(opts.integrations.statusline) == "table" and opts.integrations.statusline or {})
-    end
-
-    if config.integrations.snacks then
-      local snacks = require("ecolog.integrations.snacks")
-      snacks.setup(type(opts.integrations.snacks) == "table" and opts.integrations.snacks or {})
-    end
+  if config.integrations.fzf then
+    local fzf = require("ecolog.integrations.fzf")
+    fzf.setup(type(config.integrations.fzf) == "table" and config.integrations.fzf or {})
   end
 
-  -- Schedule integration setup
-  table.insert(_lazy_setup_tasks, setup_integrations)
-
-  local initial_env_files = utils.find_env_files({
-    path = config.path,
-    preferred_environment = config.preferred_environment,
-    env_file_pattern = config.env_file_pattern,
-    sort_fn = config.sort_fn,
-  })
-
-  if #initial_env_files > 0 then
-    state.selected_env_file = initial_env_files[1]
-
-    if config.preferred_environment == "" then
-      local env_suffix = fn.fnamemodify(state.selected_env_file, ":t"):gsub("^%.env%.", "")
-      if env_suffix ~= ".env" then
-        config.preferred_environment = env_suffix
-        local sorted_files = utils.find_env_files(config)
-        state.selected_env_file = sorted_files[1]
-      end
-    end
-
-    notify(
-      string.format("Selected environment file: %s", fn.fnamemodify(state.selected_env_file, ":t")),
-      vim.log.levels.INFO
-    )
+  if config.integrations.statusline then
+    local statusline = require("ecolog.integrations.statusline")
+    statusline.setup(type(config.integrations.statusline) == "table" and config.integrations.statusline or {})
   end
 
-  schedule(function()
-    env_loader.load_environment(config, state)
-    setup_file_watcher(config)
+  if config.integrations.snacks then
+    local snacks = require("ecolog.integrations.snacks")
+    snacks.setup(type(config.integrations.snacks) == "table" and config.integrations.snacks or {})
+  end
+end
 
-    -- Execute lazy setup tasks
-    for _, task in ipairs(_lazy_setup_tasks) do
-      task()
-    end
-  end)
-
-  -- Create commands with the config
+-- Command creation
+local function create_commands(config)
   local commands = {
     EcologPeek = {
       callback = function(args)
@@ -464,6 +235,20 @@ function M.setup(opts)
       end,
       nargs = "?",
       desc = "Peek environment variable value",
+    },
+    EcologSelect = {
+      callback = function()
+        select.select_env_file({
+          path = config.path,
+          active_file = state.selected_env_file,
+          env_file_pattern = config.env_file_pattern,
+          sort_fn = config.sort_fn,
+          preferred_environment = config.preferred_environment,
+        }, function(file)
+          handle_env_file_selection(file, config)
+        end)
+      end,
+      desc = "Select environment file to use",
     },
     EcologGenerateExample = {
       callback = function()
@@ -512,30 +297,6 @@ function M.setup(opts)
         M.refresh_env_vars(config)
       end,
       desc = "Refresh environment variables cache",
-    },
-    EcologSelect = {
-      callback = function()
-        select.select_env_file({
-          path = config.path,
-          active_file = state.selected_env_file,
-          env_file_pattern = config.env_file_pattern,
-          sort_fn = config.sort_fn,
-          preferred_environment = config.preferred_environment,
-        }, function(file)
-          if file then
-            state.selected_env_file = file
-            config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
-            setup_file_watcher(config)
-            state.cached_env_files = nil
-            M.refresh_env_vars(config)
-            if state._env_module then
-              state._env_module.update_env_vars()
-            end
-            notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
-          end
-        end)
-      end,
-      desc = "Select environment file to use",
     },
     EcologGoto = {
       callback = function()
@@ -595,7 +356,7 @@ function M.setup(opts)
           return
         end
         if not fzf._initialized then
-          fzf.setup(type(opts.integrations.fzf) == "table" and opts.integrations.fzf or {})
+          fzf.setup(type(config.integrations.fzf) == "table" and config.integrations.fzf or {})
 
           fzf._initialized = true
         end
@@ -657,6 +418,78 @@ function M.setup(opts)
       complete = cmd.complete,
     })
   end
+end
+
+---@param opts? EcologConfig
+function M.setup(opts)
+  if _setup_done then
+    return
+  end
+  _setup_done = true
+
+  -- Merge user options with defaults
+  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+
+  -- Add this near the start of setup
+  state.selected_env_file = nil -- Make sure this is tracked in state
+
+  -- Normalize provider_patterns to table format
+  if type(config.provider_patterns) == "boolean" then
+    config.provider_patterns = {
+      extract = config.provider_patterns,
+      cmp = config.provider_patterns,
+    }
+  elseif type(config.provider_patterns) == "table" then
+    config.provider_patterns = vim.tbl_deep_extend("force", {
+      extract = true,
+      cmp = true,
+    }, config.provider_patterns)
+  end
+
+  state.last_opts = config
+
+  if config.integrations.blink_cmp then
+    config.integrations.nvim_cmp = false
+  end
+
+  -- Core setup
+  require("ecolog.highlights").setup()
+  shelter.setup({
+    config = config.shelter.configuration,
+    partial = config.shelter.modules,
+  })
+  types.setup({
+    types = config.types,
+    custom_types = config.custom_types,
+  })
+
+  -- Schedule integration setup
+  table.insert(_lazy_setup_tasks, function() setup_integrations(config) end)
+
+  -- Initial environment file selection
+  local initial_env_files = utils.find_env_files({
+    path = config.path,
+    preferred_environment = config.preferred_environment,
+    env_file_pattern = config.env_file_pattern,
+    sort_fn = config.sort_fn,
+  })
+
+  if #initial_env_files > 0 then
+    handle_env_file_selection(initial_env_files[1], config)
+  end
+
+  schedule(function()
+    env_loader.load_environment(config, state)
+    file_watcher.setup_watcher(config, state, M.refresh_env_vars)
+
+    -- Execute lazy setup tasks
+    for _, task in ipairs(_lazy_setup_tasks) do
+      task()
+    end
+
+    -- Create commands
+    create_commands(config)
+  end)
 
   if opts.vim_env then
     schedule(function()
@@ -665,14 +498,7 @@ function M.setup(opts)
   end
 end
 
-M.find_word_boundaries = utils.find_word_boundaries
-
--- Get the current configuration
-function M.get_config()
-  return state.last_opts or DEFAULT_CONFIG
-end
-
--- Add these new functions
+-- Status line integration
 function M.get_status()
   if not state.last_opts or not state.last_opts.integrations.statusline then
     return ""
@@ -699,8 +525,14 @@ function M.get_lualine()
   return require("ecolog.integrations.statusline").lualine()
 end
 
+-- State access
 function M.get_state()
   return state
+end
+
+-- Configuration access
+function M.get_config()
+  return state.last_opts or DEFAULT_CONFIG
 end
 
 return M

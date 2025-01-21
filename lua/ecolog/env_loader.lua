@@ -129,6 +129,12 @@ end
 ---@param force boolean? Whether to force reload environment variables
 ---@return table<string, EnvVarInfo>
 function M.load_environment(opts, state, force)
+  -- Clear cache if forcing reload
+  if force then
+    state.env_vars = {}
+    state._env_line_cache = {}
+  end
+
   -- Return cached vars if available and not forcing reload
   if not force and next(state.env_vars) ~= nil then
     return state.env_vars
@@ -136,6 +142,17 @@ function M.load_environment(opts, state, force)
 
   -- Find and set selected env file if not already set
   if not state.selected_env_file then
+    local env_files = utils.find_env_files(opts)
+    if #env_files > 0 then
+      state.selected_env_file = env_files[1]
+    end
+  end
+
+  -- Check if selected file still exists
+  if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+    state.selected_env_file = nil
+    state.env_vars = {}
+    state._env_line_cache = {}
     local env_files = utils.find_env_files(opts)
     if #env_files > 0 then
       state.selected_env_file = env_files[1]
@@ -156,12 +173,18 @@ function M.load_environment(opts, state, force)
     merge_vars(env_vars, shell_vars, true)
     
     -- Then load env file vars
+    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+      state.selected_env_file = nil
+    end
     if state.selected_env_file then
       local file_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
       merge_vars(env_vars, file_vars, false)
     end
   else
     -- Load env file vars first
+    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+      state.selected_env_file = nil
+    end
     if state.selected_env_file then
       env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
     end

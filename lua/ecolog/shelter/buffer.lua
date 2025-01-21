@@ -20,9 +20,7 @@ function M.unshelter_buffer()
   api.nvim_buf_clear_namespace(0, namespace, 0, -1)
   state.reset_revealed_lines()
 
-  -- Re-enable completion if it was disabled
   if state.get_buffer_state().disable_cmp then
-    -- Re-enable blink-cmp
     vim.b.completion = true
 
     if utils.has_cmp() then
@@ -39,8 +37,6 @@ function M.shelter_buffer()
     return
   end
 
-  api.nvim_buf_clear_namespace(0, namespace, 0, -1)
-
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = false
 
@@ -49,7 +45,8 @@ function M.shelter_buffer()
     end
   end
 
-  local lines = api.nvim_buf_get_lines(0, 0, -1, false)
+  local bufnr = api.nvim_get_current_buf()
+  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
@@ -80,7 +77,7 @@ function M.shelter_buffer()
         or utils.determine_masked_value(actual_value, {
           partial_mode = config_partial_mode,
           key = key,
-          source = vim.api.nvim_buf_get_name(0),
+          source = vim.api.nvim_buf_get_name(bufnr),
         })
 
       if masked_value and #masked_value > 0 then
@@ -97,6 +94,8 @@ function M.shelter_buffer()
             },
             virt_text_pos = "overlay",
             hl_mode = "combine",
+            priority = 9999,
+            strict = true,
           },
         })
       end
@@ -105,9 +104,17 @@ function M.shelter_buffer()
   end
 
   if #extmarks > 0 then
+    local temp_ns = api.nvim_create_namespace("")
+
     for _, mark in ipairs(extmarks) do
-      api.nvim_buf_set_extmark(0, namespace, mark[1], mark[2], mark[3])
+      api.nvim_buf_set_extmark(bufnr, temp_ns, mark[1], mark[2], mark[3])
     end
+
+    api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
+    for _, mark in ipairs(extmarks) do
+      api.nvim_buf_set_extmark(bufnr, namespace, mark[1], mark[2], mark[3])
+    end
+    api.nvim_buf_clear_namespace(bufnr, temp_ns, 0, -1)
   end
 end
 
@@ -169,13 +176,13 @@ function M.setup_file_shelter()
     end,
   })
 
-  api.nvim_create_autocmd({ "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
+  api.nvim_create_autocmd({ "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")
       if utils.match_env_file(filename, config) then
         if state.is_enabled("files") then
-          M.shelter_buffer()
+          vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
         else
           M.unshelter_buffer()
         end

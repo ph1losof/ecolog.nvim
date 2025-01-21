@@ -101,9 +101,8 @@ local function get_env_module()
   return state._env_module
 end
 
--- Cache for parsed env lines
 local _env_line_cache = setmetatable({}, {
-  __mode = "k", -- Make it a weak table to avoid memory leaks
+  __mode = "k",
 })
 
 local function parse_env_line(line, file_path)
@@ -112,20 +111,17 @@ local function parse_env_line(line, file_path)
     return unpack(_env_line_cache[cache_key])
   end
 
-  -- Skip empty lines and comments
   if line:match("^%s*$") or line:match("^%s*#") then
     _env_line_cache[cache_key] = { nil }
     return nil
   end
 
-  -- Use the optimized pattern matching from utils
   local key, value, comment = utils.extract_line_parts(line)
   if not key or not value then
     _env_line_cache[cache_key] = { nil }
     return nil
   end
 
-  -- Detect type and transform value
   local type_name, transformed_value = types.detect_type(value)
 
   local result = {
@@ -181,7 +177,6 @@ local function setup_file_watcher(opts)
     end
   end
 
-  -- Watch for new files
   table.insert(
     state._file_watchers,
     api.nvim_create_autocmd({ "BufNewFile", "BufAdd" }, {
@@ -220,23 +215,21 @@ local function setup_file_watcher(opts)
 end
 
 local function parse_env_file(opts, force)
-  -- Always use full config
   opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
 
   if not force and next(state.env_vars) ~= nil then
     return
   end
 
-  local existing_vars = {}
+  local new_env_vars = {}
+
   if state.env_vars then
     for key, var_info in pairs(state.env_vars) do
-      if var_info.source == "shell" or var_info.source:match("^asm:") then
-        existing_vars[key] = var_info
+      if var_info.source == "shell" then
+        new_env_vars[key] = var_info
       end
     end
   end
-
-  state.env_vars = existing_vars
 
   if not state.selected_env_file then
     local env_files = utils.find_env_files(opts)
@@ -245,12 +238,12 @@ local function parse_env_file(opts, force)
     end
   end
 
-  -- Load AWS Secrets Manager secrets if configured
   if opts.integrations and opts.integrations.aws_secrets_manager then
-    local aws_secrets = require("ecolog.integrations.aws_secrets_manager").load_aws_secrets(opts.integrations.aws_secrets_manager)
+    local aws_secrets =
+      require("ecolog.integrations.aws_secrets_manager").load_aws_secrets(opts.integrations.aws_secrets_manager)
     for key, var_info in pairs(aws_secrets) do
-      if opts.integrations.aws_secrets_manager.override or not state.env_vars[key] then
-        state.env_vars[key] = var_info
+      if opts.integrations.aws_secrets_manager.override or not new_env_vars[key] then
+        new_env_vars[key] = var_info
       end
     end
   end
@@ -267,8 +260,8 @@ local function parse_env_file(opts, force)
     local shell_vars = shell.load_shell_vars(shell_config)
 
     for key, var_info in pairs(shell_vars) do
-      if shell_config.override or not state.env_vars[key] then
-        state.env_vars[key] = var_info
+      if shell_config.override or not new_env_vars[key] then
+        new_env_vars[key] = var_info
       end
     end
   end
@@ -282,14 +275,18 @@ local function parse_env_file(opts, force)
           local shell_config = type(opts.load_shell) == "boolean" and { enabled = opts.load_shell, override = false }
             or opts.load_shell
 
-          if not opts.load_shell or not shell_config.override or not state.env_vars[key] then
-            state.env_vars[key] = var_info
+          if not opts.load_shell or not shell_config.override or not new_env_vars[key] then
+            new_env_vars[key] = var_info
           end
         end
       end
       env_file:close()
     end
   end
+
+  -- Replace the entire environment state with the new one
+  -- This effectively unloads any variables not present in new_env_vars
+  state.env_vars = new_env_vars
 end
 
 function M.check_env_type(var_name, opts)
@@ -298,12 +295,7 @@ function M.check_env_type(var_name, opts)
   local var = state.env_vars[var_name]
   if var then
     notify(
-      string.format(
-        "Environment variable '%s' exists with type: %s (from %s)",
-        var_name,
-        var.type,
-        var.source
-      ),
+      string.format("Environment variable '%s' exists with type: %s (from %s)", var_name, var.type, var.source),
       vim.log.levels.INFO
     )
     return var.type

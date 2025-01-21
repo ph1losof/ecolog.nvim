@@ -80,7 +80,8 @@ local select = utils.get_module("ecolog.select")
 local peek = utils.get_module("ecolog.peek")
 local shelter = utils.get_module("ecolog.shelter")
 local types = utils.get_module("ecolog.types")
-local shell = utils.get_module("ecolog.shell")
+local env_loader = require_module("ecolog.env_loader")
+local file_watcher = require_module("ecolog.file_watcher")
 
 local state = {
   env_vars = {},
@@ -91,6 +92,7 @@ local state = {
   selected_env_file = nil,
   _env_module = nil,
   _file_watchers = {},
+  _env_line_cache = setmetatable({}, { __mode = "k" }),
 }
 
 local function get_env_module()
@@ -101,24 +103,20 @@ local function get_env_module()
   return state._env_module
 end
 
-local _env_line_cache = setmetatable({}, {
-  __mode = "k",
-})
-
 local function parse_env_line(line, file_path)
   local cache_key = line .. file_path
-  if _env_line_cache[cache_key] then
-    return unpack(_env_line_cache[cache_key])
+  if state._env_line_cache[cache_key] then
+    return unpack(state._env_line_cache[cache_key])
   end
 
   if line:match("^%s*$") or line:match("^%s*#") then
-    _env_line_cache[cache_key] = { nil }
+    state._env_line_cache[cache_key] = { nil }
     return nil
   end
 
   local key, value, comment = utils.extract_line_parts(line)
   if not key or not value then
-    _env_line_cache[cache_key] = { nil }
+    state._env_line_cache[cache_key] = { nil }
     return nil
   end
 
@@ -134,7 +132,7 @@ local function parse_env_line(line, file_path)
       comment = comment,
     },
   }
-  _env_line_cache[cache_key] = result
+  state._env_line_cache[cache_key] = result
   return unpack(result)
 end
 
@@ -214,85 +212,39 @@ local function setup_file_watcher(opts)
   end
 end
 
-local function parse_env_file(opts, force)
-  opts = vim.tbl_deep_extend("force", state.last_opts or DEFAULT_CONFIG, opts or {})
-
-  if not force and next(state.env_vars) ~= nil then
-    return
-  end
-
-  local new_env_vars = {}
-
-  if state.env_vars then
-    for key, var_info in pairs(state.env_vars) do
-      if var_info.source == "shell" then
-        new_env_vars[key] = var_info
-      end
-    end
-  end
-
-  if not state.selected_env_file then
-    local env_files = utils.find_env_files(opts)
-    if #env_files > 0 then
-      state.selected_env_file = env_files[1]
-    end
-  end
-
+local function load_aws_secrets(opts, env_vars)
   if opts.integrations and opts.integrations.aws_secrets_manager then
-    local aws_secrets =
-      require("ecolog.integrations.aws_secrets_manager").load_aws_secrets(opts.integrations.aws_secrets_manager)
+    local aws_secrets = require("ecolog.integrations.aws_secrets_manager").load_aws_secrets(opts.integrations.aws_secrets_manager)
     for key, var_info in pairs(aws_secrets) do
-      if opts.integrations.aws_secrets_manager.override or not new_env_vars[key] then
-        new_env_vars[key] = var_info
+      if opts.integrations.aws_secrets_manager.override or not env_vars[key] then
+        env_vars[key] = var_info
       end
     end
   end
+  return env_vars
+end
 
-  if
-    opts.load_shell
-    and (
-      (type(opts.load_shell) == "boolean" and opts.load_shell)
-      or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
-    )
-  then
+local function load_shell_vars(opts, env_vars)
+  if opts.load_shell and (
+    (type(opts.load_shell) == "boolean" and opts.load_shell)
+    or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
+  ) then
     local shell_config = type(opts.load_shell) == "boolean" and { enabled = true, override = false } or opts.load_shell
-
-    local shell_vars = shell.load_shell_vars(shell_config)
+    local shell_vars = require("ecolog.shell").load_shell_vars(shell_config)
 
     for key, var_info in pairs(shell_vars) do
-      if shell_config.override or not new_env_vars[key] then
-        new_env_vars[key] = var_info
+      if shell_config.override or not env_vars[key] then
+        env_vars[key] = var_info
       end
     end
   end
-
-  if state.selected_env_file then
-    local env_file = io.open(state.selected_env_file, "r")
-    if env_file then
-      for line in env_file:lines() do
-        local key, var_info = parse_env_line(line, state.selected_env_file)
-        if key then
-          local shell_config = type(opts.load_shell) == "boolean" and { enabled = opts.load_shell, override = false }
-            or opts.load_shell
-
-          if not opts.load_shell or not shell_config.override or not new_env_vars[key] then
-            new_env_vars[key] = var_info
-          end
-        end
-      end
-      env_file:close()
-    end
-  end
-
-  -- Replace the entire environment state with the new one
-  -- This effectively unloads any variables not present in new_env_vars
-  state.env_vars = new_env_vars
+  return env_vars
 end
 
 function M.check_env_type(var_name, opts)
-  parse_env_file(opts)
+  local env_vars = env_loader.load_environment(opts, state)
 
-  local var = state.env_vars[var_name]
+  local var = env_vars[var_name]
   if var then
     notify(
       string.format("Environment variable '%s' exists with type: %s (from %s)", var_name, var.type, var.source),
@@ -312,7 +264,7 @@ function M.refresh_env_vars(opts)
   local base_opts = state.last_opts or DEFAULT_CONFIG
   -- Always use full config
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
-  parse_env_file(opts, true)
+  env_loader.load_environment(opts, state, true)
 
   -- Invalidate statusline cache only if integration is enabled
   if opts.integrations.statusline then
@@ -323,7 +275,7 @@ end
 
 function M.get_env_vars()
   if next(state.env_vars) == nil then
-    parse_env_file()
+    env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
   end
   return state.env_vars
 end
@@ -493,7 +445,7 @@ function M.setup(opts)
   end
 
   schedule(function()
-    parse_env_file(config)
+    env_loader.load_environment(config, state)
     setup_file_watcher(config)
 
     -- Execute lazy setup tasks
@@ -610,7 +562,7 @@ function M.setup(opts)
           return
         end
 
-        parse_env_file(config)
+        env_loader.load_environment(config, state)
 
         local var = state.env_vars[var_name]
         if not var then
@@ -673,7 +625,7 @@ function M.setup(opts)
           return
         end
 
-        parse_env_file(config)
+        env_loader.load_environment(config, state)
 
         local var = state.env_vars[var_name]
         if not var then
@@ -752,3 +704,4 @@ function M.get_state()
 end
 
 return M
+

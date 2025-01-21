@@ -42,6 +42,8 @@ local AWS_TIMEOUT_MS = 300000
 local AWS_CREDENTIALS_CACHE_SEC = 300
 local AWS_MAX_RETRIES = 3
 local BUFFER_UPDATE_DEBOUNCE_MS = 50
+local MAX_PARALLEL_REQUESTS = 5  -- Maximum number of parallel requests
+local REQUEST_DELAY_MS = 100     -- Delay between starting parallel requests
 
 ---@type table<string, AwsError>
 local AWS_ERRORS = {
@@ -279,153 +281,189 @@ local function process_secret_value(secret_value, secret_name, aws_config, aws_s
   return loaded, failed
 end
 
----Process secrets in batches to improve performance
+---Process secrets in parallel batches to improve performance
 ---@param aws_config LoadAwsSecretsConfig
 ---@param aws_secrets table<string, table>
----@param start_index number
 ---@param loaded_secrets number
 ---@param failed_secrets number
-local function process_secrets_batch(aws_config, aws_secrets, start_index, loaded_secrets, failed_secrets)
+local function process_secrets_parallel(aws_config, aws_secrets, loaded_secrets, failed_secrets)
   if not state.loading_lock then
     return
   end
 
-  if start_index > #aws_config.secrets then
-    if loaded_secrets > 0 or failed_secrets > 0 then
-      local msg =
-        string.format("AWS Secrets Manager: Loaded %d secret%s", loaded_secrets, loaded_secrets == 1 and "" or "s")
-      if failed_secrets > 0 then
-        msg = msg .. string.format(", %d failed", failed_secrets)
-      end
-      vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+  local total_secrets = #aws_config.secrets
+  local active_jobs = 0
+  local completed_jobs = 0
+  local current_index = 1
+  local retry_counts = {}
 
-      state.loaded_secrets = aws_secrets
-      state.initialized = true
-
-      local updates_to_process = state.pending_env_updates
-      state.pending_env_updates = {}
-
-      ecolog.refresh_env_vars()
-
-      local env_updates = {}
-      for k, v in pairs(aws_secrets) do
-        if type(v) == "table" and v.value then
-          env_updates[k] = tostring(v.value)
-        else
-          env_updates[k] = tostring(v)
+  local function check_completion()
+    if completed_jobs >= total_secrets then
+      if loaded_secrets > 0 or failed_secrets > 0 then
+        local msg = string.format("AWS Secrets Manager: Loaded %d secret%s", loaded_secrets, loaded_secrets == 1 and "" or "s")
+        if failed_secrets > 0 then
+          msg = msg .. string.format(", %d failed", failed_secrets)
         end
-      end
+        vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
 
-      for k, v in pairs(env_updates) do
-        vim.env[k] = v
-      end
+        state.loaded_secrets = aws_secrets
+        state.initialized = true
 
-      for _, update_fn in ipairs(updates_to_process) do
-        update_fn()
-      end
+        local updates_to_process = state.pending_env_updates
+        state.pending_env_updates = {}
 
-      cleanup_state()
+        ecolog.refresh_env_vars()
+
+        local env_updates = {}
+        for k, v in pairs(aws_secrets) do
+          if type(v) == "table" and v.value then
+            env_updates[k] = tostring(v.value)
+          else
+            env_updates[k] = tostring(v)
+          end
+        end
+
+        for k, v in pairs(env_updates) do
+          vim.env[k] = v
+        end
+
+        for _, update_fn in ipairs(updates_to_process) do
+          update_fn()
+        end
+
+        cleanup_state()
+      end
     end
-    return
   end
 
-  local cmd = {
-    "aws",
-    "secretsmanager",
-    "get-secret-value",
-    "--query",
-    "SecretString",
-    "--output",
-    "text",
-    "--secret-id",
-    aws_config.secrets[start_index],
-    "--region",
-    aws_config.region,
-  }
+  local function start_job(index)
+    if index > total_secrets or not state.loading_lock then
+      return
+    end
 
-  if aws_config.profile then
-    table.insert(cmd, "--profile")
-    table.insert(cmd, aws_config.profile)
-  end
+    local cmd = {
+      "aws",
+      "secretsmanager",
+      "get-secret-value",
+      "--query",
+      "SecretString",
+      "--output",
+      "text",
+      "--secret-id",
+      aws_config.secrets[index],
+      "--region",
+      aws_config.region,
+    }
 
-  state.stdout_chunks = {}
-  state.stderr_chunks = {}
-  local retry_count = 0
+    if aws_config.profile then
+      table.insert(cmd, "--profile")
+      table.insert(cmd, aws_config.profile)
+    end
 
-  local function process_next()
-    vim.defer_fn(function()
-      process_secrets_batch(aws_config, aws_secrets, start_index + 1, loaded_secrets, failed_secrets)
-    end, 100)
-  end
+    local stdout_chunks = {}
+    local stderr_chunks = {}
 
-  local job_id = vim.fn.jobstart(cmd, {
-    on_stdout = function(_, data)
-      if data then
-        vim.list_extend(state.stdout_chunks, data)
-      end
-    end,
-    on_stderr = function(_, data)
-      if data then
-        vim.list_extend(state.stderr_chunks, data)
-      end
-    end,
-    on_exit = function(_, code)
-      untrack_job(job_id)
-      vim.schedule(function()
-        if not state.loading_lock then
-          return
+    local job_id = vim.fn.jobstart(cmd, {
+      on_stdout = function(_, data)
+        if data then
+          vim.list_extend(stdout_chunks, data)
         end
-
-        local stdout = table.concat(state.stdout_chunks, "\n")
-        local stderr = table.concat(state.stderr_chunks, "\n")
-        state.stdout_chunks = {}
-        state.stderr_chunks = {}
-
-        if code ~= 0 then
-          if
-            retry_count < AWS_MAX_RETRIES
-            and (
-              stderr:match("Could not connect to the endpoint URL")
-              or stderr:match("ThrottlingException")
-              or stderr:match("RequestTimeout")
-            )
-          then
-            retry_count = retry_count + 1
-            vim.defer_fn(function()
-              process_secrets_batch(aws_config, aws_secrets, start_index, loaded_secrets, failed_secrets)
-            end, 1000 * retry_count)
+      end,
+      on_stderr = function(_, data)
+        if data then
+          vim.list_extend(stderr_chunks, data)
+        end
+      end,
+      on_exit = function(_, code)
+        untrack_job(job_id)
+        vim.schedule(function()
+          if not state.loading_lock then
             return
           end
 
-          failed_secrets = failed_secrets + 1
-          local err = process_aws_error(stderr, aws_config.secrets[start_index])
-          vim.notify(err.message, err.level)
-          process_next()
-        else
-          local secret_value = stdout:gsub("^%s*(.-)%s*$", "%1")
-          if secret_value ~= "" then
-            local loaded, failed =
-              process_secret_value(secret_value, aws_config.secrets[start_index], aws_config, aws_secrets)
-            loaded_secrets = loaded_secrets + loaded
-            failed_secrets = failed_secrets + failed
+          active_jobs = active_jobs - 1
+          local stdout = table.concat(stdout_chunks, "\n")
+          local stderr = table.concat(stderr_chunks, "\n")
+
+          if code ~= 0 then
+            retry_counts[index] = (retry_counts[index] or 0) + 1
+            if retry_counts[index] <= AWS_MAX_RETRIES and (
+              stderr:match("Could not connect to the endpoint URL")
+              or stderr:match("ThrottlingException")
+              or stderr:match("RequestTimeout")
+            ) then
+              -- Retry with exponential backoff
+              vim.defer_fn(function()
+                start_job(index)
+              end, 1000 * retry_counts[index])
+              return
+            end
+
+            failed_secrets = failed_secrets + 1
+            local err = process_aws_error(stderr, aws_config.secrets[index])
+            vim.notify(err.message, err.level)
+          else
+            local secret_value = stdout:gsub("^%s*(.-)%s*$", "%1")
+            if secret_value ~= "" then
+              local loaded, failed = process_secret_value(secret_value, aws_config.secrets[index], aws_config, aws_secrets)
+              loaded_secrets = loaded_secrets + loaded
+              failed_secrets = failed_secrets + failed
+            end
           end
-          process_next()
+
+          completed_jobs = completed_jobs + 1
+          check_completion()
+
+          -- Start next job if there are more secrets to process
+          if current_index <= total_secrets then
+            vim.defer_fn(function()
+              start_next_job()
+            end, REQUEST_DELAY_MS)
+          end
+        end)
+      end,
+    })
+
+    if job_id > 0 then
+      active_jobs = active_jobs + 1
+      track_job(job_id)
+    else
+      vim.schedule(function()
+        failed_secrets = failed_secrets + 1
+        vim.notify(
+          string.format("Failed to start AWS CLI command for secret %s", aws_config.secrets[index]),
+          vim.log.levels.ERROR
+        )
+        completed_jobs = completed_jobs + 1
+        check_completion()
+
+        -- Try to start next job
+        if current_index <= total_secrets then
+          vim.defer_fn(function()
+            start_next_job()
+          end, REQUEST_DELAY_MS)
         end
       end)
-    end,
-  })
+    end
+  end
 
-  if job_id > 0 then
-    track_job(job_id)
-  else
-    vim.schedule(function()
-      failed_secrets = failed_secrets + 1
-      vim.notify(
-        string.format("Failed to start AWS CLI command for secret %s", aws_config.secrets[start_index]),
-        vim.log.levels.ERROR
-      )
-      process_next()
-    end)
+  local function start_next_job()
+    if current_index <= total_secrets and active_jobs < MAX_PARALLEL_REQUESTS then
+      start_job(current_index)
+      current_index = current_index + 1
+      
+      -- Start another job if we can
+      if current_index <= total_secrets and active_jobs < MAX_PARALLEL_REQUESTS then
+        vim.defer_fn(function()
+          start_next_job()
+        end, REQUEST_DELAY_MS)
+      end
+    end
+  end
+
+  -- Start initial batch of jobs
+  for _ = 1, math.min(MAX_PARALLEL_REQUESTS, total_secrets) do
+    start_next_job()
   end
 end
 
@@ -855,7 +893,7 @@ function M.load_aws_secrets(config)
       return
     end
 
-    process_secrets_batch(aws_config, aws_secrets, 1, 0, 0)
+    process_secrets_parallel(aws_config, aws_secrets, 0, 0)
   end)
 
   return state.loaded_secrets or {}

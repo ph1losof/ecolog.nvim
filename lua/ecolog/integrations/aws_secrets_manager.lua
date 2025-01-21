@@ -709,10 +709,6 @@ local function select_secrets(config)
           end
         end
 
-        if #chosen_secrets == 0 then
-          chosen_secrets = { secrets[cursor_idx] }
-        end
-
         if #chosen_secrets > 0 then
           -- Unload secrets that are no longer selected
           local new_loaded_secrets = {}

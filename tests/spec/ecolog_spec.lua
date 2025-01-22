@@ -214,7 +214,12 @@ describe("ecolog", function()
     it("should detect env file modifications", function()
       -- Create initial env file
       local initial_content = "INITIAL_VAR=old_value"
-      vim.fn.writefile({ initial_content }, test_dir .. "/.env")
+      local env_file = test_dir .. "/.env"
+      vim.fn.writefile({ initial_content }, env_file)
+
+      -- Create buffer for the env file
+      vim.cmd("edit " .. env_file)
+      local bufnr = vim.api.nvim_get_current_buf()
 
       ecolog.setup({
         path = test_dir,
@@ -232,9 +237,10 @@ describe("ecolog", function()
         types = true,
       })
 
-      -- Modify env file
-      local new_content = "INITIAL_VAR=new_value\nADDED_VAR=added_value"
-      vim.fn.writefile(vim.split(new_content, "\n"), test_dir .. "/.env")
+      -- Modify env file through buffer
+      local new_content = { "INITIAL_VAR=new_value", "ADDED_VAR=added_value" }
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_content)
+      vim.cmd("write")
 
       -- Wait for file watcher to process
       vim.wait(100)
@@ -242,12 +248,20 @@ describe("ecolog", function()
       local env_vars = ecolog.get_env_vars()
       assert.equals("new_value", env_vars.INITIAL_VAR.value)
       assert.equals("added_value", env_vars.ADDED_VAR.value)
+
+      -- Clean up
+      vim.cmd("bdelete!")
     end)
 
     it("should handle env file deletion", function()
       -- Create initial env file
       local initial_content = "TEST_VAR=value"
-      vim.fn.writefile({ initial_content }, test_dir .. "/.env")
+      local env_file = test_dir .. "/.env"
+      vim.fn.writefile({ initial_content }, env_file)
+
+      -- Create buffer for the env file
+      vim.cmd("edit " .. env_file)
+      local bufnr = vim.api.nvim_get_current_buf()
 
       ecolog.setup({
         path = test_dir,
@@ -265,8 +279,9 @@ describe("ecolog", function()
         types = true,
       })
 
-      -- Delete env file
-      vim.fn.delete(test_dir .. "/.env")
+      -- Delete env file through buffer
+      vim.cmd("bdelete!")
+      vim.fn.delete(env_file)
 
       -- Wait for file watcher to process
       vim.wait(100)

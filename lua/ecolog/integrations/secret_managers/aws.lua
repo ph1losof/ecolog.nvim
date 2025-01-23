@@ -16,7 +16,6 @@ local BaseSecretManager = require("ecolog.integrations.secret_managers.base").Ba
 
 local AWS_TIMEOUT_MS = 300000
 local AWS_CREDENTIALS_CACHE_SEC = 300
-local AWS_MAX_RETRIES = 3
 
 ---@type table<string, AwsError>
 local AWS_ERRORS = {
@@ -66,11 +65,6 @@ local AWS_ERRORS = {
   NO_AWS_CLI = {
     message = "AWS CLI is not installed or not in PATH",
     code = "NoAwsCli",
-    level = vim.log.levels.ERROR,
-  },
-  NOT_CONFIGURED = {
-    message = "AWS Secrets Manager is not configured. Enable it in your setup first.",
-    code = "NotConfigured",
     level = vim.log.levels.ERROR,
   },
 }
@@ -382,7 +376,7 @@ function AwsSecretsManager:_load_secrets_impl(config)
             if code ~= 0 then
               retry_counts[index] = (retry_counts[index] or 0) + 1
               if
-                retry_counts[index] <= AWS_MAX_RETRIES
+                retry_counts[index] <= secret_utils.MAX_RETRIES
                 and (
                   stderr:match("Could not connect to the endpoint URL")
                   or stderr:match("ThrottlingException")

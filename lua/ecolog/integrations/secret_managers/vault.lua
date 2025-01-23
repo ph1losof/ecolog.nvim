@@ -17,7 +17,6 @@ local BaseSecretManager = require("ecolog.integrations.secret_managers.base").Ba
 
 local VAULT_TIMEOUT_MS = 300000
 local VAULT_TOKEN_CACHE_SEC = 300
-local VAULT_MAX_RETRIES = 3
 
 ---@type table<string, VaultError>
 local VAULT_ERRORS = {
@@ -366,7 +365,7 @@ function VaultSecretsManager:_load_secrets_impl(config)
             if code ~= 0 then
               retry_counts[index] = (retry_counts[index] or 0) + 1
               if
-                retry_counts[index] <= VAULT_MAX_RETRIES
+                retry_counts[index] <= secret_utils.MAX_RETRIES
                 and (
                   stderr:match("connection refused")
                   or stderr:match("rate limit exceeded")

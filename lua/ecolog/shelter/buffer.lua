@@ -6,19 +6,70 @@ local string_sub = string.sub
 local string_match = string.match
 local table_insert = table.insert
 local fn = vim.fn
-local bo = vim.bo
-local notify = vim.notify
-local log_levels = vim.log.levels
 local pcall = pcall
 
 local state = require("ecolog.shelter.state")
 local utils = require("ecolog.shelter.utils")
+local lru_cache = require("ecolog.shelter.lru_cache")
 
 local namespace = api.nvim_create_namespace("ecolog_shelter")
+local CHUNK_SIZE = 1000
+local line_cache = lru_cache.new(1000)
+
+local active_buffers = setmetatable({}, {
+  __mode = "k",
+})
+
+local COMMENT_PATTERN = "^%s*[#%s]"
+local KEY_PATTERN = "^%s*(.-)%s*$"
+local VALUE_PATTERN = "^%s*(.-)%s*$"
+local QUOTE_PATTERN = "^([\"'])"
+
+local function process_line(line, eq_pos)
+  if not eq_pos then
+    return nil
+  end
+
+  local key = string_match(string_sub(line, 1, eq_pos - 1), KEY_PATTERN)
+  local value = string_match(string_sub(line, eq_pos + 1), VALUE_PATTERN)
+
+  if not (key and value) then
+    return nil
+  end
+
+  local quote_char = string_match(value, QUOTE_PATTERN)
+  local actual_value = quote_char and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char) or value
+
+  return key, actual_value, quote_char
+end
+
+local function get_cached_line(line, line_num, bufname)
+  local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
+  return line_cache:get(cache_key)
+end
+
+local function cache_line(line, line_num, bufname, processed_data)
+  local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
+  line_cache:put(cache_key, processed_data)
+end
+
+local function cleanup_invalid_buffers()
+  local current_time = vim.loop.now()
+  for bufnr, timestamp in pairs(active_buffers) do
+    if not api.nvim_buf_is_valid(bufnr) or (current_time - timestamp) > 3600000 then
+      pcall(api.nvim_buf_clear_namespace, bufnr, namespace, 0, -1)
+
+      line_cache:remove(bufnr)
+      active_buffers[bufnr] = nil
+    end
+  end
+end
 
 function M.unshelter_buffer()
-  api.nvim_buf_clear_namespace(0, namespace, 0, -1)
+  local bufnr = api.nvim_get_current_buf()
+  api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
   state.reset_revealed_lines()
+  active_buffers[bufnr] = nil
 
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = true
@@ -37,6 +88,13 @@ function M.shelter_buffer()
     return
   end
 
+  local bufnr = api.nvim_get_current_buf()
+  active_buffers[bufnr] = vim.loop.now()
+
+  if vim.loop.now() % 300000 == 0 then
+    cleanup_invalid_buffers()
+  end
+
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = false
 
@@ -45,62 +103,69 @@ function M.shelter_buffer()
     end
   end
 
-  local bufnr = api.nvim_get_current_buf()
-  local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local bufname = api.nvim_buf_get_name(bufnr)
+  local line_count = api.nvim_buf_line_count(bufnr)
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
 
-  for i, line in ipairs(lines) do
-    if string_find(line, "^%s*[#%s]") then
-      goto continue
-    end
+  for chunk_start = 0, line_count - 1, CHUNK_SIZE do
+    local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
+    local lines = api.nvim_buf_get_lines(bufnr, chunk_start, chunk_end + 1, false)
 
-    local eq_pos = string_find(line, "=")
-    if not eq_pos then
-      goto continue
-    end
+    for i, line in ipairs(lines) do
+      local line_num = chunk_start + i
 
-    local key = string_match(string_sub(line, 1, eq_pos - 1), "^%s*(.-)%s*$")
-    local value = string_match(string_sub(line, eq_pos + 1), "^%s*(.-)%s*$")
-
-    if not (key and value) then
-      goto continue
-    end
-
-    local quote_char = string_match(value, "^([\"'])")
-    local actual_value = quote_char and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char) or value
-
-    if actual_value and #actual_value > 0 then
-      local is_revealed = state.is_line_revealed(i)
-      local masked_value = is_revealed and actual_value
-        or utils.determine_masked_value(actual_value, {
-          partial_mode = config_partial_mode,
-          key = key,
-          source = vim.api.nvim_buf_get_name(bufnr),
-        })
-
-      if masked_value and #masked_value > 0 then
-        if quote_char then
-          masked_value = quote_char .. masked_value .. quote_char
+      local cached_data = get_cached_line(line, line_num, bufname)
+      if cached_data then
+        if cached_data.extmark then
+          table_insert(extmarks, cached_data.extmark)
         end
-
-        table_insert(extmarks, {
-          i - 1,
-          eq_pos,
-          {
-            virt_text = {
-              { masked_value, (is_revealed or masked_value == value) and "String" or config_highlight_group },
-            },
-            virt_text_pos = "overlay",
-            hl_mode = "combine",
-            priority = 9999,
-            strict = true,
-          },
-        })
+        goto continue
       end
+
+      if string_find(line, COMMENT_PATTERN) then
+        goto continue
+      end
+
+      local eq_pos = string_find(line, "=")
+      local key, actual_value, quote_char = process_line(line, eq_pos)
+
+      if actual_value and #actual_value > 0 then
+        local is_revealed = state.is_line_revealed(line_num)
+        local masked_value = is_revealed and actual_value
+          or utils.determine_masked_value(actual_value, {
+            partial_mode = config_partial_mode,
+            key = key,
+            source = bufname,
+          })
+
+        if masked_value and #masked_value > 0 then
+          if quote_char then
+            masked_value = quote_char .. masked_value .. quote_char
+          end
+
+          local extmark = {
+            line_num - 1,
+            eq_pos,
+            {
+              virt_text = {
+                { masked_value, (is_revealed or masked_value == actual_value) and "String" or config_highlight_group },
+              },
+              virt_text_pos = "overlay",
+              hl_mode = "combine",
+              priority = 9999,
+              strict = true,
+            },
+          }
+
+          table_insert(extmarks, extmark)
+
+          cache_line(line, line_num, bufname, { extmark = extmark })
+        end
+      end
+      ::continue::
     end
-    ::continue::
   end
 
   if #extmarks > 0 then

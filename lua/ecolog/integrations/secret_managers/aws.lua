@@ -1,0 +1,569 @@
+local api = vim.api
+local utils = require("ecolog.utils")
+local ecolog = require("ecolog")
+local secret_utils = require("ecolog.integrations.secret_managers.utils")
+local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
+
+---@class AwsSecretsConfig : BaseSecretManagerConfig
+---@field region string AWS region to use
+---@field profile? string Optional AWS profile to use
+---@field secrets string[] List of secret names to fetch
+
+---@class AwsError
+---@field message string
+---@field code string
+---@field level number
+
+local AWS_TIMEOUT_MS = 300000
+local AWS_CREDENTIALS_CACHE_SEC = 300
+
+---@type table<string, AwsError>
+local AWS_ERRORS = {
+  INVALID_CREDENTIALS = {
+    message = "AWS credentials are not properly configured. Please check your AWS credentials:\n"
+      .. "1. Ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set correctly\n"
+      .. "2. Or verify ~/.aws/credentials contains valid credentials\n"
+      .. "3. If using a profile, confirm it exists and is properly configured",
+    code = "InvalidCredentials",
+    level = vim.log.levels.ERROR,
+  },
+  NO_CREDENTIALS = {
+    message = "No AWS credentials found. Please configure your AWS credentials",
+    code = "NoCredentials",
+    level = vim.log.levels.ERROR,
+  },
+  CONNECTION_ERROR = {
+    message = "Could not connect to AWS",
+    code = "ConnectionError",
+    level = vim.log.levels.ERROR,
+  },
+  ACCESS_DENIED = {
+    message = "Access denied: Check your AWS credentials",
+    code = "AccessDenied",
+    level = vim.log.levels.ERROR,
+  },
+  RESOURCE_NOT_FOUND = {
+    message = "Secret not found",
+    code = "ResourceNotFound",
+    level = vim.log.levels.ERROR,
+  },
+  TIMEOUT = {
+    message = "AWS Secrets Manager loading timed out after 5 minutes",
+    code = "Timeout",
+    level = vim.log.levels.ERROR,
+  },
+  NO_REGION = {
+    message = "AWS region is required for AWS Secrets Manager integration",
+    code = "NoRegion",
+    level = vim.log.levels.ERROR,
+  },
+  NO_SECRETS = {
+    message = "No secrets specified for AWS Secrets Manager integration",
+    code = "NoSecrets",
+    level = vim.log.levels.ERROR,
+  },
+  NO_AWS_CLI = {
+    message = "AWS CLI is not installed or not in PATH",
+    code = "NoAwsCli",
+    level = vim.log.levels.ERROR,
+  },
+}
+
+---@class AwsSecretsState : SecretManagerState
+---@field credentials_valid boolean
+---@field last_credentials_check number
+
+---@class AwsSecretsManager : BaseSecretManager
+---@field state AwsSecretsState
+---@field config AwsSecretsConfig
+local AwsSecretsManager = setmetatable({}, { __index = BaseSecretManager })
+
+function AwsSecretsManager:new()
+  local instance = BaseSecretManager.new(self, "asm:", "AWS Secrets Manager")
+  instance.state.credentials_valid = false
+  instance.state.last_credentials_check = 0
+  setmetatable(instance, { __index = self })
+  return instance
+end
+
+---Process AWS error from stderr
+---@param stderr string
+---@param secret_name? string
+---@return AwsError
+function AwsSecretsManager:process_error(stderr, secret_name)
+  if stderr:match("InvalidSignatureException") or stderr:match("credentials") then
+    return AWS_ERRORS.INVALID_CREDENTIALS
+  elseif stderr:match("Unable to locate credentials") then
+    return AWS_ERRORS.NO_CREDENTIALS
+  elseif stderr:match("Could not connect to the endpoint URL") then
+    local err = vim.deepcopy(AWS_ERRORS.CONNECTION_ERROR)
+    if secret_name then
+      err.message = string.format("AWS connectivity error for secret %s: %s", secret_name, err.message)
+    end
+    return err
+  elseif stderr:match("AccessDenied") then
+    local err = vim.deepcopy(AWS_ERRORS.ACCESS_DENIED)
+    if secret_name then
+      err.message = string.format("Access denied for secret %s: %s", secret_name, err.message)
+    end
+    return err
+  elseif stderr:match("ResourceNotFound") then
+    local err = vim.deepcopy(AWS_ERRORS.RESOURCE_NOT_FOUND)
+    if secret_name then
+      err.message = string.format("Secret not found: %s", secret_name)
+    end
+    return err
+  end
+
+  return {
+    message = secret_name and string.format("Error fetching secret %s: %s", secret_name, stderr) or stderr,
+    code = "UnknownError",
+    level = vim.log.levels.ERROR,
+  }
+end
+
+---Check AWS credentials
+---@param callback fun(ok: boolean, err?: string)
+function AwsSecretsManager:check_credentials(callback)
+  local now = os.time()
+  if self.state.credentials_valid and (now - self.state.last_credentials_check) < AWS_CREDENTIALS_CACHE_SEC then
+    callback(true)
+    return
+  end
+
+  local cmd = { "aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text" }
+
+  local stdout = ""
+  local stderr = ""
+
+  local job_id = vim.fn.jobstart(cmd, {
+    on_stdout = function(_, data)
+      if data then
+        stdout = stdout .. table.concat(data, "\n")
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        stderr = stderr .. table.concat(data, "\n")
+      end
+    end,
+    on_exit = function(_, code)
+      secret_utils.untrack_job(job_id, self.state.active_jobs)
+      if code ~= 0 then
+        self.state.credentials_valid = false
+        local err = self:process_error(stderr)
+        callback(false, err.message)
+        return
+      end
+
+      stdout = stdout:gsub("^%s*(.-)%s*$", "%1")
+
+      if stdout:match("^%d+$") then
+        self.state.credentials_valid = true
+        self.state.last_credentials_check = now
+        callback(true)
+      else
+        self.state.credentials_valid = false
+        callback(false, "AWS credentials validation failed: " .. stdout)
+      end
+    end,
+  })
+
+  if job_id <= 0 then
+    callback(false, "Failed to start AWS CLI command")
+  else
+    secret_utils.track_job(job_id, self.state.active_jobs)
+  end
+end
+
+---List available secrets in AWS Secrets Manager
+---@param callback fun(secrets: string[]|nil, err?: string)
+function AwsSecretsManager:list_secrets(callback)
+  local cmd = {
+    "aws",
+    "secretsmanager",
+    "list-secrets",
+    "--query",
+    "SecretList[].Name",
+    "--output",
+    "text",
+    "--region",
+    self.config.region,
+  }
+
+  if self.config.profile then
+    table.insert(cmd, "--profile")
+    table.insert(cmd, self.config.profile)
+  end
+
+  local stdout = ""
+  local stderr = ""
+
+  local job_id = vim.fn.jobstart(cmd, {
+    on_stdout = function(_, data)
+      if data then
+        stdout = stdout .. table.concat(data, "\n")
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        stderr = stderr .. table.concat(data, "\n")
+      end
+    end,
+    on_exit = function(_, code)
+      secret_utils.untrack_job(job_id, self.state.active_jobs)
+      if code ~= 0 then
+        local err = self:process_error(stderr)
+        callback(nil, err.message)
+        return
+      end
+
+      local secrets = {}
+      for secret in stdout:gmatch("%S+") do
+        if secret ~= "" then
+          table.insert(secrets, secret)
+        end
+      end
+
+      callback(secrets)
+    end,
+  })
+
+  if job_id <= 0 then
+    callback(nil, "Failed to start AWS CLI command")
+  else
+    secret_utils.track_job(job_id, self.state.active_jobs)
+  end
+end
+
+---Implementation specific loading of secrets
+---@protected
+---@param config AwsSecretsConfig
+function AwsSecretsManager:_load_secrets_impl(config)
+  if not config.region then
+    vim.notify(AWS_ERRORS.NO_REGION.message, AWS_ERRORS.NO_REGION.level)
+    secret_utils.cleanup_state(self.state)
+    return {}
+  end
+
+  if not config.secrets or #config.secrets == 0 then
+    if not self.state.is_refreshing then
+      secret_utils.cleanup_state(self.state)
+      return {}
+    end
+    vim.notify(AWS_ERRORS.NO_SECRETS.message, AWS_ERRORS.NO_SECRETS.level)
+    secret_utils.cleanup_state(self.state)
+    return {}
+  end
+
+  if vim.fn.executable("aws") ~= 1 then
+    vim.notify(AWS_ERRORS.NO_AWS_CLI.message, AWS_ERRORS.NO_AWS_CLI.level)
+    secret_utils.cleanup_state(self.state)
+    return {}
+  end
+
+  self.state.selected_secrets = vim.deepcopy(config.secrets)
+
+  local aws_secrets = {}
+  vim.notify("Loading AWS secrets...", vim.log.levels.INFO)
+
+  self.state.timeout_timer = vim.fn.timer_start(AWS_TIMEOUT_MS, function()
+    if self.state.loading_lock then
+      vim.notify(AWS_ERRORS.TIMEOUT.message, AWS_ERRORS.TIMEOUT.level)
+      secret_utils.cleanup_state(self.state)
+    end
+  end)
+
+  self:check_credentials(function(ok, err)
+    if not self.state.loading_lock then
+      return
+    end
+
+    if not ok then
+      vim.schedule(function()
+        vim.notify(err, vim.log.levels.ERROR)
+        secret_utils.cleanup_state(self.state)
+      end)
+      return
+    end
+
+    local total_secrets = #config.secrets
+    local active_jobs = 0
+    local completed_jobs = 0
+    local current_index = 1
+    local loaded_secrets = 0
+    local failed_secrets = 0
+    local retry_counts = {}
+
+    local function check_completion()
+      if completed_jobs >= total_secrets then
+        if loaded_secrets > 0 or failed_secrets > 0 then
+          local msg = string.format("AWS Secrets Manager: Loaded %d secret%s", 
+            loaded_secrets, 
+            loaded_secrets == 1 and "" or "s"
+          )
+          if failed_secrets > 0 then
+            msg = msg .. string.format(", %d failed", failed_secrets)
+          end
+          vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+
+          self.state.loaded_secrets = aws_secrets
+          self.state.initialized = true
+
+          local updates_to_process = self.state.pending_env_updates
+          self.state.pending_env_updates = {}
+
+          secret_utils.update_environment(aws_secrets, config.override, "asm:")
+
+          for _, update_fn in ipairs(updates_to_process) do
+            update_fn()
+          end
+
+          secret_utils.cleanup_state(self.state)
+        end
+      end
+    end
+
+    local function start_job(index)
+      if index > total_secrets or not self.state.loading_lock then
+        return
+      end
+
+      local cmd = {
+        "aws",
+        "secretsmanager",
+        "get-secret-value",
+        "--query",
+        "SecretString",
+        "--output",
+        "text",
+        "--secret-id",
+        config.secrets[index],
+        "--region",
+        config.region,
+      }
+
+      if config.profile then
+        table.insert(cmd, "--profile")
+        table.insert(cmd, config.profile)
+      end
+
+      local stdout_chunks = {}
+      local stderr_chunks = {}
+
+      local job_id = vim.fn.jobstart(cmd, {
+        on_stdout = function(_, data)
+          if data then
+            vim.list_extend(stdout_chunks, data)
+          end
+        end,
+        on_stderr = function(_, data)
+          if data then
+            vim.list_extend(stderr_chunks, data)
+          end
+        end,
+        on_exit = function(_, code)
+          secret_utils.untrack_job(job_id, self.state.active_jobs)
+          vim.schedule(function()
+            if not self.state.loading_lock then
+              return
+            end
+
+            active_jobs = active_jobs - 1
+            local stdout = table.concat(stdout_chunks, "\n")
+            local stderr = table.concat(stderr_chunks, "\n")
+
+            if code ~= 0 then
+              retry_counts[index] = (retry_counts[index] or 0) + 1
+              if
+                retry_counts[index] <= secret_utils.MAX_RETRIES
+                and (
+                  stderr:match("Could not connect to the endpoint URL")
+                  or stderr:match("ThrottlingException")
+                  or stderr:match("RequestTimeout")
+                )
+              then
+                vim.defer_fn(function()
+                  start_job(index)
+                end, 1000 * retry_counts[index])
+                return
+              end
+
+              failed_secrets = failed_secrets + 1
+              local err = self:process_error(stderr, config.secrets[index])
+              vim.notify(err.message, err.level)
+            else
+              local secret_value = stdout:gsub("^%s*(.-)%s*$", "%1")
+              if secret_value ~= "" then
+                local loaded, failed = secret_utils.process_secret_value(
+                  secret_value,
+                  {
+                    filter = config.filter,
+                    transform = config.transform,
+                    source_prefix = "asm:",
+                    source_path = config.secrets[index],
+                  },
+                  aws_secrets
+                )
+                loaded_secrets = loaded_secrets + loaded
+                failed_secrets = failed_secrets + failed
+              end
+            end
+
+            completed_jobs = completed_jobs + 1
+            check_completion()
+
+            if current_index <= total_secrets then
+              vim.defer_fn(function()
+                start_next_job()
+              end, secret_utils.REQUEST_DELAY_MS)
+            end
+          end)
+        end,
+      })
+
+      if job_id > 0 then
+        active_jobs = active_jobs + 1
+        secret_utils.track_job(job_id, self.state.active_jobs)
+      else
+        vim.schedule(function()
+          failed_secrets = failed_secrets + 1
+          vim.notify(
+            string.format("Failed to start AWS CLI command for secret %s", config.secrets[index]),
+            vim.log.levels.ERROR
+          )
+          completed_jobs = completed_jobs + 1
+          check_completion()
+
+          if current_index <= total_secrets then
+            vim.defer_fn(function()
+              start_next_job()
+            end, secret_utils.REQUEST_DELAY_MS)
+          end
+        end)
+      end
+    end
+
+    local function start_next_job()
+      if current_index <= total_secrets and active_jobs < secret_utils.MAX_PARALLEL_REQUESTS then
+        start_job(current_index)
+        current_index = current_index + 1
+
+        if current_index <= total_secrets and active_jobs < secret_utils.MAX_PARALLEL_REQUESTS then
+          vim.defer_fn(function()
+            start_next_job()
+          end, secret_utils.REQUEST_DELAY_MS)
+        end
+      end
+    end
+
+    -- Start initial batch of jobs
+    local max_initial_jobs = math.min(secret_utils.MAX_PARALLEL_REQUESTS, total_secrets)
+    for _ = 1, max_initial_jobs do
+      start_next_job()
+    end
+  end)
+
+  return self.state.loaded_secrets or {}
+end
+
+---Implementation specific selection of secrets
+---@protected
+function AwsSecretsManager:_select_impl()
+  if not self.config or not self.config.region then
+    vim.notify(AWS_ERRORS.NO_REGION.message, AWS_ERRORS.NO_REGION.level)
+    return
+  end
+
+  self:check_credentials(function(ok, err)
+    if not ok then
+      vim.notify(err, vim.log.levels.ERROR)
+      return
+    end
+
+    self:list_secrets(function(secrets, list_err)
+      if list_err then
+        vim.notify(list_err, vim.log.levels.ERROR)
+        return
+      end
+
+      if not secrets or #secrets == 0 then
+        vim.notify("No secrets found in AWS Secrets Manager", vim.log.levels.WARN)
+        return
+      end
+
+      local selected = {}
+      for _, secret_name in ipairs(self.state.selected_secrets) do
+        selected[secret_name] = true
+      end
+
+      secret_utils.create_secret_selection_ui(secrets, selected, function(new_selected)
+        local chosen_secrets = {}
+        for secret, is_selected in pairs(new_selected) do
+          if is_selected then
+            table.insert(chosen_secrets, secret)
+          end
+        end
+
+        if #chosen_secrets == 0 then
+          local current_env = ecolog.get_env_vars() or {}
+          local final_vars = {}
+
+          for key, value in pairs(current_env) do
+            if not (value.source and value.source:match("^asm:")) then
+              final_vars[key] = value
+            end
+          end
+
+          self.state.selected_secrets = {}
+          self.state.loaded_secrets = {}
+          self.state.initialized = false
+
+          ecolog.refresh_env_vars()
+          secret_utils.update_environment(final_vars, false, "asm:")
+          vim.notify("All AWS secrets unloaded", vim.log.levels.INFO)
+          return
+        end
+
+        local new_loaded_secrets = {}
+        for key, value in pairs(self.state.loaded_secrets) do
+          local secret_name = value.source and value.source:match("^asm:(.+)$")
+          if secret_name and new_selected[secret_name] then
+            new_loaded_secrets[key] = value
+          end
+        end
+
+        self.state.loaded_secrets = new_loaded_secrets
+        self.state.selected_secrets = chosen_secrets
+        self.state.initialized = false
+
+        self:load_secrets(vim.tbl_extend("force", self.config, {
+          secrets = self.state.selected_secrets,
+          enabled = true,
+        }))
+      end, "asm:")
+    end)
+  end)
+end
+
+function AwsSecretsManager:setup_cleanup()
+  api.nvim_create_autocmd("VimLeavePre", {
+    group = api.nvim_create_augroup("EcologAwsSecretsCleanup", { clear = true }),
+    callback = function()
+      secret_utils.cleanup_jobs(self.state.active_jobs)
+    end,
+  })
+end
+
+local instance = AwsSecretsManager:new()
+instance:setup_cleanup()
+
+return {
+  load_aws_secrets = function(config)
+    return instance:load_secrets(config)
+  end,
+  select = function()
+    return instance:select()
+  end,
+}
+

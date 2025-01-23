@@ -8,8 +8,15 @@ local DEFAULT_PARTIAL_MODE = {
   min_mask = 3,
 }
 
--- State cache with weak keys to avoid memory leaks
+local MEMORY_CHECK_INTERVAL = 300000
+local MEMORY_THRESHOLD = 50 * 1024 * 1024
+local last_memory_check = 0
+
 local _state_cache = setmetatable({}, {
+  __mode = "k",
+})
+
+local _buffer_cache = setmetatable({}, {
   __mode = "k",
 })
 
@@ -34,10 +41,63 @@ local state = {
   telescope = {
     last_selection = nil,
   },
+  memory = {
+    last_gc = vim.loop.now(),
+    stats = {},
+  },
 }
 
--- Optimized state getters with caching
+local function get_memory_usage()
+  local stats = {}
+  stats.lua_used = collectgarbage("count") * 1024
+
+  stats.buffer_cache = 0
+  for _, cache in pairs(_buffer_cache) do
+    if type(cache) == "table" then
+      stats.buffer_cache = stats.buffer_cache + vim.fn.strlen(vim.inspect(cache))
+    end
+  end
+
+  stats.state_cache = 0
+  for _, cache in pairs(_state_cache) do
+    if type(cache) == "table" then
+      stats.state_cache = stats.state_cache + vim.fn.strlen(vim.inspect(cache))
+    end
+  end
+
+  return stats
+end
+
+local function check_memory_usage()
+  local current_time = vim.loop.now()
+  if current_time - last_memory_check < MEMORY_CHECK_INTERVAL then
+    return
+  end
+
+  last_memory_check = current_time
+  local stats = get_memory_usage()
+  state.memory.stats = stats
+
+  if stats.lua_used > MEMORY_THRESHOLD then
+    M.force_garbage_collection()
+  end
+end
+
+function M.force_garbage_collection()
+  _state_cache = setmetatable({}, { __mode = "k" })
+  _buffer_cache = setmetatable({}, { __mode = "k" })
+
+  state.buffer.revealed_lines = {}
+
+  collectgarbage("collect")
+
+  state.memory.last_gc = vim.loop.now()
+
+  vim.notify("Memory cleanup performed", vim.log.levels.INFO)
+end
+
 function M.get_state()
+  check_memory_usage()
   return state
 end
 
@@ -63,7 +123,6 @@ function M.get_config()
   return state.config
 end
 
--- Optimized state setters with cache invalidation
 function M.set_feature_state(feature, enabled)
   state.features.enabled[feature] = enabled
   _state_cache["feature_enabled_" .. feature] = enabled
@@ -75,7 +134,7 @@ end
 
 function M.set_config(config)
   state.config = config
-  -- Invalidate relevant caches
+
   for k in pairs(_state_cache) do
     if k:match("^config_") then
       _state_cache[k] = nil
@@ -83,17 +142,13 @@ function M.set_config(config)
   end
 end
 
--- Buffer state management with optimized caching
-local _buffer_cache = setmetatable({}, {
-  __mode = "k", -- Weak keys
-})
-
 function M.update_buffer_state(key, value)
   state.buffer[key] = value
   _buffer_cache[key] = nil
 end
 
 function M.get_buffer_state()
+  check_memory_usage()
   return state.buffer
 end
 
@@ -116,5 +171,9 @@ function M.is_line_revealed(line_num)
   return _buffer_cache.revealed_lines[line_num]
 end
 
-return M
+function M.get_memory_stats()
+  check_memory_usage()
+  return state.memory.stats
+end
 
+return M

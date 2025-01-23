@@ -18,6 +18,15 @@ local tbl_extend = vim.tbl_deep_extend
 ---@field sort_fn? function Custom function for sorting env files
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
+
+---@class IntegrationsConfig
+---@field lsp boolean Enable LSP integration
+---@field lspsaga boolean Enable LSPSaga integration
+---@field nvim_cmp boolean|table Enable nvim-cmp integration
+---@field blink_cmp boolean|table Enable blink-cmp integration
+---@field fzf boolean|table Enable fzf integration
+---@field statusline boolean|table Enable statusline integration
+---@field snacks boolean|table Enable snacks integration
 ---@field secret_managers? table Secret manager configurations
 ---@field secret_managers.aws? boolean|LoadAwsSecretsConfig AWS Secrets Manager configuration
 ---@field secret_managers.vault? boolean|LoadVaultSecretsConfig HashiCorp Vault configuration
@@ -49,7 +58,10 @@ local DEFAULT_CONFIG = {
     fzf = false,
     statusline = false,
     snacks = false,
-    aws_secrets_manager = false,
+    secret_managers = {
+      aws = false,
+      vault = false,
+    },
   },
   vim_env = false,
   types = true,
@@ -163,17 +175,17 @@ function M.refresh_env_vars(opts)
   end
 
   -- Refresh secrets if configured
-  if opts.secret_managers then
+  if opts.integrations.secret_managers then
     -- Refresh AWS secrets if configured
-    if opts.secret_managers.aws then
+    if opts.integrations.secret_managers.aws then
       local aws = get_secret_manager("aws")
-      aws.load_aws_secrets(opts.secret_managers.aws)
+      aws.load_aws_secrets(opts.integrations.secret_managers.aws)
     end
 
     -- Refresh Vault secrets if configured
-    if opts.secret_managers.vault then
+    if opts.integrations.secret_managers.vault then
       local vault = get_secret_manager("vault")
-      vault.load_vault_secrets(opts.secret_managers.vault)
+      vault.load_vault_secrets(opts.integrations.secret_managers.vault)
     end
   end
 end
@@ -434,7 +446,7 @@ local function create_commands(config)
     },
     EcologAWSSelect = {
       callback = function()
-        if not config.secret_managers or not config.secret_managers.aws then
+        if not config.integrations.secret_managers or not config.integrations.secret_managers.aws then
           notify("AWS Secrets Manager is not configured", vim.log.levels.ERROR)
           return
         end
@@ -445,7 +457,7 @@ local function create_commands(config)
     },
     EcologVaultSelect = {
       callback = function()
-        if not config.secret_managers or not config.secret_managers.vault then
+        if not config.integrations.secret_managers or not config.integrations.secret_managers.vault then
           notify("HashiCorp Vault is not configured", vim.log.levels.ERROR)
           return
         end
@@ -512,18 +524,18 @@ function M.setup(opts)
   table.insert(_lazy_setup_tasks, function() setup_integrations(config) end)
 
   -- Initialize secret managers if configured
-  if config.secret_managers then
+  if config.integrations.secret_managers then
     schedule(function()
       -- Initialize AWS Secrets Manager
-      if config.secret_managers.aws then
+      if config.integrations.secret_managers.aws then
         local aws = get_secret_manager("aws")
-        aws.load_aws_secrets(config.secret_managers.aws)
+        aws.load_aws_secrets(config.integrations.secret_managers.aws)
       end
 
       -- Initialize HashiCorp Vault
-      if config.secret_managers.vault then
+      if config.integrations.secret_managers.vault then
         local vault = get_secret_manager("vault")
-        vault.load_vault_secrets(config.secret_managers.vault)
+        vault.load_vault_secrets(config.integrations.secret_managers.vault)
       end
     end)
   end

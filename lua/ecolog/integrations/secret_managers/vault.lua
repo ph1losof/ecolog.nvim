@@ -163,6 +163,67 @@ function VaultSecretsManager:check_token(callback)
   end
 end
 
+---Create a job to fetch a secret
+---@param secret { app: string, path: string }
+---@param on_success fun(value: string)
+---@param on_error fun(err: VaultError)
+---@return number job_id
+function VaultSecretsManager:create_secret_job(secret, on_success, on_error)
+  local cmd = {
+    "hcp",
+    "vault-secrets",
+    "secrets",
+    "open",
+    secret.path,
+    "--app",
+    secret.app,
+    "--format=json",
+  }
+
+  local stdout_chunks = {}
+  local stderr_chunks = {}
+
+  local job_id = vim.fn.jobstart(cmd, {
+    on_stdout = function(_, data)
+      if data then
+        vim.list_extend(stdout_chunks, data)
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        vim.list_extend(stderr_chunks, data)
+      end
+    end,
+    on_exit = function(_, code)
+      secret_utils.untrack_job(job_id, self.state.active_jobs)
+      local stdout = table.concat(stdout_chunks, "\n")
+      local stderr = table.concat(stderr_chunks, "\n")
+
+      if code ~= 0 then
+        local err = self:process_error(stderr, secret.path)
+        on_error(err)
+      else
+        local ok, response = pcall(vim.json.decode, stdout)
+        if ok and response and response.static_version and response.static_version.value then
+          on_success(response.static_version.value)
+        else
+          on_error({
+            message = string.format("Invalid response format for secret %s", secret.path),
+            code = "InvalidResponse",
+            level = vim.log.levels.ERROR,
+          })
+        end
+      end
+    end,
+  })
+
+  if job_id > 0 then
+    secret_utils.track_job(job_id, self.state.active_jobs)
+  end
+
+  return job_id
+end
+
 ---List available secrets in HCP Vault Secrets
 ---@param callback fun(secrets: string[]|nil, err?: string)
 function VaultSecretsManager:list_secrets(callback)
@@ -266,7 +327,6 @@ function VaultSecretsManager:list_apps(callback)
       end
 
       local apps = {}
-      -- The response is a direct array of apps
       for _, app in ipairs(parsed) do
         if app.name then
           table.insert(apps, app.name)
@@ -281,6 +341,103 @@ function VaultSecretsManager:list_apps(callback)
     callback(nil, "Failed to start HCP CLI command")
   else
     secret_utils.track_job(job_id, self.state.active_jobs)
+  end
+end
+
+---Process app secrets in parallel
+---@param app_name string
+---@param secrets string[]
+---@param on_complete fun()
+function VaultSecretsManager:process_app_secrets(app_name, secrets, on_complete)
+  local total_secrets = #secrets
+  local active_jobs = 0
+  local completed_jobs = 0
+  local current_index = 1
+  local loaded_secrets = 0
+  local failed_secrets = 0
+  local retry_counts = {}
+
+  local function check_completion()
+    if completed_jobs >= total_secrets then
+      if loaded_secrets > 0 or failed_secrets > 0 then
+        local msg = string.format("[%s] Loaded %d secret%s", 
+          app_name,
+          loaded_secrets, 
+          loaded_secrets == 1 and "" or "s"
+        )
+        if failed_secrets > 0 then
+          msg = msg .. string.format(", %d failed", failed_secrets)
+        end
+        vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+      end
+      on_complete()
+    end
+  end
+
+  local function start_job(index)
+    if index > total_secrets or not self.state.loading_lock then
+      return
+    end
+
+    local secret_path = secrets[index]
+    local job_id = self:create_secret_job(
+      { app = app_name, path = secret_path },
+      function(value)
+        local loaded, failed = self:process_secret_value(
+          value,
+          string.format("%s/%s", app_name, secret_path),
+          self.state.loaded_secrets
+        )
+        loaded_secrets = loaded_secrets + (loaded or 0)
+        failed_secrets = failed_secrets + (failed or 0)
+        completed_jobs = completed_jobs + 1
+        active_jobs = active_jobs - 1
+        check_completion()
+      end,
+      function(err)
+        retry_counts[index] = (retry_counts[index] or 0) + 1
+        if
+          retry_counts[index] <= secret_utils.MAX_RETRIES
+          and err.code == "ConnectionError"
+        then
+          vim.notify(string.format("Retrying secret %s from %s (attempt %d/%d)", 
+            secret_path, app_name, retry_counts[index], secret_utils.MAX_RETRIES), 
+            vim.log.levels.INFO)
+          vim.defer_fn(function()
+            start_job(index)
+          end, 1000 * retry_counts[index])
+          return
+        end
+
+        failed_secrets = failed_secrets + 1
+        vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+        completed_jobs = completed_jobs + 1
+        active_jobs = active_jobs - 1
+        check_completion()
+      end
+    )
+
+    if job_id > 0 then
+      active_jobs = active_jobs + 1
+    end
+  end
+
+  local function start_next_job()
+    if current_index <= total_secrets and active_jobs < secret_utils.MAX_PARALLEL_REQUESTS then
+      start_job(current_index)
+      current_index = current_index + 1
+
+      if current_index <= total_secrets and active_jobs < secret_utils.MAX_PARALLEL_REQUESTS then
+        vim.defer_fn(function()
+          start_next_job()
+        end, secret_utils.REQUEST_DELAY_MS)
+      end
+    end
+  end
+
+  local max_initial_jobs = math.min(secret_utils.MAX_PARALLEL_REQUESTS, total_secrets)
+  for _ = 1, max_initial_jobs do
+    start_next_job()
   end
 end
 
@@ -314,8 +471,8 @@ function VaultSecretsManager:_load_secrets_impl(config)
   end
 
   self.state.selected_secrets = all_paths
+  self.state.loaded_secrets = {}
 
-  local vault_secrets = {}
   vim.notify("Loading HCP Vault secrets...", vim.log.levels.INFO)
 
   self.state.timeout_timer = vim.fn.timer_start(VAULT_TIMEOUT_MS, function()
@@ -325,179 +482,36 @@ function VaultSecretsManager:_load_secrets_impl(config)
     end
   end)
 
-  local total_secrets = #all_paths
-  local active_jobs = 0
-  local completed_jobs = 0
-  local current_index = 1
-  local loaded_secrets = 0
-  local failed_secrets = 0
-  local retry_counts = {}
+  local total_apps = #config.apps
+  local completed_apps = 0
 
   local function check_completion()
-    if completed_jobs >= total_secrets then
-      if loaded_secrets > 0 or failed_secrets > 0 then
-        local msg = string.format("HCP Vault Secrets: Loaded %d secret%s", 
-          loaded_secrets, 
-          loaded_secrets == 1 and "" or "s"
-        )
-        if failed_secrets > 0 then
-          msg = msg .. string.format(", %d failed", failed_secrets)
-        end
-        vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
-
-        self.state.loaded_secrets = vault_secrets
-        self.state.initialized = true
-
-        local updates_to_process = self.state.pending_env_updates
-        self.state.pending_env_updates = {}
-
-        secret_utils.update_environment(vault_secrets, config.override, "vault:")
-
-        for _, update_fn in ipairs(updates_to_process) do
-          update_fn()
-        end
-
-        secret_utils.cleanup_state(self.state)
+    if completed_apps >= total_apps then
+      self.state.initialized = true
+      local updates_to_process = self.state.pending_env_updates
+      self.state.pending_env_updates = {}
+      secret_utils.update_environment(self.state.loaded_secrets, config.override, "vault:")
+      for _, update_fn in ipairs(updates_to_process) do
+        update_fn()
       end
+      secret_utils.cleanup_state(self.state)
     end
   end
 
-  local function start_job(index)
-    if index > total_secrets or not self.state.loading_lock then
-      return
-    end
-
-    local secret = all_paths[index]
-    local cmd = {
-      "hcp",
-      "vault-secrets",
-      "secrets",
-      "open",
-      secret.path,
-      "--app",
-      secret.app,
-      "--format=json",
-    }
-
-    local stdout_chunks = {}
-    local stderr_chunks = {}
-
-    local job_id = vim.fn.jobstart(cmd, {
-      on_stdout = function(_, data)
-        if data then
-          vim.list_extend(stdout_chunks, data)
-        end
-      end,
-      on_stderr = function(_, data)
-        if data then
-          vim.list_extend(stderr_chunks, data)
-        end
-      end,
-      on_exit = function(_, code)
-        secret_utils.untrack_job(job_id, self.state.active_jobs)
-        vim.schedule(function()
-          if not self.state.loading_lock then
-            return
-          end
-
-          active_jobs = active_jobs - 1
-          local stdout = table.concat(stdout_chunks, "\n")
-          local stderr = table.concat(stderr_chunks, "\n")
-
-          if code ~= 0 then
-            retry_counts[index] = (retry_counts[index] or 0) + 1
-            if
-              retry_counts[index] <= secret_utils.MAX_RETRIES
-              and (
-                stderr:match("connection refused")
-                or stderr:match("rate limit exceeded")
-                or stderr:match("timeout")
-              )
-            then
-              vim.notify(string.format("Retrying secret %s from %s (attempt %d/%d)", 
-                secret.path, secret.app, retry_counts[index], secret_utils.MAX_RETRIES), 
-                vim.log.levels.INFO)
-              vim.defer_fn(function()
-                start_job(index)
-              end, 1000 * retry_counts[index])
-              return
-            end
-
-            failed_secrets = failed_secrets + 1
-            local err = self:process_error(stderr, secret.path)
-            vim.notify(string.format("[%s] %s", secret.app, err.message), err.level)
-          else
-            local ok, response = pcall(vim.json.decode, stdout)
-            if ok and response and response.static_version and response.static_version.value then
-              local loaded, failed = secret_utils.process_secret_value(
-                response.static_version.value,
-                {
-                  filter = config.filter,
-                  transform = config.transform,
-                  source_prefix = "vault:",
-                  source_path = string.format("%s/%s", secret.app, secret.path),
-                },
-                vault_secrets
-              )
-              loaded_secrets = loaded_secrets + loaded
-              failed_secrets = failed_secrets + failed
-            end
-          end
-
-          completed_jobs = completed_jobs + 1
-          check_completion()
-
-          if current_index <= total_secrets then
-            vim.defer_fn(function()
-              start_next_job()
-            end, secret_utils.REQUEST_DELAY_MS)
-          end
-        end)
-      end,
-    })
-
-    if job_id > 0 then
-      active_jobs = active_jobs + 1
-      secret_utils.track_job(job_id, self.state.active_jobs)
-    else
-      vim.schedule(function()
-        failed_secrets = failed_secrets + 1
-        vim.notify(
-          string.format("Failed to start HCP CLI command for path %s in app %s", secret.path, secret.app),
-          vim.log.levels.ERROR
-        )
-        completed_jobs = completed_jobs + 1
+  for _, app_name in ipairs(config.apps) do
+    local paths = self.state.app_secrets[app_name] or {}
+    if #paths > 0 then
+      self:process_app_secrets(app_name, paths, function()
+        completed_apps = completed_apps + 1
         check_completion()
-
-        if current_index <= total_secrets then
-          vim.defer_fn(function()
-            start_next_job()
-          end, secret_utils.REQUEST_DELAY_MS)
-        end
       end)
+    else
+      completed_apps = completed_apps + 1
+      check_completion()
     end
   end
 
-  local function start_next_job()
-    if current_index <= total_secrets and active_jobs < secret_utils.MAX_PARALLEL_REQUESTS then
-      start_job(current_index)
-      current_index = current_index + 1
-
-      if current_index <= total_secrets and active_jobs < secret_utils.MAX_PARALLEL_REQUESTS then
-        vim.defer_fn(function()
-          start_next_job()
-        end, secret_utils.REQUEST_DELAY_MS)
-      end
-    end
-  end
-
-  -- Start initial batch of jobs
-  local max_initial_jobs = math.min(secret_utils.MAX_PARALLEL_REQUESTS, total_secrets)
-  for _ = 1, max_initial_jobs do
-    start_next_job()
-  end
-
-  return self.state.loaded_secrets or {}
+  return self.state.loaded_secrets
 end
 
 ---Implementation specific selection of secrets
@@ -556,7 +570,6 @@ function VaultSecretsManager:_select_impl()
 
       local function process_app(app_name)
         vim.notify(string.format("Listing secrets for app: %s", app_name), vim.log.levels.INFO)
-        -- Set app name for the CLI command
         local cmd = {
           "hcp",
           "vault-secrets",

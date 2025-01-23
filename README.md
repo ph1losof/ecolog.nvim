@@ -938,21 +938,23 @@ The AWS Secrets Manager integration allows you to load secrets from AWS Secrets 
 ```lua
 require('ecolog').setup({
   integrations = {
-    aws_secrets_manager = {
-      enabled = true, -- Enable AWS Secrets Manager integration
-      override = false, -- When true, AWS secrets take precedence over .env files and shell variables
-      region = "us-west-2", -- Required: AWS region where your secrets are stored
-      profile = "default", -- Optional: AWS profile to use
-      secrets = { -- Required: List of secret names to fetch
-        "my-app/dev/database",
-        "my-app/dev/api"
-      },
-      filter = function(key, value) -- Optional: Filter function for secrets
-        return true -- Return true to include the secret, false to exclude it
-      end,
-      transform = function(key, value) -- Optional: Transform function for secret values
-        return value -- Return the transformed value
-      end
+    secret_managers = {
+      aws = {
+        enabled = true, -- Enable AWS Secrets Manager integration
+        override = false, -- When true, AWS secrets take precedence over .env files and shell variables
+        region = "us-west-2", -- Required: AWS region where your secrets are stored
+        profile = "default", -- Optional: AWS profile to use
+        secrets = { -- Required: List of secret names to fetch
+          "my-app/dev/database",
+          "my-app/dev/api"
+        },
+        filter = function(key, value) -- Optional: Filter function for secrets
+          return true -- Return true to include the secret, false to exclude it
+        end,
+        transform = function(key, value) -- Optional: Transform function for secret values
+          return value -- Return the transformed value
+        end
+      }
     }
   }
 })
@@ -982,12 +984,12 @@ The `:EcologAWSSelect` command opens an interactive picker that allows you to:
 
 Default keybindings in the picker:
 
-| Key       | Action                                |
-| --------- | ------------------------------------- |
-| `j`/`k`   | Navigate through secrets              |
-| `<space>` | Toggle selection of current secret    |
-| `<CR>`    | Confirm selection and load secrets    |
-| `q`/`ESC` | Close picker without loading secrets  |
+| Key       | Action                               |
+| --------- | ------------------------------------ |
+| `j`/`k`   | Navigate through secrets             |
+| `<space>` | Toggle selection of current secret   |
+| `<CR>`    | Confirm selection and load secrets   |
+| `q`/`ESC` | Close picker without loading secrets |
 
 #### Requirements
 

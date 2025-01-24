@@ -1,13 +1,11 @@
 local M = {}
 
--- Cache vim functions and APIs
 local api = vim.api
 local bo = vim.bo
 local cmd = vim.cmd
 local fn = vim.fn
 local notify = vim.notify
 
--- Cache required modules
 local utils = require("ecolog.utils")
 
 function M.is_env_var(word)
@@ -33,7 +31,6 @@ function M.handle_hover(args)
         require("lspsaga.hover"):render_hover_doc(args)
       end
     else
-      -- Get the EcologPeek command
       local command = api.nvim_get_commands({})["EcologPeek"]
       if command and command.callback then
         command.callback({ args = word })
@@ -59,14 +56,11 @@ function M.handle_goto_definition(args)
       return
     end
 
-    -- Open the file
     cmd("edit " .. fn.fnameescape(var.source))
 
-    -- Find the line with the variable
     local lines = api.nvim_buf_get_lines(0, 0, -1, false)
     for i, line in ipairs(lines) do
       if line:match("^" .. vim.pesc(word) .. "=") then
-        -- Move cursor to the line and center the screen
         api.nvim_win_set_cursor(0, { i, 0 })
         cmd("normal! zz")
         break
@@ -83,7 +77,7 @@ function M.handle_goto_definition(args)
 end
 
 function M.replace_saga_keymaps()
-  local modes = { "n" }  -- Only replace normal mode keymaps
+  local modes = { "n" }
   local saga_commands = {
     ["Lspsaga hover_doc"] = "EcologSagaHover",
     ["Lspsaga goto_definition"] = "EcologSagaGD",
@@ -94,7 +88,6 @@ function M.replace_saga_keymaps()
     for _, keymap in ipairs(keymaps) do
       for saga_cmd, ecolog_cmd in pairs(saga_commands) do
         if keymap.rhs and keymap.rhs:match(saga_cmd) then
-          -- Store original keymap attributes
           local opts = {
             silent = keymap.silent == 1,
             noremap = keymap.noremap == 1,
@@ -102,7 +95,6 @@ function M.replace_saga_keymaps()
             desc = keymap.desc or ("Ecolog " .. saga_cmd:gsub("Lspsaga ", "")),
           }
 
-          -- Delete existing keymap and create new one
           pcall(api.nvim_del_keymap, mode, keymap.lhs)
           api.nvim_set_keymap(mode, keymap.lhs, "<cmd>" .. ecolog_cmd .. "<CR>", opts)
         end
@@ -121,7 +113,6 @@ function M.setup()
     return
   end
 
-  -- Create our commands
   api.nvim_create_user_command("EcologSagaHover", M.handle_hover, {})
   api.nvim_create_user_command("EcologSagaGD", M.handle_goto_definition, {})
 

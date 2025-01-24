@@ -9,7 +9,6 @@ local lru_cache = require("ecolog.shelter.lru_cache")
 
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 
--- Initialize LRU cache with capacity of 100 buffers
 local processed_buffers = lru_cache.new(100)
 
 local function get_masked_value(value, key, filename)
@@ -70,7 +69,6 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
     end)
   end
 
-  -- Process next chunk if needed
   if end_idx < #lines then
     vim.schedule(function()
       process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename)
@@ -128,10 +126,8 @@ function M.setup_fzf_shelter()
       return
     end
 
-    -- Start processing in chunks of 50 lines
     process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
   end
 end
 
 return M
-

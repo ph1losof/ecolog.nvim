@@ -57,7 +57,6 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
     end)
   end
 
-  -- Process next chunk if needed
   if end_idx < #lines then
     vim.schedule(function()
       process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename)
@@ -76,10 +75,8 @@ function M.process_buffer(bufnr)
   local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
   local filename = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
 
-  -- Clear existing extmarks before processing
   pcall(api.nvim_buf_clear_namespace, bufnr, namespace, 0, -1)
 
-  -- Always process the buffer, regardless of cache
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
   process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
 end
@@ -99,9 +96,7 @@ function M.mask_preview_buffer(bufnr, filename, integration_name)
     return
   end
 
-  -- Always process the buffer for previews
   M.process_buffer(bufnr)
 end
 
 return M
-

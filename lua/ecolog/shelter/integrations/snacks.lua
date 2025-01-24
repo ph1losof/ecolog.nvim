@@ -1,6 +1,5 @@
 local M = {}
 
-local api = vim.api
 local state = require("ecolog.shelter.state")
 local previewer_utils = require("ecolog.shelter.previewer_utils")
 
@@ -36,4 +35,3 @@ function M.setup_snacks_shelter()
 end
 
 return M
-

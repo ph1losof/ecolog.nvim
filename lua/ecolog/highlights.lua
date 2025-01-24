@@ -1,16 +1,13 @@
 local M = {}
 local api = vim.api
 
--- Cache highlight groups for reuse
 local cached_colors = nil
 
 function M.setup()
-  -- Return cached colors if available
   if cached_colors then
     return cached_colors
   end
 
-  -- Get colors from current colorscheme
   cached_colors = {
     bg = api.nvim_get_hl(0, { name = "Normal" }).bg,
     border = api.nvim_get_hl(0, { name = "FloatBorder" }).fg,
@@ -21,7 +18,6 @@ function M.setup()
     variable = api.nvim_get_hl(0, { name = "Identifier" }).fg,
   }
 
-  -- Create highlight groups using system colors
   api.nvim_set_hl(0, "EcologNormal", { bg = cached_colors.bg, fg = cached_colors.text })
   api.nvim_set_hl(0, "EcologBorder", { fg = cached_colors.border })
   api.nvim_set_hl(0, "EcologType", { fg = cached_colors.type, bold = true })
@@ -29,7 +25,6 @@ function M.setup()
   api.nvim_set_hl(0, "EcologValue", { fg = cached_colors.value })
   api.nvim_set_hl(0, "EcologVariable", { fg = cached_colors.variable, bold = true })
 
-  -- Set up completion highlight links
   api.nvim_set_hl(0, "CmpItemKindEcolog", { link = "EcologVariable" })
   api.nvim_set_hl(0, "CmpItemAbbrMatchEcolog", { link = "EcologVariable" })
   api.nvim_set_hl(0, "CmpItemMenuEcolog", { link = "EcologSource" })
@@ -37,7 +32,6 @@ function M.setup()
   return cached_colors
 end
 
--- Clear cache when colorscheme changes
 api.nvim_create_autocmd("ColorScheme", {
   callback = function()
     cached_colors = nil
@@ -45,4 +39,3 @@ api.nvim_create_autocmd("ColorScheme", {
 })
 
 return M
-

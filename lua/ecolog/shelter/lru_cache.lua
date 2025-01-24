@@ -1,5 +1,3 @@
-local M = {}
-
 ---@class LRUNode
 ---@field key any
 ---@field value any
@@ -219,4 +217,3 @@ end
 return {
   new = LRUCache.new,
 }
-

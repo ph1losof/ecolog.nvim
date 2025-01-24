@@ -90,7 +90,6 @@ function M.setup(opts)
     require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
   end
 
-  -- Setup line peek command
   api.nvim_create_user_command("EcologShelterLinePeek", function()
     if not state.is_enabled("files") then
       notify("Shelter mode for files is not enabled", vim.log.levels.WARN)
@@ -112,7 +111,7 @@ function M.setup(opts)
         then
           state.reset_revealed_lines()
           buffer.shelter_buffer()
-          return true -- Delete the autocmd
+          return true
         end
       end,
       desc = "Hide revealed env values on cursor move",
@@ -233,4 +232,3 @@ function M.set_state(command, feature)
 end
 
 return M
-

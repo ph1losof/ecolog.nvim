@@ -4,7 +4,6 @@ local api = vim.api
 local fn = vim.fn
 local notify = vim.notify
 local schedule = vim.schedule
-local tbl_extend = vim.tbl_deep_extend
 
 ---@class EcologConfig
 ---@field path string Path to search for .env files
@@ -94,7 +93,6 @@ local DEFAULT_CONFIG = {
 ---@field _secret_managers table<string, any>
 ---@field initialized boolean
 
--- Initialize state with weak cache for line parsing
 local state = {
   env_vars = {},
   cached_env_files = nil,
@@ -109,7 +107,6 @@ local state = {
   initialized = false,
 }
 
--- Module loading with circular dependency protection
 local _loaded_modules = {}
 local _loading = {}
 local _setup_done = false
@@ -131,7 +128,6 @@ local function require_module(name)
   return module
 end
 
--- Core module loading
 local utils = require_module("ecolog.utils")
 local providers = utils.get_module("ecolog.providers")
 local select = utils.get_module("ecolog.select")
@@ -141,7 +137,6 @@ local types = utils.get_module("ecolog.types")
 local env_loader = require_module("ecolog.env_loader")
 local file_watcher = require_module("ecolog.file_watcher")
 
--- Lazy load vim.env integration
 local function get_env_module()
   if not state._env_module then
     state._env_module = require("ecolog.env")
@@ -150,7 +145,6 @@ local function get_env_module()
   return state._env_module
 end
 
--- Lazy load secret manager
 local function get_secret_manager(name)
   if not state._secret_managers[name] then
     state._secret_managers[name] = require("ecolog.integrations.secret_managers." .. name)
@@ -158,31 +152,26 @@ local function get_secret_manager(name)
   return state._secret_managers[name]
 end
 
--- Environment variable management
 function M.refresh_env_vars(opts)
   state.cached_env_files = nil
   state.file_cache_opts = nil
-  -- Use either last_opts or DEFAULT_CONFIG as the base
+
   local base_opts = state.last_opts or DEFAULT_CONFIG
-  -- Always use full config
+
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
   env_loader.load_environment(opts, state, true)
 
-  -- Invalidate statusline cache only if integration is enabled
   if opts.integrations.statusline then
     local statusline = require("ecolog.integrations.statusline")
     statusline.invalidate_cache()
   end
 
-  -- Refresh secrets if configured
   if opts.integrations.secret_managers then
-    -- Refresh AWS secrets if configured
     if opts.integrations.secret_managers.aws then
       local aws = get_secret_manager("aws")
       aws.load_aws_secrets(opts.integrations.secret_managers.aws)
     end
 
-    -- Refresh Vault secrets if configured
     if opts.integrations.secret_managers.vault then
       local vault = get_secret_manager("vault")
       vault.load_vault_secrets(opts.integrations.secret_managers.vault)
@@ -191,7 +180,6 @@ function M.refresh_env_vars(opts)
 end
 
 function M.get_env_vars()
-  -- Check if selected file exists
   if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
     state.selected_env_file = nil
     state.env_vars = {}
@@ -203,15 +191,6 @@ function M.get_env_vars()
     env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
   end
   return state.env_vars
-end
-
--- File selection and environment handling
-local function handle_env_file_change()
-  state.cached_env_files = nil
-  M.refresh_env_vars(state.last_opts)
-  if state._env_module then
-    state._env_module.update_env_vars()
-  end
 end
 
 local function handle_env_file_selection(file, config)
@@ -228,7 +207,6 @@ local function handle_env_file_selection(file, config)
   end
 end
 
--- Integration setup
 local function setup_integrations(config)
   if config.integrations.lsp then
     local lsp = require_module("ecolog.integrations.lsp")
@@ -266,7 +244,6 @@ local function setup_integrations(config)
   end
 end
 
--- Command creation
 local function create_commands(config)
   local commands = {
     EcologPeek = {
@@ -477,20 +454,16 @@ local function create_commands(config)
   end
 end
 
----@param opts? EcologConfig
 function M.setup(opts)
   if _setup_done then
     return
   end
   _setup_done = true
 
-  -- Merge user options with defaults
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
 
-  -- Add this near the start of setup
-  state.selected_env_file = nil -- Make sure this is tracked in state
+  state.selected_env_file = nil
 
-  -- Normalize provider_patterns to table format
   if type(config.provider_patterns) == "boolean" then
     config.provider_patterns = {
       extract = config.provider_patterns,
@@ -509,7 +482,6 @@ function M.setup(opts)
     config.integrations.nvim_cmp = false
   end
 
-  -- Core setup
   require("ecolog.highlights").setup()
   shelter.setup({
     config = config.shelter.configuration,
@@ -520,22 +492,18 @@ function M.setup(opts)
     custom_types = config.custom_types,
   })
 
-  -- Initialize secret managers first if configured
   if config.integrations.secret_managers then
-    -- Initialize AWS Secrets Manager
     if config.integrations.secret_managers.aws then
       local aws = get_secret_manager("aws")
       aws.load_aws_secrets(config.integrations.secret_managers.aws)
     end
 
-    -- Initialize HashiCorp Vault
     if config.integrations.secret_managers.vault then
       local vault = get_secret_manager("vault")
       vault.load_vault_secrets(config.integrations.secret_managers.vault)
     end
   end
 
-  -- Initial environment file selection
   local initial_env_files = utils.find_env_files({
     path = config.path,
     preferred_environment = config.preferred_environment,
@@ -547,19 +515,18 @@ function M.setup(opts)
     handle_env_file_selection(initial_env_files[1], config)
   end
 
-  -- Schedule integration setup
-  table.insert(_lazy_setup_tasks, function() setup_integrations(config) end)
+  table.insert(_lazy_setup_tasks, function()
+    setup_integrations(config)
+  end)
 
   schedule(function()
     env_loader.load_environment(config, state)
     file_watcher.setup_watcher(config, state, M.refresh_env_vars)
 
-    -- Execute lazy setup tasks
     for _, task in ipairs(_lazy_setup_tasks) do
       task()
     end
 
-    -- Create commands
     create_commands(config)
   end)
 
@@ -570,7 +537,6 @@ function M.setup(opts)
   end
 end
 
--- Status line integration
 function M.get_status()
   if not state.last_opts or not state.last_opts.integrations.statusline then
     return ""
@@ -597,15 +563,12 @@ function M.get_lualine()
   return require("ecolog.integrations.statusline").lualine()
 end
 
--- State access
 function M.get_state()
   return state
 end
 
--- Configuration access
 function M.get_config()
   return state.last_opts or DEFAULT_CONFIG
 end
 
 return M
-

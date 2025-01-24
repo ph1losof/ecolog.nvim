@@ -11,7 +11,6 @@ local M = {}
 ---@param config boolean|LoadShellConfig
 ---@return table<string, table>
 function M.load_shell_vars(config)
-  -- Normalize config to table format
   local shell_config = type(config) == "table" and config or { enabled = config, override = false }
 
   local shell_vars = {}
@@ -46,4 +45,5 @@ function M.load_shell_vars(config)
   return shell_vars
 end
 
-return M 
+return M
+

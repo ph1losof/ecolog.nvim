@@ -9,8 +9,7 @@ local string_rep = string.rep
 ---@return "none"|"partial"|"full"
 function M.determine_masking_mode(key, source)
   local conf = config()
-  
-  -- Check pattern-based rules first (they take precedence)
+
   if key and conf.patterns then
     for pattern, mode in pairs(conf.patterns) do
       local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
@@ -20,7 +19,6 @@ function M.determine_masking_mode(key, source)
     end
   end
 
-  -- Then check source-based rules
   if source and conf.sources then
     for pattern, mode in pairs(conf.sources) do
       local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
@@ -30,7 +28,6 @@ function M.determine_masking_mode(key, source)
     end
   end
 
-  -- Fall back to default mode
   return conf.default_mode or "partial"
 end
 
@@ -81,14 +78,14 @@ function M.extract_value(value_part)
 
   local value = vim.trim(value_part)
   local quote_char = value:match("^([\"'])")
-  
+
   if quote_char then
     local actual_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
     if actual_value then
       return actual_value, quote_char
     end
   end
-  
+
   return value, nil
 end
 
@@ -112,4 +109,3 @@ function M.has_cmp()
 end
 
 return M
-

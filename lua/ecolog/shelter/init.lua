@@ -198,6 +198,12 @@ function M.set_state(command, feature)
         buffer.unshelter_buffer()
         state.get_config().shelter_on_leave = false
       end
+    elseif feature == "telescope_previewer" then
+      require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+    elseif feature == "fzf_previewer" then
+      require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+    elseif feature == "snacks_previewer" then
+      require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
     end
     notify(
       string.format("Shelter mode for %s is now %s", feature:upper(), should_enable and "enabled" or "disabled"),
@@ -213,6 +219,9 @@ function M.set_state(command, feature)
     if should_enable then
       buffer.setup_file_shelter()
       buffer.shelter_buffer()
+      require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+      require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+      require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
     else
       buffer.unshelter_buffer()
     end

@@ -17,7 +17,7 @@ local function create_masked_previewer(opts, preview_type)
       return preview_type == "file" and from_entry.path(entry, false) or entry.filename
     end,
 
-    define_preview = function(self, entry)
+    define_preview = function(self, entry, status)
       if not entry then
         return
       end

@@ -4,7 +4,6 @@ local api = vim.api
 local utils = require("ecolog.utils")
 local ecolog = require("ecolog")
 
--- Constants
 M.BUFFER_UPDATE_DEBOUNCE_MS = 50
 M.MAX_PARALLEL_REQUESTS = 5
 M.REQUEST_DELAY_MS = 100
@@ -103,10 +102,7 @@ function M.update_environment(secrets, override, source_prefix)
 
   for k, v in pairs(secrets) do
     if not override and keep_vars[k] then
-      vim.notify(
-        string.format("Warning: Secret %s already exists in environment, skipping...", k),
-        vim.log.levels.WARN
-      )
+      vim.notify(string.format("Warning: Secret %s already exists in environment, skipping...", k), vim.log.levels.WARN)
     else
       final_vars[k] = v
     end
@@ -133,7 +129,6 @@ end
 function M.create_secret_selection_ui(secrets, selected, on_select, source_prefix)
   local cursor_idx = 1
 
-  -- Set cursor to first selected secret if any
   for i, secret in ipairs(secrets) do
     if selected[secret] then
       cursor_idx = i
@@ -268,6 +263,7 @@ function M.process_secret_value(secret_value, options, secrets)
           end
 
           local type_name, detected_value = require("ecolog.types").detect_type(transformed_value)
+          -- Always update the secret value, even if it exists
           secrets[key] = {
             value = detected_value or transformed_value,
             type = type_name,
@@ -335,9 +331,10 @@ function M.process_secrets_parallel(config, state, secrets, options, start_job)
   local function check_completion()
     if completed_jobs >= total_secrets then
       if loaded_secrets > 0 or failed_secrets > 0 then
-        local msg = string.format("%s: Loaded %d secret%s", 
+        local msg = string.format(
+          "%s: Loaded %d secret%s",
           options.manager_name,
-          loaded_secrets, 
+          loaded_secrets,
           loaded_secrets == 1 and "" or "s"
         )
         if failed_secrets > 0 then
@@ -367,7 +364,7 @@ function M.process_secrets_parallel(config, state, secrets, options, start_job)
       active_jobs = active_jobs + 1
       start_job(current_index)
       current_index = current_index + 1
-      
+
       if current_index <= total_secrets and active_jobs < M.MAX_PARALLEL_REQUESTS then
         vim.defer_fn(function()
           start_next_job()
@@ -391,4 +388,3 @@ function M.process_secrets_parallel(config, state, secrets, options, start_job)
 end
 
 return M
-

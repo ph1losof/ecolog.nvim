@@ -46,6 +46,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Snacks Integration](#snacks-integration)
   - [Statusline Integration](#statusline-integration)
   - [AWS Secrets Manager](#aws-secrets-manager)
+  - [HashiCorp Vault Secrets](#hashicorp-vault-secrets)
 - [Shelter Previewers](#-shelter-previewers)
   - [Telescope Previewer](#telescope-previewer)
   - [FZF Previewer](#fzf-previewer)
@@ -1009,6 +1010,86 @@ The integration provides clear error messages for common issues:
 - Network connectivity problems
 - Access denied errors
 - Region configuration issues
+- Missing or invalid secrets
+
+### HashiCorp Vault Secrets
+
+The HashiCorp Vault Secrets integration allows you to load secrets from HCP Vault Secrets into your environment variables. This integration requires the HCP CLI to be installed and configured with appropriate credentials.
+
+> ⚠️ **Note**: This is a beta feature and may have breaking changes in future releases.
+
+#### Configuration
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    secret_managers = {
+      vault = {
+        enabled = true, -- Enable HCP Vault Secrets integration
+        override = false, -- When true, Vault secrets take precedence over .env files and shell variables
+        apps = { -- Required: List of application names to fetch secrets from
+          "sample-app",
+          "database"
+        },
+        filter = function(key, value) -- Optional: Filter function for secrets
+          return true -- Return true to include the secret, false to exclude it
+        end,
+        transform = function(key, value) -- Optional: Transform function for secret values
+          return value -- Return the transformed value
+        end
+      }
+    }
+  }
+})
+```
+
+#### Features
+
+- Load secrets from HCP Vault Secrets into your environment variables
+- Support for both JSON and plain text secrets:
+  - JSON secrets: Each key-value pair becomes a separate environment variable
+  - Plain text secrets: The secret name is used as the variable name
+- Interactive application and secret selection with visual feedback
+- Integration with shelter mode for sensitive data protection
+- Automatic credential validation and error handling
+- Support for HCP service principal authentication
+
+#### Interactive Secret Selection
+
+The `:EcologVaultSelect` command opens an interactive picker that allows you to:
+
+- Browse all available applications in your HCP organization
+- Select multiple applications using the space key
+- See which applications are currently selected with a checkmark (✓)
+- Navigate through applications with j/k keys
+- Confirm selection with Enter
+- Cancel selection with q or Escape
+
+Default keybindings in the picker:
+
+| Key       | Action                                  |
+| --------- | --------------------------------------- |
+| `j`/`k`   | Navigate through applications           |
+| `<space>` | Toggle selection of current application |
+| `<CR>`    | Confirm selection and load secrets      |
+| `q`/`ESC` | Close picker without loading secrets    |
+
+#### Requirements
+
+- HCP CLI installed (`hcp --version` should be available)
+- HCP CLI must be authenticated with valid credentials using one of:
+  - HCP service principal credentials (client ID and client secret)
+  - `hcp auth login` command
+- Appropriate HCP permissions to access the specified applications and secrets
+
+#### Error Handling
+
+The integration provides clear error messages for common issues:
+
+- Invalid or missing HCP credentials
+- Network connectivity problems
+- Access denied errors
+- Missing or invalid applications
 - Missing or invalid secrets
 
 ### 🔍 Shelter Previewers

@@ -39,6 +39,7 @@ local function get_masked_value(value, key)
   if not value then
     return ""
   end
+  local env_vars = ecolog.get_env_vars()
   return shelter.mask_value(value, "telescope", key, key and env_vars[key] and env_vars[key].source)
 end
 
@@ -140,12 +141,6 @@ local function env_picker(opts)
       end,
     })
     :find()
-end
-
-local function make_display(entry)
-  local value = entry.value
-  local display_value = config.shelter.mask_on_copy and get_masked_value(value, entry.name) or value
-  return string.format("%s = %s", entry.name, display_value)
 end
 
 return telescope.register_extension({

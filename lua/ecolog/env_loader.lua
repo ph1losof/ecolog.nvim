@@ -205,6 +205,14 @@ function M.load_environment(opts, state, force)
     end
   end
 
+  if opts.integrations and opts.integrations.secret_managers and opts.integrations.secret_managers.vault then
+    local ok, vault_secrets = pcall(require, "ecolog.integrations.secret_managers.vault")
+    if ok then
+      local secrets = vault_secrets.load_vault_secrets(opts.integrations.secret_managers.vault)
+      merge_vars(env_vars, secrets, opts.integrations.secret_managers.vault.override)
+    end
+  end
+
   state.env_vars = env_vars
   return env_vars
 end

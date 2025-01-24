@@ -1,7 +1,6 @@
 local M = {}
 
 local api = vim.api
-local utils = require("ecolog.utils")
 local ecolog = require("ecolog")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 
@@ -96,9 +95,9 @@ function BaseSecretManager:load_secrets(config)
 
     self.state.selected_secrets = {}
     self.state.loaded_secrets = {}
+    self.state.initialized = true
 
-    ecolog.refresh_env_vars()
-    ecolog.add_env_vars(final_vars)
+    secret_utils.update_environment(final_vars, false, self.source_prefix)
     secret_utils.cleanup_state(self.state)
     return {}
   end
@@ -115,8 +114,7 @@ end
 
 ---Select secrets from the manager
 function BaseSecretManager:select()
-  if not self.state.config then
-    vim.notify(string.format("%s is not configured", self.manager_name), vim.log.levels.ERROR)
+  if not self.state.config or not self.state.config.enabled then
     return
   end
 
@@ -133,16 +131,10 @@ end
 ---@param secrets table<string, table> Table to store loaded secrets
 ---@param start_job fun(index: number) Function to start a job for a specific index
 function BaseSecretManager:process_secrets_parallel(secrets, start_job)
-  return secret_utils.process_secrets_parallel(
-    self.config,
-    self.state,
-    secrets,
-    {
-      source_prefix = self.source_prefix,
-      manager_name = self.manager_name,
-    },
-    start_job
-  )
+  return secret_utils.process_secrets_parallel(self.config, self.state, secrets, {
+    source_prefix = self.source_prefix,
+    manager_name = self.manager_name,
+  }, start_job)
 end
 
 ---Process a secret value
@@ -150,16 +142,12 @@ end
 ---@param source_path string
 ---@param secrets table<string, table>
 function BaseSecretManager:process_secret_value(secret_value, source_path, secrets)
-  return secret_utils.process_secret_value(
-    secret_value,
-    {
-      filter = self.config.filter,
-      transform = self.config.transform,
-      source_prefix = self.source_prefix,
-      source_path = source_path,
-    },
-    secrets
-  )
+  return secret_utils.process_secret_value(secret_value, {
+    filter = self.config.filter,
+    transform = self.config.transform,
+    source_prefix = self.source_prefix,
+    source_path = source_path,
+  }, secrets)
 end
 
 ---Handle cleanup on vim exit
@@ -173,4 +161,5 @@ function BaseSecretManager:setup_cleanup()
 end
 
 M.BaseSecretManager = BaseSecretManager
-return M 
+return M
+

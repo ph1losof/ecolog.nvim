@@ -1,5 +1,4 @@
 local api = vim.api
-local utils = require("ecolog.utils")
 local ecolog = require("ecolog")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
@@ -240,6 +239,11 @@ end
 ---@protected
 ---@param config AwsSecretsConfig
 function AwsSecretsManager:_load_secrets_impl(config)
+  if not config.enabled then
+    secret_utils.cleanup_state(self.state)
+    return {}
+  end
+
   if not config.region then
     vim.notify(AWS_ERRORS.NO_REGION.message, AWS_ERRORS.NO_REGION.level)
     secret_utils.cleanup_state(self.state)
@@ -298,10 +302,8 @@ function AwsSecretsManager:_load_secrets_impl(config)
     local function check_completion()
       if completed_jobs >= total_secrets then
         if loaded_secrets > 0 or failed_secrets > 0 then
-          local msg = string.format("AWS Secrets Manager: Loaded %d secret%s", 
-            loaded_secrets, 
-            loaded_secrets == 1 and "" or "s"
-          )
+          local msg =
+            string.format("AWS Secrets Manager: Loaded %d secret%s", loaded_secrets, loaded_secrets == 1 and "" or "s")
           if failed_secrets > 0 then
             msg = msg .. string.format(", %d failed", failed_secrets)
           end
@@ -395,16 +397,12 @@ function AwsSecretsManager:_load_secrets_impl(config)
             else
               local secret_value = stdout:gsub("^%s*(.-)%s*$", "%1")
               if secret_value ~= "" then
-                local loaded, failed = secret_utils.process_secret_value(
-                  secret_value,
-                  {
-                    filter = config.filter,
-                    transform = config.transform,
-                    source_prefix = "asm:",
-                    source_path = config.secrets[index],
-                  },
-                  aws_secrets
-                )
+                local loaded, failed = secret_utils.process_secret_value(secret_value, {
+                  filter = config.filter,
+                  transform = config.transform,
+                  source_prefix = "asm:",
+                  source_path = config.secrets[index],
+                }, aws_secrets)
                 loaded_secrets = loaded_secrets + loaded
                 failed_secrets = failed_secrets + failed
               end
@@ -457,7 +455,6 @@ function AwsSecretsManager:_load_secrets_impl(config)
       end
     end
 
-    -- Start initial batch of jobs
     local max_initial_jobs = math.min(secret_utils.MAX_PARALLEL_REQUESTS, total_secrets)
     for _ = 1, max_initial_jobs do
       start_next_job()
@@ -566,4 +563,3 @@ return {
     return instance:select()
   end,
 }
-

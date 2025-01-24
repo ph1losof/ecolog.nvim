@@ -94,7 +94,6 @@ function M.update_environment(secrets, override, source_prefix)
   local final_vars = {}
 
   if not override then
-    -- Keep only non-secret manager variables if not overriding
     for k, v in pairs(current_env) do
       if not (v.source and v.source:match("^" .. source_prefix)) then
         final_vars[k] = v
@@ -102,12 +101,10 @@ function M.update_environment(secrets, override, source_prefix)
     end
   end
 
-  -- Add all new secrets
   for k, v in pairs(secrets) do
     final_vars[k] = v
   end
 
-  ecolog.refresh_env_vars()
   local ecolog_state = ecolog.get_state()
   ecolog_state.env_vars = final_vars
 
@@ -262,7 +259,6 @@ function M.process_secret_value(secret_value, options, secrets)
           end
 
           local type_name, detected_value = require("ecolog.types").detect_type(transformed_value)
-          -- Always update the secret value, even if it exists
           secrets[key] = {
             value = detected_value or transformed_value,
             type = type_name,

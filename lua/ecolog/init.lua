@@ -520,24 +520,19 @@ function M.setup(opts)
     custom_types = config.custom_types,
   })
 
-  -- Schedule integration setup
-  table.insert(_lazy_setup_tasks, function() setup_integrations(config) end)
-
-  -- Initialize secret managers if configured
+  -- Initialize secret managers first if configured
   if config.integrations.secret_managers then
-    schedule(function()
-      -- Initialize AWS Secrets Manager
-      if config.integrations.secret_managers.aws then
-        local aws = get_secret_manager("aws")
-        aws.load_aws_secrets(config.integrations.secret_managers.aws)
-      end
+    -- Initialize AWS Secrets Manager
+    if config.integrations.secret_managers.aws then
+      local aws = get_secret_manager("aws")
+      aws.load_aws_secrets(config.integrations.secret_managers.aws)
+    end
 
-      -- Initialize HashiCorp Vault
-      if config.integrations.secret_managers.vault then
-        local vault = get_secret_manager("vault")
-        vault.load_vault_secrets(config.integrations.secret_managers.vault)
-      end
-    end)
+    -- Initialize HashiCorp Vault
+    if config.integrations.secret_managers.vault then
+      local vault = get_secret_manager("vault")
+      vault.load_vault_secrets(config.integrations.secret_managers.vault)
+    end
   end
 
   -- Initial environment file selection
@@ -551,6 +546,9 @@ function M.setup(opts)
   if #initial_env_files > 0 then
     handle_env_file_selection(initial_env_files[1], config)
   end
+
+  -- Schedule integration setup
+  table.insert(_lazy_setup_tasks, function() setup_integrations(config) end)
 
   schedule(function()
     env_loader.load_environment(config, state)

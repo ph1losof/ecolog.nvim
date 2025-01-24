@@ -1027,7 +1027,7 @@ require('ecolog').setup({
       vault = {
         enabled = true, -- Enable HCP Vault Secrets integration
         override = false, -- When true, Vault secrets take precedence over .env files and shell variables
-        apps = { -- Required: List of application names to fetch secrets from
+        apps = { -- Optional: List of application names to fetch secrets from by default
           "sample-app",
           "database"
         },

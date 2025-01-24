@@ -1,5 +1,4 @@
 local api = vim.api
-local utils = require("ecolog.utils")
 local ecolog = require("ecolog")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
@@ -289,7 +288,7 @@ end
 ---@param callback fun(apps: string[]|nil, err?: string)
 function VaultSecretsManager:list_apps(callback)
   vim.notify("Listing HCP Vault Secrets applications...", vim.log.levels.INFO)
-  
+
   local cmd = {
     "hcp",
     "vault-secrets",
@@ -354,6 +353,11 @@ function VaultSecretsManager:_load_secrets_impl(config)
   end
 
   if not config.apps or #config.apps == 0 then
+    if not self.state.is_refreshing then
+      secret_utils.cleanup_state(self.state)
+      return {}
+    end
+    vim.notify(VAULT_ERRORS.NO_APPS.message, VAULT_ERRORS.NO_APPS.level)
     secret_utils.cleanup_state(self.state)
     return {}
   end
@@ -364,15 +368,8 @@ function VaultSecretsManager:_load_secrets_impl(config)
     return {}
   end
 
-  -- Debug: Show current state
-  vim.notify(string.format("Debug: is_refreshing=%s", tostring(self.state.is_refreshing)), vim.log.levels.DEBUG)
-
   -- Initialize per-app secrets tracking if not exists
   self.state.app_loaded_secrets = self.state.app_loaded_secrets or {}
-
-  -- Debug: Show existing secrets count
-  local existing_count = vim.tbl_count(self.state.loaded_secrets or {})
-  vim.notify(string.format("Debug: Existing secrets count: %d", existing_count), vim.log.levels.DEBUG)
 
   -- Create a set of current apps for faster lookup
   local current_apps = {}
@@ -381,7 +378,7 @@ function VaultSecretsManager:_load_secrets_impl(config)
   end
 
   -- Keep existing secrets if we're not refreshing
-  if not self.state.is_refreshing then
+  if not self.state.is_refreshing and self.state.initialized then
     -- Only remove secrets from deselected apps
     local secrets_to_keep = {}
     for key, value in pairs(self.state.loaded_secrets or {}) do
@@ -389,19 +386,17 @@ function VaultSecretsManager:_load_secrets_impl(config)
       if app_name and current_apps[app_name] then
         secrets_to_keep[key] = value
       else
-        vim.notify(string.format("Debug: Removing secret %s from app %s", key, app_name or "unknown"), vim.log.levels.DEBUG)
       end
     end
     self.state.loaded_secrets = secrets_to_keep
   else
-    -- Reset secrets if we're refreshing
+    -- Reset secrets if we're starting fresh
     self.state.loaded_secrets = {}
   end
 
   -- Clean up app_secrets for removed apps
   for app_name, _ in pairs(self.state.app_secrets or {}) do
     if not current_apps[app_name] then
-      vim.notify(string.format("Debug: Removing app %s and its secrets", app_name), vim.log.levels.DEBUG)
       self.state.app_secrets[app_name] = nil
       if self.state.app_loaded_secrets then
         self.state.app_loaded_secrets[app_name] = nil
@@ -413,13 +408,11 @@ function VaultSecretsManager:_load_secrets_impl(config)
   local all_paths = {}
   for _, app_name in ipairs(config.apps) do
     local paths = self.state.app_secrets[app_name] or {}
-    vim.notify(string.format("Debug: App %s has %d paths", app_name, #paths), vim.log.levels.DEBUG)
     for _, path in ipairs(paths) do
       table.insert(all_paths, { app = app_name, path = path })
     end
   end
 
-  vim.notify(string.format("Debug: Total paths to process: %d", #all_paths), vim.log.levels.DEBUG)
   self.state.selected_secrets = all_paths
 
   vim.notify("Loading HCP Vault secrets...", vim.log.levels.INFO)
@@ -436,10 +429,6 @@ function VaultSecretsManager:_load_secrets_impl(config)
 
   local function check_completion()
     if completed_apps >= total_apps then
-      -- Debug: Show final secrets count
-      local final_count = vim.tbl_count(self.state.loaded_secrets or {})
-      vim.notify(string.format("Debug: Final secrets count: %d", final_count), vim.log.levels.DEBUG)
-
       -- Show which apps are still loaded
       local remaining_apps = {}
       for key, value in pairs(self.state.loaded_secrets or {}) do
@@ -448,8 +437,8 @@ function VaultSecretsManager:_load_secrets_impl(config)
           remaining_apps[app_name] = true
         end
       end
-      vim.notify("Debug: Remaining apps with secrets: " .. vim.inspect(vim.tbl_keys(remaining_apps)), vim.log.levels.DEBUG)
 
+      self.state.initialized = true
       local updates_to_process = self.state.pending_env_updates
       self.state.pending_env_updates = {}
       secret_utils.update_environment(self.state.loaded_secrets, config.override, "vault:")
@@ -462,16 +451,13 @@ function VaultSecretsManager:_load_secrets_impl(config)
 
   for _, app_name in ipairs(config.apps) do
     local paths = self.state.app_secrets[app_name] or {}
-    vim.notify(string.format("Debug: Processing app %s with %d paths", app_name, #paths), vim.log.levels.DEBUG)
     if #paths > 0 then
       self:process_app_secrets(app_name, paths, function()
         completed_apps = completed_apps + 1
-        vim.notify(string.format("Debug: Completed app %s (%d/%d)", app_name, completed_apps, total_apps), vim.log.levels.DEBUG)
         check_completion()
       end)
     else
       completed_apps = completed_apps + 1
-      vim.notify(string.format("Debug: Skipped app %s (%d/%d) - no paths", app_name, completed_apps, total_apps), vim.log.levels.DEBUG)
       check_completion()
     end
   end
@@ -494,18 +480,11 @@ function VaultSecretsManager:process_app_secrets(app_name, secrets, on_complete)
   -- Initialize app-specific secrets storage
   self.state.app_loaded_secrets[app_name] = {}
 
-  vim.notify(string.format("Debug: Starting to process %d secrets for app %s", total_secrets, app_name), vim.log.levels.DEBUG)
-
   local function check_completion()
     if completed_jobs >= total_secrets then
-      vim.notify(string.format("Debug: App %s completed - loaded: %d, failed: %d", 
-        app_name, loaded_secrets, failed_secrets), vim.log.levels.DEBUG)
       if loaded_secrets > 0 or failed_secrets > 0 then
-        local msg = string.format("[%s] Loaded %d secret%s", 
-          app_name,
-          loaded_secrets, 
-          loaded_secrets == 1 and "" or "s"
-        )
+        local msg =
+          string.format("[%s] Loaded %d secret%s", app_name, loaded_secrets, loaded_secrets == 1 and "" or "s")
         if failed_secrets > 0 then
           msg = msg .. string.format(", %d failed", failed_secrets)
         end
@@ -521,66 +500,59 @@ function VaultSecretsManager:process_app_secrets(app_name, secrets, on_complete)
     end
 
     local secret_path = secrets[current_index]
-    vim.notify(string.format("Debug: Processing secret %d/%d: %s for app %s", 
-      current_index, total_secrets, secret_path, app_name), vim.log.levels.DEBUG)
 
-    local job_id = self:create_secret_job(
-      { app = app_name, path = secret_path },
-      function(value)
-        local loaded, failed = self:process_secret_value(
-          value,
-          string.format("%s/%s", app_name, secret_path),
-          self.state.loaded_secrets
-        )
-        loaded_secrets = loaded_secrets + (loaded or 0)
-        failed_secrets = failed_secrets + (failed or 0)
-        completed_jobs = completed_jobs + 1
-        
-        vim.notify(string.format("Debug: Secret %s completed successfully", secret_path), vim.log.levels.DEBUG)
-        
-        -- Move to next secret after this one completes
-        current_index = current_index + 1
-        check_completion()
-        
-        if current_index <= total_secrets then
-          process_next_secret()
-        end
-      end,
-      function(err)
-        retry_counts[current_index] = (retry_counts[current_index] or 0) + 1
-        if
-          retry_counts[current_index] <= secret_utils.MAX_RETRIES
-          and err.code == "ConnectionError"
-        then
-          vim.notify(string.format("Retrying secret %s from %s (attempt %d/%d)", 
-            secret_path, app_name, retry_counts[current_index], secret_utils.MAX_RETRIES), 
-            vim.log.levels.INFO)
-          vim.defer_fn(function()
-            process_next_secret()
-          end, 1000 * retry_counts[current_index])
-          return
-        end
+    local job_id = self:create_secret_job({ app = app_name, path = secret_path }, function(value)
+      local loaded, failed =
+        self:process_secret_value(value, string.format("%s/%s", app_name, secret_path), self.state.loaded_secrets)
+      loaded_secrets = loaded_secrets + (loaded or 0)
+      failed_secrets = failed_secrets + (failed or 0)
+      completed_jobs = completed_jobs + 1
 
-        failed_secrets = failed_secrets + 1
-        vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
-        completed_jobs = completed_jobs + 1
-        
-        -- Move to next secret after this one fails
-        current_index = current_index + 1
-        check_completion()
-        
-        if current_index <= total_secrets then
-          process_next_secret()
-        end
+      -- Move to next secret after this one completes
+      current_index = current_index + 1
+      check_completion()
+
+      if current_index <= total_secrets then
+        process_next_secret()
       end
-    )
+    end, function(err)
+      retry_counts[current_index] = (retry_counts[current_index] or 0) + 1
+      if retry_counts[current_index] <= secret_utils.MAX_RETRIES and err.code == "ConnectionError" then
+        vim.notify(
+          string.format(
+            "Retrying secret %s from %s (attempt %d/%d)",
+            secret_path,
+            app_name,
+            retry_counts[current_index],
+            secret_utils.MAX_RETRIES
+          ),
+          vim.log.levels.INFO
+        )
+        vim.defer_fn(function()
+          process_next_secret()
+        end, 1000 * retry_counts[current_index])
+        return
+      end
+
+      failed_secrets = failed_secrets + 1
+      vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+      completed_jobs = completed_jobs + 1
+
+      -- Move to next secret after this one fails
+      current_index = current_index + 1
+      check_completion()
+
+      if current_index <= total_secrets then
+        process_next_secret()
+      end
+    end)
 
     if job_id <= 0 then
       failed_secrets = failed_secrets + 1
       completed_jobs = completed_jobs + 1
       current_index = current_index + 1
       check_completion()
-      
+
       if current_index <= total_secrets then
         process_next_secret()
       end
@@ -601,6 +573,15 @@ function VaultSecretsManager:_select_impl()
   -- Reset loading lock to allow new selections
   self.state.loading_lock = nil
 
+  -- Save current state
+  local previous_state = {
+    app_secrets = vim.deepcopy(self.state.app_secrets or {}),
+    loaded_secrets = vim.deepcopy(self.state.loaded_secrets or {}),
+    initialized = self.state.initialized,
+    is_refreshing = self.state.is_refreshing,
+    config = vim.deepcopy(self.config or {}),
+  }
+
   self:list_apps(function(apps, apps_err)
     if apps_err then
       vim.notify(apps_err, vim.log.levels.ERROR)
@@ -615,13 +596,26 @@ function VaultSecretsManager:_select_impl()
     -- Create a selection UI for apps
     local selected_apps = {}
     -- Initialize with currently loaded apps
-    if self.state.app_secrets then
-      for app_name, _ in pairs(self.state.app_secrets) do
+    if previous_state.app_secrets then
+      for app_name, _ in pairs(previous_state.app_secrets) do
         selected_apps[app_name] = true
       end
     end
 
     secret_utils.create_secret_selection_ui(apps, selected_apps, function(new_selected_apps)
+      -- Restore previous state
+      self.state = {
+        app_secrets = vim.deepcopy(previous_state.app_secrets),
+        loaded_secrets = vim.deepcopy(previous_state.loaded_secrets),
+        initialized = previous_state.initialized,
+        is_refreshing = false,
+        loading_lock = nil,
+        active_jobs = {},
+        pending_env_updates = {},
+        app_loaded_secrets = {},
+      }
+      self.config = vim.deepcopy(previous_state.config)
+
       local chosen_apps = {}
       for app, is_selected in pairs(new_selected_apps) do
         if is_selected then
@@ -629,10 +623,7 @@ function VaultSecretsManager:_select_impl()
         end
       end
 
-      vim.notify("Debug: Newly chosen apps: " .. vim.inspect(chosen_apps), vim.log.levels.DEBUG)
-
       if #chosen_apps == 0 then
-        -- Clear all state and environment
         local current_env = ecolog.get_env_vars() or {}
         local final_vars = {}
 
@@ -642,16 +633,11 @@ function VaultSecretsManager:_select_impl()
           end
         end
 
-        self.state = {
-          selected_secrets = {},
-          loaded_secrets = {},
-          app_secrets = {},
-          loading_lock = nil,
-          active_jobs = {},
-          pending_env_updates = {},
-          app_loaded_secrets = {},
-          is_refreshing = false
-        }
+        self.state.selected_secrets = {}
+        self.state.loaded_secrets = {}
+        self.state.app_secrets = {}
+        self.state.initialized = false
+        self.state.loading_lock = nil
 
         ecolog.refresh_env_vars()
         secret_utils.update_environment(final_vars, false, "vault:")
@@ -659,32 +645,59 @@ function VaultSecretsManager:_select_impl()
         return
       end
 
-      -- Reset state for clean reload
-      self.state = {
-        selected_secrets = {},
-        loaded_secrets = {},
-        app_secrets = {},
-        loading_lock = nil,
-        active_jobs = {},
-        pending_env_updates = {},
-        app_loaded_secrets = {},
-        is_refreshing = false
-      }
+      -- Identify new apps and removed apps
+      local new_apps = {}
+      local removed_apps = {}
+      local current_apps = vim.tbl_keys(self.state.app_secrets or {})
 
-      -- Update config with chosen apps
+      -- Find new apps
+      for _, app_name in ipairs(chosen_apps) do
+        if not self.state.app_secrets or not self.state.app_secrets[app_name] then
+          table.insert(new_apps, app_name)
+        end
+      end
+
+      -- Find removed apps
+      for _, app_name in ipairs(current_apps) do
+        if not new_selected_apps[app_name] then
+          table.insert(removed_apps, app_name)
+        end
+      end
+
+      -- Remove secrets for removed apps immediately
+      if #removed_apps > 0 then
+        for _, app_name in ipairs(removed_apps) do
+          self.state.app_secrets[app_name] = nil
+          -- Remove secrets from loaded_secrets that belong to this app
+          local new_loaded_secrets = {}
+          for key, value in pairs(self.state.loaded_secrets or {}) do
+            local secret_app = value.source:match("^vault:([^/]+)/")
+            if secret_app ~= app_name then
+              new_loaded_secrets[key] = value
+            end
+          end
+          self.state.loaded_secrets = new_loaded_secrets
+        end
+      end
+
+      -- Update config with all chosen apps
       self.config = vim.tbl_extend("force", self.config or {}, {
         apps = chosen_apps,
         enabled = true,
       })
 
-      -- Process all chosen apps
+      -- Process new apps
       local completed_apps = 0
-      local total_apps = #chosen_apps
+      local total_new_apps = #new_apps
 
       local function check_completion()
-        if completed_apps >= total_apps then
-          -- Load all secrets with fresh state
-          self:load_secrets(self.config)
+        if completed_apps >= total_new_apps then
+          -- Only load secrets if there are new apps or removals
+          if #new_apps > 0 or #removed_apps > 0 then
+            -- Set is_refreshing to false to preserve remaining secrets
+            self.state.is_refreshing = false
+            self:load_secrets(self.config)
+          end
         end
       end
 
@@ -726,7 +739,10 @@ function VaultSecretsManager:_select_impl()
 
             local ok, parsed = pcall(vim.json.decode, stdout)
             if not ok or type(parsed) ~= "table" then
-              vim.notify(string.format("[%s] Failed to parse HCP Vault Secrets response", app_name), vim.log.levels.ERROR)
+              vim.notify(
+                string.format("[%s] Failed to parse HCP Vault Secrets response", app_name),
+                vim.log.levels.ERROR
+              )
               completed_apps = completed_apps + 1
               check_completion()
               return
@@ -768,9 +784,17 @@ function VaultSecretsManager:_select_impl()
         end
       end
 
-      -- Process all chosen apps
-      for _, app_name in ipairs(chosen_apps) do
-        process_app(app_name)
+      -- Start processing new apps
+      if #new_apps > 0 then
+        for _, app_name in ipairs(new_apps) do
+          process_app(app_name)
+        end
+      else
+        -- If only removals happened, just reload with current config
+        if #removed_apps > 0 then
+          self.state.is_refreshing = false
+          self:load_secrets(self.config)
+        end
       end
     end, "vault:")
   end)
@@ -796,4 +820,3 @@ return {
     return instance:select()
   end,
 }
-

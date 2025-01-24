@@ -4,16 +4,19 @@ describe("telescope previewer integration", function()
   local telescope_integration
   local state
   local previewer_utils
+  local shelter_utils
 
   before_each(function()
     package.loaded["ecolog.shelter.integrations.telescope"] = nil
     package.loaded["ecolog.shelter.state"] = nil
     package.loaded["ecolog.shelter.previewer_utils"] = nil
+    package.loaded["ecolog.shelter.utils"] = nil
     package.loaded["telescope.config"] = nil
 
     telescope_integration = require("ecolog.shelter.integrations.telescope")
     state = require("ecolog.shelter.state")
     previewer_utils = require("ecolog.shelter.previewer_utils")
+    shelter_utils = require("ecolog.shelter.utils")
   end)
 
   describe("setup_telescope_shelter", function()
@@ -34,6 +37,7 @@ describe("telescope previewer integration", function()
       state_mock._original_file_previewer = nil
       state_mock._original_grep_previewer = nil
       state_mock.is_enabled.returns(true)
+      state_mock.get_config.returns({ highlight_group = "Comment" })
     end)
 
     after_each(function()
@@ -66,11 +70,12 @@ describe("telescope previewer integration", function()
     end)
   end)
 
-  describe("masked previewer", function()
+  describe("modified preview functionality", function()
     local telescope_from_entry
     local telescope_previewers
     local buffer_previewer_maker
     local telescope_config
+    local original_file_previewer
 
     before_each(function()
       telescope_from_entry = {
@@ -97,9 +102,17 @@ describe("telescope previewer integration", function()
         end
       end
 
+      original_file_previewer = function(opts)
+        return telescope_previewers.new_buffer_previewer({
+          state = { bufnr = 1, bufname = ".env", winid = 0 },
+          define_preview = function() end,
+        })
+      end
+
       telescope_config = {
         values = {
           buffer_previewer_maker = buffer_previewer_maker,
+          file_previewer = original_file_previewer,
         },
       }
 
@@ -109,16 +122,21 @@ describe("telescope previewer integration", function()
 
       local state_mock = mock(state, true)
       state_mock.is_enabled.returns(true)
+      state_mock.get_config.returns({ highlight_group = "Comment", partial_mode = false })
+      state_mock._original_file_previewer = original_file_previewer
 
       mock(previewer_utils, true)
+      mock(shelter_utils, true)
+      shelter_utils.match_env_file.returns(true)
     end)
 
     after_each(function()
       mock.revert(previewer_utils)
       mock.revert(state)
+      mock.revert(shelter_utils)
     end)
 
-    it("should create a masked file previewer", function()
+    it("should mask env file in file preview", function()
       telescope_integration.setup_telescope_shelter()
       local previewer = telescope_integration.create_masked_previewer({}, "file")
       local entry = { path = ".env" }
@@ -128,7 +146,7 @@ describe("telescope previewer integration", function()
       assert.stub(previewer_utils.mask_preview_buffer).was_called_with(1, ".env", "telescope")
     end)
 
-    it("should create a masked grep previewer", function()
+    it("should mask env file in grep preview", function()
       telescope_integration.setup_telescope_shelter()
       local previewer = telescope_integration.create_masked_previewer({}, "grep")
       local entry = { filename = ".env", lnum = 1, col = 0 }
@@ -136,9 +154,35 @@ describe("telescope previewer integration", function()
       previewer.define_preview(previewer, entry)
 
       assert.stub(previewer_utils.mask_preview_buffer).was_called_with(1, ".env", "telescope")
+    end)
 
-      mock.revert(vim.api)
-      mock.revert(vim.cmd)
+    it("should not mask non-env files", function()
+      mock.revert(shelter_utils)
+      local shelter_utils_mock = mock(shelter_utils, true)
+      shelter_utils_mock.match_env_file.returns(false)
+
+      telescope_integration.setup_telescope_shelter()
+      local previewer = telescope_integration.create_masked_previewer({}, "file")
+      local entry = { path = "regular.txt" }
+
+      previewer.define_preview(previewer, entry)
+
+      assert.stub(previewer_utils.mask_preview_buffer).was_not_called()
+    end)
+
+    it("should not mask preview when disabled", function()
+      mock.revert(state)
+      local state_mock = mock(state, true)
+      state_mock.is_enabled.returns(false)
+      state_mock._original_file_previewer = original_file_previewer
+
+      telescope_integration.setup_telescope_shelter()
+      local previewer = telescope_integration.create_masked_previewer({}, "file")
+      local entry = { path = ".env" }
+
+      previewer.define_preview(previewer, entry)
+
+      assert.stub(previewer_utils.mask_preview_buffer).was_not_called()
     end)
   end)
 end)

@@ -3,8 +3,18 @@ local M = {}
 local api = vim.api
 local state = require("ecolog.shelter.state")
 local previewer_utils = require("ecolog.shelter.previewer_utils")
+local shelter_utils = require("ecolog.shelter.utils")
 
 function M.create_masked_previewer(opts, preview_type)
+  if not state.is_enabled("telescope_previewer") then
+    local conf = require("telescope.config").values
+    local original_previewer = preview_type == "file" and state._original_file_previewer or state._original_grep_previewer
+    if not original_previewer then
+      return nil
+    end
+    return original_previewer(opts)
+  end
+
   opts = opts or {}
   local previewers = require("telescope.previewers")
   local from_entry = require("telescope.from_entry")
@@ -44,7 +54,11 @@ function M.create_masked_previewer(opts, preview_type)
             end)
           end
 
-          previewer_utils.mask_preview_buffer(bufnr, vim.fn.fnamemodify(path, ":t"), "telescope")
+          local filename = vim.fn.fnamemodify(path, ":t")
+          local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+          if shelter_utils.match_env_file(filename, config) then
+            previewer_utils.mask_preview_buffer(bufnr, filename, "telescope")
+          end
         end,
       })
     end,

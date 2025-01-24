@@ -65,7 +65,7 @@ describe("fzf previewer integration", function()
     end)
   end)
 
-  describe("modified preview_buf_post", function()
+  describe("modified preview functionality", function()
     local fzf_lua
     local bufnr = 1
     local entry = { path = ".env" }
@@ -106,7 +106,6 @@ describe("fzf previewer integration", function()
       vim.fn.sha256 = function()
         return "hash"
       end
-      local fn_mock = mock(vim.fn, true)
 
       vim.loop = vim.loop or {}
       vim.loop.now = function()
@@ -119,6 +118,7 @@ describe("fzf previewer integration", function()
       local state_mock = mock(state, true)
       state_mock.is_enabled.returns(true)
       state_mock.get_config.returns({ highlight_group = "Comment", partial_mode = false })
+
       local shelter_utils_mock = mock(shelter_utils, true)
       shelter_utils_mock.match_env_file.returns(true)
       shelter_utils_mock.determine_masked_value.returns("****")
@@ -161,6 +161,19 @@ describe("fzf previewer integration", function()
       mock.revert(vim.api)
       local api_mock = mock(vim.api, true)
       api_mock.nvim_buf_is_valid.returns(false)
+
+      fzf_integration.setup_fzf_shelter()
+
+      local self = fzf_lua.previewer.builtin.buffer_or_file
+      self.preview_buf_post(self, entry, min_winopts)
+
+      assert.stub(vim.api.nvim_buf_get_lines).was_not_called()
+    end)
+
+    it("should not mask preview when disabled", function()
+      mock.revert(state)
+      local state_mock = mock(state, true)
+      state_mock.is_enabled.returns(false)
 
       fzf_integration.setup_fzf_shelter()
 

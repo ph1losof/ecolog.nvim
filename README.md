@@ -248,6 +248,8 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 | `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
 | `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
 | `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
+| `:EcologAWSSelect`                         | Open interactive picker to select AWS Secrets Manager secrets                         |
+| `:EcologVaultSelect`                       | Open interactive picker to select HCP Vault applications                              |
 
 ## 📝 Environment File Priority
 

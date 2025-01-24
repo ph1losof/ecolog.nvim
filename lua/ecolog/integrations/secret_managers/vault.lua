@@ -243,23 +243,17 @@ function VaultSecretsManager:check_token(callback)
     "list",
   }
 
-  self:create_vault_job(
-    cmd,
-    self.state,
-    function()
-      self.state.token_valid = true
-      self.state.last_token_check = now
-      callback(true)
-    end,
-    function(err)
-      self.state.token_valid = false
-      callback(false, err.message)
-    end,
-    {
-      HCP_CLIENT_ID = self.config.client_id,
-      HCP_CLIENT_SECRET = self.config.token,
-    }
-  )
+  self:create_vault_job(cmd, self.state, function()
+    self.state.token_valid = true
+    self.state.last_token_check = now
+    callback(true)
+  end, function(err)
+    self.state.token_valid = false
+    callback(false, err.message)
+  end, {
+    HCP_CLIENT_ID = self.config.client_id,
+    HCP_CLIENT_SECRET = self.config.token,
+  })
 end
 
 ---Create a job to fetch a secret
@@ -279,34 +273,29 @@ function VaultSecretsManager:create_secret_job(secret, on_success, on_error)
     "--format=json",
   }
 
-  return self:create_vault_job(
-    cmd,
-    self.state,
-    function(stdout)
-      local parsed, err = parse_vault_response(stdout, secret.path)
-      if err then
-        on_error({
-          message = err,
-          code = "InvalidResponse",
-          level = vim.log.levels.ERROR,
-        })
-        return
-      end
-
-      if parsed and parsed.static_version and parsed.static_version.value then
-        on_success(parsed.static_version.value)
-      else
-        on_error({
-          message = string.format("Invalid response format for secret %s", secret.path),
-          code = "InvalidResponse",
-          level = vim.log.levels.ERROR,
-        })
-      end
-    end,
-    function(err)
-      on_error(err)
+  return self:create_vault_job(cmd, self.state, function(stdout)
+    local parsed, err = parse_vault_response(stdout, secret.path)
+    if err then
+      on_error({
+        message = err,
+        code = "InvalidResponse",
+        level = vim.log.levels.ERROR,
+      })
+      return
     end
-  )
+
+    if parsed and parsed.static_version and parsed.static_version.value then
+      on_success(parsed.static_version.value)
+    else
+      on_error({
+        message = string.format("Invalid response format for secret %s", secret.path),
+        code = "InvalidResponse",
+        level = vim.log.levels.ERROR,
+      })
+    end
+  end, function(err)
+    on_error(err)
+  end)
 end
 
 ---List available secrets in HCP Vault Secrets
@@ -320,33 +309,27 @@ function VaultSecretsManager:list_secrets(callback)
     "--format=json",
   }
 
-  self:create_vault_job(
-    cmd,
-    self.state,
-    function(stdout)
-      local parsed, err = parse_vault_response(stdout, "list_secrets")
-      if err then
-        callback(nil, err)
-        return
-      end
+  self:create_vault_job(cmd, self.state, function(stdout)
+    local parsed, err = parse_vault_response(stdout, "list_secrets")
+    if err then
+      callback(nil, err)
+      return
+    end
 
-      local secrets = {}
-      for _, secret in ipairs(parsed.secrets or {}) do
-        if secret.name then
-          table.insert(secrets, secret.name)
-        end
+    local secrets = {}
+    for _, secret in ipairs(parsed.secrets or {}) do
+      if secret.name then
+        table.insert(secrets, secret.name)
       end
+    end
 
-      callback(secrets)
-    end,
-    function(err)
-      callback(nil, err.message)
-    end,
-    {
-      HCP_CLIENT_ID = self.config.client_id,
-      HCP_CLIENT_SECRET = self.config.token,
-    }
-  )
+    callback(secrets)
+  end, function(err)
+    callback(nil, err.message)
+  end, {
+    HCP_CLIENT_ID = self.config.client_id,
+    HCP_CLIENT_SECRET = self.config.token,
+  })
 end
 
 ---List available apps in HCP Vault Secrets
@@ -360,29 +343,24 @@ function VaultSecretsManager:list_apps(callback)
     "--format=json",
   }
 
-  self:create_vault_job(
-    cmd,
-    self.state,
-    function(stdout)
-      local parsed, err = parse_vault_response(stdout, "list_apps")
-      if err then
-        callback(nil, err)
-        return
-      end
-
-      local apps = {}
-      for _, app in ipairs(parsed) do
-        if app.name then
-          table.insert(apps, app.name)
-        end
-      end
-
-      callback(apps)
-    end,
-    function(err)
-      callback(nil, err.message)
+  self:create_vault_job(cmd, self.state, function(stdout)
+    local parsed, err = parse_vault_response(stdout, "list_apps")
+    if err then
+      callback(nil, err)
+      return
     end
-  )
+
+    local apps = {}
+    for _, app in ipairs(parsed) do
+      if app.name then
+        table.insert(apps, app.name)
+      end
+    end
+
+    callback(apps)
+  end, function(err)
+    callback(nil, err.message)
+  end)
 end
 
 ---Extract secret names from Vault response
@@ -512,39 +490,34 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
       "--format=json",
     }
 
-    self:create_vault_job(
-      cmd,
-      self.state,
-      function(stdout)
-        local parsed, err = parse_vault_response(stdout, app_name)
-        if err then
-          vim.notify(err, vim.log.levels.ERROR)
-          completed_apps = completed_apps + 1
-          check_completion()
-          return
-        end
-
-        local secrets = extract_secret_names(parsed)
-        if #secrets == 0 then
-          completed_apps = completed_apps + 1
-          check_completion()
-          return
-        end
-
-        self.state.app_secrets[app_name] = secrets
-        self:process_app_secrets(app_name, secrets, function(loaded, failed)
-          total_loaded = total_loaded + (loaded or 0)
-          total_failed = total_failed + (failed or 0)
-          completed_apps = completed_apps + 1
-          check_completion()
-        end)
-      end,
-      function(err)
-        vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+    self:create_vault_job(cmd, self.state, function(stdout)
+      local parsed, err = parse_vault_response(stdout, app_name)
+      if err then
+        vim.notify(err, vim.log.levels.ERROR)
         completed_apps = completed_apps + 1
         check_completion()
+        return
       end
-    )
+
+      local secrets = extract_secret_names(parsed)
+      if #secrets == 0 then
+        completed_apps = completed_apps + 1
+        check_completion()
+        return
+      end
+
+      self.state.app_secrets[app_name] = secrets
+      self:process_app_secrets(app_name, secrets, function(loaded, failed)
+        total_loaded = total_loaded + (loaded or 0)
+        total_failed = total_failed + (failed or 0)
+        completed_apps = completed_apps + 1
+        check_completion()
+      end)
+    end, function(err)
+      vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+      completed_apps = completed_apps + 1
+      check_completion()
+    end)
   end
 
   if #config.apps > 0 then
@@ -610,52 +583,47 @@ function VaultSecretsManager:process_app_secrets(app_name, secrets, on_complete)
     end
 
     local secret_path = secrets[current_index]
-    local job_id = self:create_secret_job(
-      { app = app_name, path = secret_path },
-      function(value)
-        local loaded, failed = secret_utils.process_secret_value(
-          value,
-          {
-            source_prefix = string.format("vault:%s/", app_name),
-            source_path = secret_path,
-          },
-          self.state.app_loaded_secrets[app_name]
-        )
+    local job_id = self:create_secret_job({ app = app_name, path = secret_path }, function(value)
+      local loaded, failed = secret_utils.process_secret_value(value, {
+        source_prefix = string.format("vault:%s/", app_name),
+        source_path = secret_path,
+      }, self.state.app_loaded_secrets[app_name])
 
-        if loaded > 0 then
-          for key, secret in pairs(self.state.app_loaded_secrets[app_name]) do
-            self.state.loaded_secrets[key] = secret
-          end
-        end
-
-        loaded_secrets = loaded_secrets + (loaded or 0)
-        failed_secrets = failed_secrets + (failed or 0)
-        completed_jobs = completed_jobs + 1
-
-        current_index = current_index + 1
-        check_completion()
-
-        if current_index <= total_secrets then
-          process_next_secret()
-        end
-      end,
-      function(err)
-        if err.code == "ConnectionError" and handle_secret_retry(retry_counts, current_index, secret_path, app_name, process_next_secret) then
-          return
-        end
-
-        failed_secrets = failed_secrets + 1
-        vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
-        completed_jobs = completed_jobs + 1
-
-        current_index = current_index + 1
-        check_completion()
-
-        if current_index <= total_secrets then
-          process_next_secret()
+      if loaded > 0 then
+        for key, secret in pairs(self.state.app_loaded_secrets[app_name]) do
+          self.state.loaded_secrets[key] = secret
         end
       end
-    )
+
+      loaded_secrets = loaded_secrets + (loaded or 0)
+      failed_secrets = failed_secrets + (failed or 0)
+      completed_jobs = completed_jobs + 1
+
+      current_index = current_index + 1
+      check_completion()
+
+      if current_index <= total_secrets then
+        process_next_secret()
+      end
+    end, function(err)
+      if
+        err.code == "ConnectionError"
+        and handle_secret_retry(retry_counts, current_index, secret_path, app_name, process_next_secret)
+      then
+        return
+      end
+
+      failed_secrets = failed_secrets + 1
+      vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+      completed_jobs = completed_jobs + 1
+
+      current_index = current_index + 1
+      check_completion()
+
+      if current_index <= total_secrets then
+        process_next_secret()
+      end
+    end)
 
     if job_id <= 0 then
       failed_secrets = failed_secrets + 1

@@ -162,4 +162,3 @@ end
 
 M.BaseSecretManager = BaseSecretManager
 return M
-

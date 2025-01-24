@@ -4,7 +4,7 @@ local api = vim.api
 local state = require("ecolog.shelter.state")
 local previewer_utils = require("ecolog.shelter.previewer_utils")
 
-local function create_masked_previewer(opts, preview_type)
+function M.create_masked_previewer(opts, preview_type)
   opts = opts or {}
   local previewers = require("telescope.previewers")
   local from_entry = require("telescope.from_entry")
@@ -63,10 +63,10 @@ function M.setup_telescope_shelter()
 
   if state.is_enabled("telescope_previewer") then
     conf.file_previewer = function(opts)
-      return create_masked_previewer(opts, "file")
+      return M.create_masked_previewer(opts, "file")
     end
     conf.grep_previewer = function(opts)
-      return create_masked_previewer(opts, "grep")
+      return M.create_masked_previewer(opts, "grep")
     end
   else
     conf.file_previewer = state._original_file_previewer

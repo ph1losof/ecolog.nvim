@@ -391,8 +391,6 @@ function VaultSecretsManager:_load_secrets_impl(config)
 
   self.state.selected_secrets = all_paths
 
-  vim.notify("Loading HCP Vault secrets...", vim.log.levels.INFO)
-
   self.state.timeout_timer = vim.fn.timer_start(VAULT_TIMEOUT_MS, function()
     if self.state.loading_lock then
       vim.notify(VAULT_ERRORS.TIMEOUT.message, VAULT_ERRORS.TIMEOUT.level)
@@ -626,7 +624,7 @@ function VaultSecretsManager:_select_impl()
       end
 
       local function process_app(app_name)
-        vim.notify(string.format("Listing secrets for app: %s", app_name), vim.log.levels.INFO)
+        vim.notify(string.format("Loading secrets for app: %s", app_name), vim.log.levels.INFO)
         local cmd = {
           "hcp",
           "vault-secrets",

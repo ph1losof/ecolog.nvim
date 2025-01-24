@@ -91,21 +91,20 @@ end
 ---@param source_prefix string The prefix to identify the source of secrets (e.g. "asm:", "vault:")
 function M.update_environment(secrets, override, source_prefix)
   local current_env = ecolog.get_env_vars() or {}
-  local final_vars = override and {} or vim.deepcopy(current_env)
+  local final_vars = {}
 
-  local keep_vars = {}
-  for k, v in pairs(final_vars) do
-    if v.source and v.source:match("^" .. source_prefix) then
-      keep_vars[k] = true
+  if not override then
+    -- Keep only non-secret manager variables if not overriding
+    for k, v in pairs(current_env) do
+      if not (v.source and v.source:match("^" .. source_prefix)) then
+        final_vars[k] = v
+      end
     end
   end
 
+  -- Add all new secrets
   for k, v in pairs(secrets) do
-    if not override and keep_vars[k] then
-      vim.notify(string.format("Warning: Secret %s already exists in environment, skipping...", k), vim.log.levels.WARN)
-    else
-      final_vars[k] = v
-    end
+    final_vars[k] = v
   end
 
   ecolog.refresh_env_vars()

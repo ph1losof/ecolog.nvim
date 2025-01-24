@@ -268,6 +268,7 @@ function M.process_secret_value(secret_value, options, secrets)
           end
 
           local type_name, detected_value = require("ecolog.types").detect_type(transformed_value)
+          -- Always update the secret value, even if it exists
           secrets[key] = {
             value = detected_value or transformed_value,
             type = type_name,
@@ -275,6 +276,9 @@ function M.process_secret_value(secret_value, options, secrets)
             source = options.source_prefix .. options.source_path,
             comment = nil,
           }
+          if secrets[key] then
+            vim.notify(string.format("Updated secret %s with new value", key), vim.log.levels.INFO)
+          end
           loaded = loaded + 1
         end
       end
@@ -299,6 +303,7 @@ function M.process_secret_value(secret_value, options, secrets)
       end
 
       local type_name, detected_value = require("ecolog.types").detect_type(transformed_value)
+      -- Always update the secret value, even if it exists
       secrets[key] = {
         value = detected_value or transformed_value,
         type = type_name,
@@ -306,6 +311,9 @@ function M.process_secret_value(secret_value, options, secrets)
         source = options.source_prefix .. options.source_path,
         comment = nil,
       }
+      if secrets[key] then
+        vim.notify(string.format("Updated secret %s with new value", key), vim.log.levels.INFO)
+      end
       loaded = loaded + 1
     end
   end

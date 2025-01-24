@@ -124,6 +124,38 @@ local function merge_vars(target, source, override)
   return target
 end
 
+---Load secrets from all configured secret managers
+---@param opts table The configuration options
+---@param env_vars table<string, EnvVarInfo> Current environment variables
+---@return table<string, EnvVarInfo> Updated environment variables with secrets
+local function load_secrets(opts, env_vars)
+  if not opts.integrations or not opts.integrations.secret_managers then
+    return env_vars
+  end
+
+  local secret_managers = opts.integrations.secret_managers
+
+  -- Load AWS secrets
+  if secret_managers.aws and secret_managers.aws.enabled then
+    local ok, aws_secrets = pcall(require, "ecolog.integrations.secret_managers.aws")
+    if ok then
+      local secrets = aws_secrets.load_aws_secrets(secret_managers.aws)
+      merge_vars(env_vars, secrets, secret_managers.aws.override)
+    end
+  end
+
+  -- Load Vault secrets
+  if secret_managers.vault and secret_managers.vault.enabled then
+    local ok, vault_secrets = pcall(require, "ecolog.integrations.secret_managers.vault")
+    if ok then
+      local secrets = vault_secrets.load_vault_secrets(secret_managers.vault)
+      merge_vars(env_vars, secrets, secret_managers.vault.override)
+    end
+  end
+
+  return env_vars
+end
+
 ---@param opts table The configuration options
 ---@param state LoaderState The current loader state
 ---@param force boolean? Whether to force reload environment variables
@@ -173,18 +205,12 @@ function M.load_environment(opts, state, force)
     merge_vars(env_vars, shell_vars, true)
     
     -- Then load env file vars
-    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
-      state.selected_env_file = nil
-    end
     if state.selected_env_file then
       local file_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
       merge_vars(env_vars, file_vars, false)
     end
   else
     -- Load env file vars first
-    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
-      state.selected_env_file = nil
-    end
     if state.selected_env_file then
       env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
     end
@@ -196,22 +222,8 @@ function M.load_environment(opts, state, force)
     end
   end
 
-  -- Always load AWS secrets last
-  if opts.integrations and opts.integrations.aws_secrets_manager then
-    local ok, aws_secrets = pcall(require, "ecolog.integrations.aws_secrets_manager")
-    if ok then
-      local secrets = aws_secrets.load_aws_secrets(opts.integrations.aws_secrets_manager)
-      merge_vars(env_vars, secrets, opts.integrations.aws_secrets_manager.override)
-    end
-  end
-
-  if opts.integrations and opts.integrations.secret_managers and opts.integrations.secret_managers.vault then
-    local ok, vault_secrets = pcall(require, "ecolog.integrations.secret_managers.vault")
-    if ok then
-      local secrets = vault_secrets.load_vault_secrets(opts.integrations.secret_managers.vault)
-      merge_vars(env_vars, secrets, opts.integrations.secret_managers.vault.override)
-    end
-  end
+  -- Load secrets from all configured secret managers
+  env_vars = load_secrets(opts, env_vars)
 
   state.env_vars = env_vars
   return env_vars

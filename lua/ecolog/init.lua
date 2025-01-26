@@ -17,7 +17,7 @@ local schedule = vim.schedule
 ---@field sort_fn? function Custom function for sorting env files
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
----@field interpolation boolean Enable/disable environment variable interpolation
+---@field interpolation boolean|InterpolationConfig Enable/disable and configure environment variable interpolation
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
@@ -30,6 +30,12 @@ local schedule = vim.schedule
 ---@field secret_managers? table Secret manager configurations
 ---@field secret_managers.aws? boolean|LoadAwsSecretsConfig AWS Secrets Manager configuration
 ---@field secret_managers.vault? boolean|LoadVaultSecretsConfig HashiCorp Vault configuration
+
+---@class InterpolationConfig
+---@field enabled boolean Enable/disable interpolation
+---@field max_iterations number Maximum iterations for nested interpolation
+---@field warn_on_undefined boolean Whether to warn about undefined variables
+---@field fail_on_cmd_error boolean Whether to fail on command substitution errors
 
 local DEFAULT_CONFIG = {
   path = vim.fn.getcwd(),
@@ -79,7 +85,12 @@ local DEFAULT_CONFIG = {
   },
   env_file_pattern = nil,
   sort_fn = nil,
-  interpolation = false,
+  interpolation = {
+    enabled = false,
+    max_iterations = 10,
+    warn_on_undefined = true,
+    fail_on_cmd_error = false,
+  },
 }
 
 ---@class EcologState
@@ -463,6 +474,16 @@ function M.setup(opts)
   _setup_done = true
 
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+
+  -- Handle boolean interpolation option for backward compatibility
+  if type(config.interpolation) == "boolean" then
+    config.interpolation = {
+      enabled = config.interpolation,
+      max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
+      warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
+      fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
+    }
+  end
 
   state.selected_env_file = nil
 

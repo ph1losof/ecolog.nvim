@@ -27,6 +27,12 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Configuration Options](#configuration-options)
   - [Features](#features)
   - [Best Practices](#best-practices)
+- [Variable Interpolation](#-variable-interpolation)
+  - [Supported Syntax](#supported-syntax)
+  - [Examples](#examples)
+  - [Configuration Options](#configuration-options-1)
+  - [Features](#features-1)
+  - [Best Practices](#best-practices-1)
 - [Supported Languages](#-supported-languages)
   - [Currently Supported](#currently-supported)
   - [Adding new languages and custom providers](#-custom-providers)
@@ -180,6 +186,7 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Priority-based environment file loading
 - Shell variables integration
 - vim.env synchronization
+- Advanced variable interpolation with shell-like syntax
 
 🤖 **Smart Autocompletion**
 
@@ -229,6 +236,91 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Rich preview windows
 - Inline documentation
 - Status indicators
+
+## 🔄 Variable Interpolation
+
+Ecolog supports advanced variable interpolation with shell-like syntax in your environment files.
+
+### Supported Syntax
+
+- **Basic Variables**: `$VAR` or `${VAR}`
+- **Default Values**: `${VAR:-default}` (use default if VAR is unset or empty)
+- **Alternate Values**: `${VAR-alternate}` (use alternate if VAR is unset)
+- **Command Substitution**: `$(command)`
+- **Quoted Strings**:
+  - Single quotes (`'...'`): No interpolation
+  - Double quotes (`"..."`): With interpolation
+
+### Examples
+
+```sh
+# Basic variable interpolation
+APP_URL=${HOST}:${PORT}
+
+# Default values
+API_TIMEOUT=${TIMEOUT:-5000}
+DB_HOST=${DATABASE_HOST:-localhost}
+
+# Alternate values
+CACHE_DIR=${CUSTOM_CACHE-/tmp/cache}
+
+# Command substitution
+GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+TIMESTAMP=$(date +%Y%m%d)
+
+# Nested interpolation
+DATABASE_URL="postgres://${DB_USER:-postgres}:${DB_PASS}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME}"
+```
+
+### Configuration Options
+
+You can customize the interpolation behavior through the plugin's configuration:
+
+```lua
+require('ecolog').setup({
+  -- Enable interpolation with default settings
+  interpolation = true,
+
+  -- Or disable interpolation
+  interpolation = false,
+
+  -- Or customize interpolation settings
+  interpolation = {
+    enabled = true,              -- Enable/disable interpolation
+    max_iterations = 10,         -- Maximum iterations for nested interpolation
+    warn_on_undefined = true,    -- Warn about undefined variables
+    fail_on_cmd_error = false,  -- How to handle command substitution errors
+  }
+})
+```
+
+The configuration options are:
+
+| Option            | Type    | Default | Description                                                |
+|------------------|---------|---------|-----------------------------------------------------------|
+| enabled          | boolean | false   | Enable/disable interpolation                               |
+| max_iterations   | number  | 10      | Maximum iterations for nested variable interpolation       |
+| warn_on_undefined| boolean | true    | Whether to warn when undefined variables are referenced    |
+| fail_on_cmd_error| boolean | false   | Whether to error or warn on command substitution failures  |
+
+### Features
+
+- **Recursive Interpolation**: Variables can reference other variables
+- **Shell Integration**: Access shell environment variables
+- **Error Handling**: Configurable warnings and error handling
+- **Command Substitution**: Execute shell commands and use their output
+- **Escape Sequences**: Support for common escape sequences (`\n`, `\t`, etc.)
+- **Quote Handling**: Proper handling of single and double quotes
+- **Default Values**: Support for default and alternate value syntax
+- **Safety Limits**: Prevention of infinite recursion with iteration limits
+
+### Best Practices
+
+1. Use braces `${}` for clarity and to avoid ambiguity
+2. Provide default values for optional variables
+3. Use single quotes for literal strings
+4. Be cautious with command substitution in production environments
+5. Keep nesting levels reasonable for better maintainability
 
 ## 🌍 Supported Languages
 

@@ -47,8 +47,8 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
     return nil
   end
 
-  if opts.interpolation ~= false then
-    value = interpolation.interpolate(value, env_vars)
+  if opts.interpolation and opts.interpolation.enabled ~= false then
+    value = interpolation.interpolate(value, env_vars, opts.interpolation)
   end
 
   local type_name, transformed_value = types.detect_type(value)

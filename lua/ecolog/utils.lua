@@ -47,10 +47,10 @@ function M.extract_line_parts(line)
       if rest then
         local comment = rest:match("^%s*#%s*(.-)%s*$")
         if comment then
-          return key, quoted_value, comment
+          return key, quoted_value, comment, first_char
         end
       end
-      return key, quoted_value
+      return key, quoted_value, nil, first_char
     end
   end
 
@@ -59,11 +59,11 @@ function M.extract_line_parts(line)
     if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
       local comment = value:sub(hash_pos + 1):match("^%s*(.-)%s*$")
       value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
-      return key, value, comment
+      return key, value, comment, nil
     end
   end
 
-  return key, value
+  return key, value, nil, nil
 end
 
 function M.filter_env_files(files, patterns)

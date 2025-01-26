@@ -12,6 +12,7 @@ local interpolation = require("ecolog.interpolation")
 ---@field raw_value string The original, unprocessed value
 ---@field source string The source of the variable (file name or "shell")
 ---@field comment? string Optional comment associated with the variable
+---@field quote_char? string The quote character used in the original value (if any)
 
 ---@class LoaderState
 ---@field env_vars table<string, EnvVarInfo>
@@ -41,7 +42,7 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
     return nil
   end
 
-  local key, value, comment = utils.extract_line_parts(line)
+  local key, value, comment, quote_char = utils.extract_line_parts(line)
   if not key or not value then
     _env_line_cache[cache_key] = { nil }
     return nil
@@ -57,6 +58,7 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
       raw_value = value,
       source = fn.fnamemodify(file_path, ":t"),
       comment = comment,
+      quote_char = quote_char,
     },
   }
   _env_line_cache[cache_key] = result
@@ -89,16 +91,20 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
   -- Second pass: apply interpolation if enabled
   if opts.interpolation and opts.interpolation.enabled then
     for key, var_info in pairs(env_vars_result) do
-      local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
-      if interpolated_value ~= var_info.raw_value then
-        local type_name, transformed_value = types.detect_type(interpolated_value)
-        env_vars_result[key] = {
-          value = transformed_value or interpolated_value,
-          type = type_name,
-          raw_value = var_info.raw_value,
-          source = var_info.source,
-          comment = var_info.comment,
-        }
+      -- Skip interpolation for single-quoted values
+      if var_info.quote_char ~= "'" then
+        local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
+        if interpolated_value ~= var_info.raw_value then
+          local type_name, transformed_value = types.detect_type(interpolated_value)
+          env_vars_result[key] = {
+            value = transformed_value or interpolated_value,
+            type = type_name,
+            raw_value = var_info.raw_value,
+            source = var_info.source,
+            comment = var_info.comment,
+            quote_char = var_info.quote_char,
+          }
+        end
       end
     end
   end

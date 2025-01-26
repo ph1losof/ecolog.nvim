@@ -56,9 +56,11 @@ function M.extract_line_parts(line)
 
   local hash_pos = value:find("#")
   if hash_pos then
-    local comment = value:sub(hash_pos + 1):match("^%s*(.-)%s*$")
-    value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
-    return key, value, comment
+    if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
+      local comment = value:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+      value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+      return key, value, comment
+    end
   end
 
   return key, value

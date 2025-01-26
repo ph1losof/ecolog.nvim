@@ -30,19 +30,19 @@ local function process_line(line, eq_pos)
   end
 
   local key = string_match(string_sub(line, 1, eq_pos - 1), KEY_PATTERN)
-  local value_part = string_match(string_sub(line, eq_pos + 1), VALUE_PATTERN)
+  local value_part = string_sub(line, eq_pos + 1)
+  local value = string_match(value_part, VALUE_PATTERN)
 
-  if not (key and value_part) then
+  if not (key and value) then
     return nil
   end
 
-  local value, quote_char
-  local first_char = value_part:sub(1, 1)
+  local first_char = value:sub(1, 1)
   if first_char == '"' or first_char == "'" then
     local end_quote_pos = nil
     local pos = 2
-    while pos <= #value_part do
-      if value_part:sub(pos, pos) == first_char and value_part:sub(pos - 1, pos - 1) ~= "\\" then
+    while pos <= #value do
+      if value:sub(pos, pos) == first_char and value:sub(pos - 1, pos - 1) ~= "\\" then
         end_quote_pos = pos
         break
       end
@@ -50,30 +50,26 @@ local function process_line(line, eq_pos)
     end
 
     if end_quote_pos then
-      quote_char = first_char
-      value = value_part:sub(2, end_quote_pos - 1)
-    else
-      local hash_pos = value_part:find("#")
-      if hash_pos then
-        value = string_match(value_part:sub(1, hash_pos - 1), "^%s*(.-)%s*$")
-      else
-        value = value_part
+      local quoted_value = value:sub(2, end_quote_pos - 1)
+      local rest = value:sub(end_quote_pos + 1)
+      if rest then
+        local comment = rest:match("^%s*#%s*(.-)%s*$")
+        if comment then
+          return key, quoted_value, first_char
+        end
       end
-    end
-  else
-    local hash_pos = value_part:find("#")
-    if hash_pos then
-      value = string_match(value_part:sub(1, hash_pos - 1), "^%s*(.-)%s*$")
-    else
-      value = value_part
+      return key, quoted_value, first_char
     end
   end
 
-  if not value then
-    return nil
+  local hash_pos = value:find("#")
+  if hash_pos then
+    if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
+      value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+    end
   end
 
-  return key, value, quote_char
+  return key, value, nil
 end
 
 local function get_cached_line(line, line_num, bufname)
@@ -166,7 +162,7 @@ function M.shelter_buffer()
 
       if actual_value and #actual_value > 0 then
         local is_revealed = state.is_line_revealed(line_num)
-        local raw_value = actual_value
+        local raw_value = quote_char and (quote_char .. actual_value .. quote_char) or actual_value
         local masked_value = is_revealed and raw_value
           or utils.determine_masked_value(raw_value, {
             partial_mode = config_partial_mode,
@@ -175,10 +171,6 @@ function M.shelter_buffer()
           })
 
         if masked_value and #masked_value > 0 then
-          if quote_char then
-            masked_value = quote_char .. masked_value .. quote_char
-          end
-
           local extmark = {
             line_num - 1,
             eq_pos,

@@ -23,7 +23,6 @@ local active_buffers = setmetatable({}, {
 local COMMENT_PATTERN = "^%s*[#%s]"
 local KEY_PATTERN = "^%s*(.-)%s*$"
 local VALUE_PATTERN = "^%s*(.-)%s*$"
-local QUOTE_PATTERN = "^([\"'])"
 
 local function process_line(line, eq_pos)
   if not eq_pos then
@@ -37,10 +36,7 @@ local function process_line(line, eq_pos)
     return nil
   end
 
-  local quote_char = string_match(value, QUOTE_PATTERN)
-  local actual_value = quote_char and string_match(value, "^" .. quote_char .. "(.-)" .. quote_char) or value
-
-  return key, actual_value, quote_char
+  return key, value, nil
 end
 
 local function get_cached_line(line, line_num, bufname)
@@ -133,24 +129,22 @@ function M.shelter_buffer()
 
       if actual_value and #actual_value > 0 then
         local is_revealed = state.is_line_revealed(line_num)
-        local masked_value = is_revealed and actual_value
-          or utils.determine_masked_value(actual_value, {
+        local raw_value = actual_value
+        local masked_value = is_revealed and raw_value
+          or utils.determine_masked_value(raw_value, {
             partial_mode = config_partial_mode,
             key = key,
             source = bufname,
           })
 
         if masked_value and #masked_value > 0 then
-          if quote_char then
-            masked_value = quote_char .. masked_value .. quote_char
-          end
-
+          -- Don't modify the masked value with quotes, display it as is
           local extmark = {
             line_num - 1,
             eq_pos,
             {
               virt_text = {
-                { masked_value, (is_revealed or masked_value == actual_value) and "String" or config_highlight_group },
+                { masked_value, (is_revealed or masked_value == raw_value) and "String" or config_highlight_group },
               },
               virt_text_pos = "overlay",
               hl_mode = "combine",

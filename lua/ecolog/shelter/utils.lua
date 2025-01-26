@@ -43,8 +43,15 @@ function M.determine_masked_value(value, settings)
     return value
   end
 
+  -- Extract quotes if present
+  local first_char = value:sub(1,1)
+  local last_char = value:sub(-1)
+  local has_quotes = (first_char == '"' or first_char == "'") and first_char == last_char
+  local inner_value = has_quotes and value:sub(2, -2) or value
+  
   if mode == "full" or not config().partial_mode then
-    return string_rep(config().mask_char, #value)
+    local masked = string_rep(config().mask_char, #inner_value)
+    return has_quotes and (first_char .. masked .. first_char) or masked
   end
 
   local partial_mode = config().partial_mode
@@ -60,13 +67,15 @@ function M.determine_masked_value(value, settings)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
 
-  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    return string_rep(config().mask_char, #value)
+  if #inner_value <= (show_start + show_end) or #inner_value < (show_start + show_end + min_mask) then
+    local masked = string_rep(config().mask_char, #inner_value)
+    return has_quotes and (first_char .. masked .. first_char) or masked
   end
 
-  local mask_length = math.max(min_mask, #value - show_start - show_end)
-
-  return string_sub(value, 1, show_start) .. string_rep(config().mask_char, mask_length) .. string_sub(value, -show_end)
+  local mask_length = math.max(min_mask, #inner_value - show_start - show_end)
+  local masked = string_sub(inner_value, 1, show_start) .. string_rep(config().mask_char, mask_length) .. string_sub(inner_value, -show_end)
+  
+  return has_quotes and (first_char .. masked .. first_char) or masked
 end
 
 ---@param value string
@@ -77,15 +86,15 @@ function M.extract_value(value_part)
   end
 
   local value = vim.trim(value_part)
-  local quote_char = value:match("^([\"'])")
-
-  if quote_char then
-    local actual_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
-    if actual_value then
-      return actual_value, quote_char
-    end
+  
+  -- Only treat it as quoted if it starts AND ends with the same quote character
+  local first_char = value:sub(1,1)
+  local last_char = value:sub(-1)
+  
+  if (first_char == '"' or first_char == "'") and first_char == last_char then
+    return value:sub(2, -2), first_char
   end
-
+  
   return value, nil
 end
 

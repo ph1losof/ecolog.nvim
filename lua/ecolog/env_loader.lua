@@ -4,6 +4,7 @@ local fn = vim.fn
 local utils = require("ecolog.utils")
 local types = require("ecolog.types")
 local shell = require("ecolog.shell")
+local interpolation = require("ecolog.interpolation")
 
 ---@class EnvVarInfo
 ---@field value any The processed value of the environment variable
@@ -16,93 +17,6 @@ local shell = require("ecolog.shell")
 ---@field env_vars table<string, EnvVarInfo>
 ---@field selected_env_file? string
 ---@field _env_line_cache table
-
----@param value string The value to interpolate
----@param env_vars table<string, EnvVarInfo> The environment variables table
----@return string interpolated_value The value with variables interpolated
-local function interpolate_value(value, env_vars)
-  if not value then
-    return ""
-  end
-
-  if value:match("^'.*'$") then
-    local inner = value:sub(2, -2)
-    return inner:gsub("\\n", "\n")
-  end
-
-  local is_double_quoted = value:match('^".*"$')
-  if is_double_quoted then
-    value = value:sub(2, -2)
-  end
-
-  local function handle_escapes(str)
-    return str:gsub("\\([nrt\"'\\])", {
-      ["n"] = "\n",
-      ["r"] = "\r",
-      ["t"] = "\t",
-      ["\\"] = "\\",
-      ['"'] = '"',
-      ["'"] = "'",
-    })
-  end
-
-  local function replace_var(match)
-    local var_name, operator, default_value = match:match("([^:%-]+)([:%-]?%-?)(.*)")
-    local is_default = operator == ":-"
-    local is_alternate = operator == "-"
-
-    local var = env_vars[var_name]
-    local shell_value
-    if not var then
-      shell_value = vim.fn.getenv(var_name)
-      if shell_value and shell_value ~= vim.NIL then
-        var = { value = shell_value }
-      end
-    end
-
-    if is_default then
-      if not var or not var.value or var.value == "" then
-        return handle_escapes(default_value)
-      end
-      return handle_escapes(tostring(var.value))
-    end
-
-    if is_alternate then
-      if not var then
-        return handle_escapes(default_value)
-      end
-      return handle_escapes(tostring(var.value))
-    end
-
-    if var and var.value then
-      return handle_escapes(tostring(var.value))
-    end
-
-    return ""
-  end
-
-  local prev_value
-  repeat
-    prev_value = value
-    value = value:gsub("%${([^}]+)}", replace_var)
-    value = value:gsub("$([%w_]+)", replace_var)
-  until prev_value == value
-
-  value = value:gsub("%$%((.-)%)", function(cmd)
-    local output = vim.fn.system(cmd)
-    local exit_code = vim.v.shell_error
-    if exit_code ~= 0 then
-      vim.notify(
-        string.format("Command substitution failed: %s (exit code: %d)", output, exit_code),
-        vim.log.levels.WARN
-      )
-      return ""
-    end
-    return output:gsub("%s+$", "")
-  end)
-
-  return handle_escapes(value)
-end
 
 ---@param line string The line to parse from the env file
 ---@param file_path string The path of the env file
@@ -134,7 +48,7 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
   end
 
   if opts.interpolation ~= false then
-    value = interpolate_value(value, env_vars)
+    value = interpolation.interpolate(value, env_vars)
   end
 
   local type_name, transformed_value = types.detect_type(value)

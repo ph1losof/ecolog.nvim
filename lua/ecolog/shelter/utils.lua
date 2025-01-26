@@ -44,11 +44,11 @@ function M.determine_masked_value(value, settings)
   end
 
   -- Extract quotes if present
-  local first_char = value:sub(1,1)
+  local first_char = value:sub(1, 1)
   local last_char = value:sub(-1)
   local has_quotes = (first_char == '"' or first_char == "'") and first_char == last_char
   local inner_value = has_quotes and value:sub(2, -2) or value
-  
+
   if mode == "full" or not config().partial_mode then
     local masked = string_rep(config().mask_char, #inner_value)
     return has_quotes and (first_char .. masked .. first_char) or masked
@@ -73,8 +73,10 @@ function M.determine_masked_value(value, settings)
   end
 
   local mask_length = math.max(min_mask, #inner_value - show_start - show_end)
-  local masked = string_sub(inner_value, 1, show_start) .. string_rep(config().mask_char, mask_length) .. string_sub(inner_value, -show_end)
-  
+  local masked = string_sub(inner_value, 1, show_start)
+    .. string_rep(config().mask_char, mask_length)
+    .. string_sub(inner_value, -show_end)
+
   return has_quotes and (first_char .. masked .. first_char) or masked
 end
 
@@ -86,15 +88,15 @@ function M.extract_value(value_part)
   end
 
   local value = vim.trim(value_part)
-  
+
   -- Only treat it as quoted if it starts AND ends with the same quote character
-  local first_char = value:sub(1,1)
+  local first_char = value:sub(1, 1)
   local last_char = value:sub(-1)
-  
+
   if (first_char == '"' or first_char == "'") and first_char == last_char then
     return value:sub(2, -2), first_char
   end
-  
+
   return value, nil
 end
 

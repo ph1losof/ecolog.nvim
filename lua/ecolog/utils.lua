@@ -29,22 +29,39 @@ function M.extract_line_parts(line)
     return nil
   end
 
-  local comment_start = value:find("#")
-  local comment
-  if comment_start then
-    comment = value:sub(comment_start + 1):match("^%s*(.-)%s*$")
-    value = value:sub(1, comment_start - 1):match("^%s*(.-)%s*$")
-  end
+  local first_char = value:sub(1, 1)
+  if first_char == '"' or first_char == "'" then
+    local end_quote_pos = nil
+    local pos = 2
+    while pos <= #value do
+      if value:sub(pos, pos) == first_char and value:sub(pos - 1, pos - 1) ~= "\\" then
+        end_quote_pos = pos
+        break
+      end
+      pos = pos + 1
+    end
 
-  local quote_char = value:match("^(['\"'])")
-  if quote_char then
-    local quoted_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
-    if quoted_value then
-      value = quoted_value
+    if end_quote_pos then
+      local quoted_value = value:sub(2, end_quote_pos - 1)
+      local rest = value:sub(end_quote_pos + 1)
+      if rest then
+        local comment = rest:match("^%s*#%s*(.-)%s*$")
+        if comment then
+          return key, quoted_value, comment
+        end
+      end
+      return key, quoted_value
     end
   end
 
-  return key, value, comment
+  local hash_pos = value:find("#")
+  if hash_pos then
+    local comment = value:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+    value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+    return key, value, comment
+  end
+
+  return key, value
 end
 
 function M.filter_env_files(files, patterns)

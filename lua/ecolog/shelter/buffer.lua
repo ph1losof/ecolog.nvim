@@ -30,13 +30,50 @@ local function process_line(line, eq_pos)
   end
 
   local key = string_match(string_sub(line, 1, eq_pos - 1), KEY_PATTERN)
-  local value = string_match(string_sub(line, eq_pos + 1), VALUE_PATTERN)
+  local value_part = string_match(string_sub(line, eq_pos + 1), VALUE_PATTERN)
 
-  if not (key and value) then
+  if not (key and value_part) then
     return nil
   end
 
-  return key, value, nil
+  local value, quote_char
+  local first_char = value_part:sub(1, 1)
+  if first_char == '"' or first_char == "'" then
+    local end_quote_pos = nil
+    local pos = 2
+    while pos <= #value_part do
+      if value_part:sub(pos, pos) == first_char and value_part:sub(pos - 1, pos - 1) ~= "\\" then
+        end_quote_pos = pos
+        break
+      end
+      pos = pos + 1
+    end
+
+    if end_quote_pos then
+      quote_char = first_char
+      value = value_part:sub(2, end_quote_pos - 1)
+    else
+      local hash_pos = value_part:find("#")
+      if hash_pos then
+        value = string_match(value_part:sub(1, hash_pos - 1), "^%s*(.-)%s*$")
+      else
+        value = value_part
+      end
+    end
+  else
+    local hash_pos = value_part:find("#")
+    if hash_pos then
+      value = string_match(value_part:sub(1, hash_pos - 1), "^%s*(.-)%s*$")
+    else
+      value = value_part
+    end
+  end
+
+  if not value then
+    return nil
+  end
+
+  return key, value, quote_char
 end
 
 local function get_cached_line(line, line_num, bufname)
@@ -138,7 +175,10 @@ function M.shelter_buffer()
           })
 
         if masked_value and #masked_value > 0 then
-          -- Don't modify the masked value with quotes, display it as is
+          if quote_char then
+            masked_value = quote_char .. masked_value .. quote_char
+          end
+
           local extmark = {
             line_num - 1,
             eq_pos,

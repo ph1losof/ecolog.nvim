@@ -6,12 +6,14 @@ local PATTERNS = {
   BRACE_VAR = "${([^}]+)}",
   SIMPLE_VAR = "$([%w_]+)",
   CMD_SUBST = "%$%((.-)%)",
-  VAR_PARTS = "([^:%-]+)([:%-]?%-?)(.*)",
+  VAR_PARTS = "([%w_]+)([:%-+]?[%-+]?)(.*)",
 }
 
 local OPERATORS = {
   DEFAULT = ":-",
   ALTERNATE = "-",
+  ALT_IF_SET_NON_EMPTY = ":+",
+  ALT_IF_SET = "+",
 }
 
 ---@class EscapeMap
@@ -62,14 +64,15 @@ end
 ---@param var_name string The name of the variable
 ---@param env_vars table<string, EnvVarInfo> The environment variables table
 ---@param opts InterpolationOptions The interpolation options
+---@param suppress_warning boolean? Whether to suppress the undefined variable warning
 ---@return table? var The variable info if found
-local function get_variable(var_name, env_vars, opts)
+local function get_variable(var_name, env_vars, opts, suppress_warning)
   local var = env_vars[var_name]
   if not var then
     local shell_value = vim.fn.getenv(var_name)
     if shell_value and shell_value ~= vim.NIL then
-      var = { value = shell_value }
-    elseif opts.warn_on_undefined then
+      var.value = shell_value
+    elseif opts.warn_on_undefined and not suppress_warning then
       vim.notify(string.format("Undefined variable: %s", var_name), vim.log.levels.WARN)
     end
   end
@@ -86,23 +89,37 @@ local function process_var_substitution(match, env_vars, opts)
     return match
   end
 
-  local var_name, operator, default_value = match:match(PATTERNS.VAR_PARTS)
+  local var_name, operator, value = match:match(PATTERNS.VAR_PARTS)
   if not var_name then
     return ""
   end
 
-  local var = get_variable(var_name, env_vars, opts)
+  local suppress_warning = operator == OPERATORS.DEFAULT
+    or operator == OPERATORS.ALTERNATE
+    or operator == OPERATORS.ALT_IF_SET_NON_EMPTY
+    or operator == OPERATORS.ALT_IF_SET
+
+  local var = get_variable(var_name, env_vars, opts, suppress_warning)
   local is_empty = not var or not var.value or var.value == ""
+  local is_set = var ~= nil
 
   if operator == OPERATORS.DEFAULT and is_empty then
     if not opts.features or opts.features.defaults then
-      return handle_escapes(default_value, opts)
+      return handle_escapes(value, opts)
+    end
+  elseif operator == OPERATORS.ALTERNATE and not is_set then
+    if not opts.features or opts.features.defaults then
+      return handle_escapes(value, opts)
     end
   end
 
-  if operator == OPERATORS.ALTERNATE and not var then
+  if operator == OPERATORS.ALT_IF_SET_NON_EMPTY and not is_empty then
     if not opts.features or opts.features.alternates then
-      return handle_escapes(default_value, opts)
+      return handle_escapes(value, opts)
+    end
+  elseif operator == OPERATORS.ALT_IF_SET and is_set then
+    if not opts.features or opts.features.alternates then
+      return handle_escapes(value, opts)
     end
   end
 

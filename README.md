@@ -27,6 +27,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Configuration Options](#configuration-options)
   - [Features](#features)
   - [Best Practices](#best-practices)
+- [Supported Languages](#-supported-languages)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
   - [Basic Usage](#basic-usage-1)
   - [Pattern Format](#pattern-format)
@@ -226,6 +227,28 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Rich preview windows
 - Inline documentation
 - Status indicators
+
+## 🌍 Supported Languages
+
+Ecolog provides intelligent environment variable detection and completion for multiple programming languages:
+
+| Language   | File Extensions | Environment Variable Access Patterns |
+|------------|----------------|-------------------------------------|
+| TypeScript | .ts, .tsx      | `process.env.VAR`, `process.env['VAR']`, `import.meta.env.VAR`, `Bun.env.VAR`, `Deno.env.get('VAR')` |
+| JavaScript | .js, .jsx      | `process.env.VAR`, `process.env['VAR']`, `Bun.env.VAR` |
+| Python     | .py            | `os.environ.get('VAR')` |
+| PHP        | .php           | `getenv('VAR')`, `$_ENV['VAR']`, `$_SERVER['VAR']` |
+| Lua        | .lua           | `os.getenv('VAR')` |
+| Go         | .go            | `os.Getenv('VAR')` |
+| Rust       | .rs            | `env::var('VAR')`, `std::env::var('VAR')`, `std::env::var_os('VAR')` |
+| Java       | .java          | `System.getenv('VAR')`, `env.get('VAR')` |
+| C#         | .cs, .csharp   | `Environment.GetEnvironmentVariable('VAR')`, `System.Environment.GetEnvironmentVariable('VAR')` |
+| Ruby       | .rb            | `ENV['VAR']`, `ENV.fetch('VAR')` |
+| Shell      | .sh, .bash, .zsh | `$VAR`, `${VAR}` |
+| Kotlin     | .kt, .kotlin   | `System.getenv('VAR')` |
+| Dockerfile | Dockerfile     | `ENV VAR`, `ARG VAR`, `${VAR}` |
+
+Each language provider is optimized for its specific environment variable access patterns and supports both completion and detection. The providers are loaded lazily to maintain performance.
 
 ## 🚀 Usage
 

@@ -28,6 +28,8 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Features](#features)
   - [Best Practices](#best-practices)
 - [Supported Languages](#-supported-languages)
+  - [Currently Supported](#currently-supported)
+  - [Adding new languages and custom providers](#-custom-providers)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
   - [Basic Usage](#basic-usage-1)
   - [Pattern Format](#pattern-format)
@@ -230,6 +232,8 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
 ## 🌍 Supported Languages
 
+### Currently Supported
+
 Ecolog provides intelligent environment variable detection and completion for multiple programming languages:
 
 | Language   | File Extensions | Environment Variable Access Patterns |
@@ -249,6 +253,42 @@ Ecolog provides intelligent environment variable detection and completion for mu
 | Dockerfile | Dockerfile     | `ENV VAR`, `ARG VAR`, `${VAR}` |
 
 Each language provider is optimized for its specific environment variable access patterns and supports both completion and detection. The providers are loaded lazily to maintain performance.
+
+### 🔌 Custom Providers
+
+You can add support for additional languages by registering custom providers. Each provider defines how environment variables are detected and extracted in specific file types.
+
+### Example: Adding a Custom Provider
+
+```lua
+require('ecolog').setup({
+  providers = {
+    {
+      -- Pattern to match environment variable access
+      pattern = "ENV%[['\"]%w['\"]%]",
+      -- Filetype(s) this provider supports (string or table)
+      filetype = "custom_lang",
+      -- Function to extract variable name from the line
+      extract_var = function(line, col)
+        local before_cursor = line:sub(1, col + 1)
+        return before_cursor:match("ENV%['\"['\"]%]$")
+      end,
+      -- Function to return completion trigger pattern
+      get_completion_trigger = function()
+        return "ENV['"
+      end
+    }
+  }
+})
+```
+
+Each provider must specify:
+1. `pattern`: A Lua pattern to match environment variable access in the code
+2. `filetype`: The filetype(s) this provider supports (string or table)
+3. `extract_var`: Function to extract the variable name from the line
+4. `get_completion_trigger`: Function to return the completion trigger pattern
+
+The provider will be automatically loaded when editing files of the specified filetype.
 
 ## 🚀 Usage
 

@@ -303,18 +303,18 @@ require('ecolog').setup({
 
 The configuration options are:
 
-| Option            | Type    | Default | Description                                                |
-|------------------|---------|---------|-----------------------------------------------------------|
-| enabled          | boolean | false   | Enable/disable interpolation                               |
-| max_iterations   | number  | 10      | Maximum iterations for nested variable interpolation       |
-| warn_on_undefined| boolean | true    | Whether to warn when undefined variables are referenced    |
-| fail_on_cmd_error| boolean | false   | Whether to error or warn on command substitution failures  |
-| features         | table   | -       | Control specific interpolation features                    |
-| features.variables| boolean | true    | Enable variable interpolation ($VAR, ${VAR})              |
-| features.defaults| boolean | true    | Enable default value syntax (${VAR:-default})             |
-| features.alternates| boolean| true    | Enable alternate value syntax (${VAR-alternate})          |
-| features.commands| boolean | true    | Enable command substitution ($(command))                   |
-| features.escapes | boolean | true    | Enable escape sequences (\n, \t, etc.)                    |
+| Option              | Type    | Default | Description                                               |
+| ------------------- | ------- | ------- | --------------------------------------------------------- |
+| enabled             | boolean | false   | Enable/disable interpolation                              |
+| max_iterations      | number  | 10      | Maximum iterations for nested variable interpolation      |
+| warn_on_undefined   | boolean | true    | Whether to warn when undefined variables are referenced   |
+| fail_on_cmd_error   | boolean | false   | Whether to error or warn on command substitution failures |
+| features            | table   | -       | Control specific interpolation features                   |
+| features.variables  | boolean | true    | Enable variable interpolation ($VAR, ${VAR})              |
+| features.defaults   | boolean | true    | Enable default value syntax (${VAR:-default})             |
+| features.alternates | boolean | true    | Enable alternate value syntax (${VAR-alternate})          |
+| features.commands   | boolean | true    | Enable command substitution ($(command))                  |
+| features.escapes    | boolean | true    | Enable escape sequences (\n, \t, etc.)                    |
 
 ### Features
 
@@ -346,21 +346,21 @@ The configuration options are:
 
 Ecolog provides intelligent environment variable detection and completion for multiple programming languages:
 
-| Language   | File Extensions | Environment Variable Access Patterns |
-|------------|----------------|-------------------------------------|
-| TypeScript | .ts, .tsx      | `process.env.VAR`, `process.env['VAR']`, `import.meta.env.VAR`, `Bun.env.VAR`, `Deno.env.get('VAR')` |
-| JavaScript | .js, .jsx      | `process.env.VAR`, `process.env['VAR']`, `Bun.env.VAR` |
-| Python     | .py            | `os.environ.get('VAR')` |
-| PHP        | .php           | `getenv('VAR')`, `$_ENV['VAR']`, `$_SERVER['VAR']` |
-| Lua        | .lua           | `os.getenv('VAR')` |
-| Go         | .go            | `os.Getenv('VAR')` |
-| Rust       | .rs            | `env::var('VAR')`, `std::env::var('VAR')`, `std::env::var_os('VAR')` |
-| Java       | .java          | `System.getenv('VAR')`, `env.get('VAR')` |
-| C#         | .cs, .csharp   | `Environment.GetEnvironmentVariable('VAR')`, `System.Environment.GetEnvironmentVariable('VAR')` |
-| Ruby       | .rb            | `ENV['VAR']`, `ENV.fetch('VAR')` |
-| Shell      | .sh, .bash, .zsh | `$VAR`, `${VAR}` |
-| Kotlin     | .kt, .kotlin   | `System.getenv('VAR')` |
-| Dockerfile | Dockerfile     | `ENV VAR`, `ARG VAR`, `${VAR}` |
+| Language   | File Extensions  | Environment Variable Access Patterns                                                                 |
+| ---------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| TypeScript | .ts, .tsx        | `process.env.VAR`, `process.env['VAR']`, `import.meta.env.VAR`, `Bun.env.VAR`, `Deno.env.get('VAR')` |
+| JavaScript | .js, .jsx        | `process.env.VAR`, `process.env['VAR']`, `Bun.env.VAR`                                               |
+| Python     | .py              | `os.environ.get('VAR')`                                                                              |
+| PHP        | .php             | `getenv('VAR')`, `$_ENV['VAR']`, `$_SERVER['VAR']`                                                   |
+| Lua        | .lua             | `os.getenv('VAR')`                                                                                   |
+| Go         | .go              | `os.Getenv('VAR')`                                                                                   |
+| Rust       | .rs              | `env::var('VAR')`, `std::env::var('VAR')`, `std::env::var_os('VAR')`                                 |
+| Java       | .java            | `System.getenv('VAR')`, `env.get('VAR')`                                                             |
+| C#         | .cs, .csharp     | `Environment.GetEnvironmentVariable('VAR')`, `System.Environment.GetEnvironmentVariable('VAR')`      |
+| Ruby       | .rb              | `ENV['VAR']`, `ENV.fetch('VAR')`                                                                     |
+| Shell      | .sh, .bash, .zsh | `$VAR`, `${VAR}`                                                                                     |
+| Kotlin     | .kt, .kotlin     | `System.getenv('VAR')`                                                                               |
+| Dockerfile | Dockerfile       | `${VAR}`                                                                                             |
 
 Each language provider is optimized for its specific environment variable access patterns and supports both completion and detection. The providers are loaded lazily to maintain performance.
 
@@ -393,6 +393,7 @@ require('ecolog').setup({
 ```
 
 Each provider must specify:
+
 1. `pattern`: A Lua pattern to match environment variable access in the code
 2. `filetype`: The filetype(s) this provider supports (string or table)
 3. `extract_var`: Function to extract the variable name from the line

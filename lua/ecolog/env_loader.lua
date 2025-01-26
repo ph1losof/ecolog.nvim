@@ -18,21 +18,6 @@ local interpolation = require("ecolog.interpolation")
 ---@field selected_env_file? string
 ---@field _env_line_cache table
 
----Get interpolation configuration, handling both boolean and table cases
----@param opts table Configuration options
----@return table interpolation_config The normalized interpolation configuration
-local function get_interpolation_config(opts)
-  if type(opts.interpolation) == "boolean" then
-    return {
-      enabled = opts.interpolation,
-      max_iterations = 10,
-      warn_on_undefined = true,
-      fail_on_cmd_error = false,
-    }
-  end
-  return opts.interpolation or { enabled = false }
-end
-
 ---@param line string The line to parse from the env file
 ---@param file_path string The path of the env file
 ---@param _env_line_cache table Cache for parsed lines
@@ -60,11 +45,6 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
   if not key or not value then
     _env_line_cache[cache_key] = { nil }
     return nil
-  end
-
-  local interpolation_config = get_interpolation_config(opts)
-  if interpolation_config.enabled then
-    value = interpolation.interpolate(value, env_vars, interpolation_config)
   end
 
   local type_name, transformed_value = types.detect_type(value)
@@ -96,42 +76,31 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
     return env_vars_result
   end
 
-  local lines = {}
+  -- First pass: parse all lines without interpolation
   for line in env_file:lines() do
-    table.insert(lines, line)
-    local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, { interpolation = false })
+    local initial_opts = vim.tbl_deep_extend("force", {}, opts)
+    local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts)
     if key then
       env_vars_result[key] = var_info
     end
   end
   env_file:close()
 
-  local changes_made = true
-  local max_iterations = 10
-  local iteration = 0
-
-  while changes_made and iteration < max_iterations do
-    changes_made = false
-    iteration = iteration + 1
-
-    for _, line in ipairs(lines) do
-      local key, var_info = parse_env_line(line, file_path, {}, env_vars_result, { interpolation = true })
-      if key and var_info then
-        local old_value = env_vars_result[key] and env_vars_result[key].value
-        local new_value = var_info.value
-        if old_value ~= new_value then
-          env_vars_result[key] = var_info
-          changes_made = true
-        end
+  -- Second pass: apply interpolation if enabled
+  if opts.interpolation and opts.interpolation.enabled then
+    for key, var_info in pairs(env_vars_result) do
+      local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
+      if interpolated_value ~= var_info.raw_value then
+        local type_name, transformed_value = types.detect_type(interpolated_value)
+        env_vars_result[key] = {
+          value = transformed_value or interpolated_value,
+          type = type_name,
+          raw_value = var_info.raw_value,
+          source = var_info.source,
+          comment = var_info.comment,
+        }
       end
     end
-  end
-
-  if iteration >= max_iterations then
-    vim.notify(
-      "Warning: Maximum interpolation iterations reached. Some variables may not be fully interpolated.",
-      vim.log.levels.WARN
-    )
   end
 
   return env_vars_result

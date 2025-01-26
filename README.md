@@ -290,6 +290,13 @@ require('ecolog').setup({
     max_iterations = 10,         -- Maximum iterations for nested interpolation
     warn_on_undefined = true,    -- Warn about undefined variables
     fail_on_cmd_error = false,  -- How to handle command substitution errors
+    features = {
+      variables = true,         -- Enable variable interpolation ($VAR, ${VAR})
+      defaults = true,         -- Enable default value syntax (${VAR:-default})
+      alternates = true,       -- Enable alternate value syntax (${VAR-alternate})
+      commands = true,         -- Enable command substitution ($(command))
+      escapes = true,         -- Enable escape sequences (\n, \t, etc.)
+    }
   }
 })
 ```
@@ -302,6 +309,12 @@ The configuration options are:
 | max_iterations   | number  | 10      | Maximum iterations for nested variable interpolation       |
 | warn_on_undefined| boolean | true    | Whether to warn when undefined variables are referenced    |
 | fail_on_cmd_error| boolean | false   | Whether to error or warn on command substitution failures  |
+| features         | table   | -       | Control specific interpolation features                    |
+| features.variables| boolean | true    | Enable variable interpolation ($VAR, ${VAR})              |
+| features.defaults| boolean | true    | Enable default value syntax (${VAR:-default})             |
+| features.alternates| boolean| true    | Enable alternate value syntax (${VAR-alternate})          |
+| features.commands| boolean | true    | Enable command substitution ($(command))                   |
+| features.escapes | boolean | true    | Enable escape sequences (\n, \t, etc.)                    |
 
 ### Features
 
@@ -321,6 +334,11 @@ The configuration options are:
 3. Use single quotes for literal strings
 4. Be cautious with command substitution in production environments
 5. Keep nesting levels reasonable for better maintainability
+6. Use feature flags to enhance security:
+   - Disable `commands` in production to prevent command injection
+   - Disable `alternates` and `defaults` if not needed
+   - Keep `variables` enabled for basic interpolation
+   - Consider disabling `escapes` if not using special characters
 
 ## 🌍 Supported Languages
 

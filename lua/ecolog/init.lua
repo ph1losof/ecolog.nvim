@@ -36,6 +36,12 @@ local schedule = vim.schedule
 ---@field max_iterations number Maximum iterations for nested interpolation
 ---@field warn_on_undefined boolean Whether to warn about undefined variables
 ---@field fail_on_cmd_error boolean Whether to fail on command substitution errors
+---@field features table Control specific interpolation features
+---@field features.variables boolean Enable variable interpolation ($VAR, ${VAR})
+---@field features.defaults boolean Enable default value syntax (${VAR:-default})
+---@field features.alternates boolean Enable alternate value syntax (${VAR-alternate})
+---@field features.commands boolean Enable command substitution ($(command))
+---@field features.escapes boolean Enable escape sequences (\n, \t, etc.)
 
 local DEFAULT_CONFIG = {
   path = vim.fn.getcwd(),
@@ -90,6 +96,13 @@ local DEFAULT_CONFIG = {
     max_iterations = 10,
     warn_on_undefined = true,
     fail_on_cmd_error = false,
+    features = {
+      variables = true,
+      defaults = true,
+      alternates = true,
+      commands = true,
+      escapes = true,
+    },
   },
 }
 
@@ -475,14 +488,28 @@ function M.setup(opts)
 
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
 
-  -- Handle boolean interpolation option for backward compatibility
+  -- Handle interpolation configuration
   if type(config.interpolation) == "boolean" then
     config.interpolation = {
       enabled = config.interpolation,
       max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
       warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
       fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
+      features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
     }
+  elseif type(config.interpolation) == "table" then
+    -- Ensure all feature flags are properly initialized
+    if config.interpolation.features then
+      config.interpolation.features = vim.tbl_deep_extend("force", 
+        DEFAULT_CONFIG.interpolation.features,
+        config.interpolation.features
+      )
+    end
+    -- Merge with default interpolation config
+    config.interpolation = vim.tbl_deep_extend("force",
+      DEFAULT_CONFIG.interpolation,
+      config.interpolation
+    )
   end
 
   state.selected_env_file = nil

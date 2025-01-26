@@ -30,21 +30,32 @@ local ESCAPE_MAP = {
 ---@field max_iterations? number Maximum number of iterations for variable interpolation
 ---@field warn_on_undefined? boolean Whether to warn on undefined variables
 ---@field fail_on_cmd_error? boolean Whether to fail on command substitution errors
+---@field features? table Control specific interpolation features
+---@field features.variables? boolean Enable variable interpolation ($VAR, ${VAR})
+---@field features.defaults? boolean Enable default value syntax (${VAR:-default})
+---@field features.alternates? boolean Enable alternate value syntax (${VAR-alternate})
+---@field features.commands? boolean Enable command substitution ($(command))
+---@field features.escapes? boolean Enable escape sequences (\n, \t, etc.)
 
 ---Handle escape sequences in a string
 ---@param str string The string containing escape sequences
+---@param opts InterpolationOptions The interpolation options
 ---@return string The string with escape sequences replaced
-local function handle_escapes(str)
-  return str:gsub("\\([nrt\"'\\])", ESCAPE_MAP)
+local function handle_escapes(str, opts)
+  if not opts.features or opts.features.escapes then
+    return str:gsub("\\([nrt\"'\\])", ESCAPE_MAP)
+  end
+  return str
 end
 
 ---Extract the inner content of a quoted string
 ---@param value string The string to extract from
 ---@param pattern string The pattern to match
+---@param opts InterpolationOptions The interpolation options
 ---@return string? inner The inner content if matched, nil otherwise
-local function extract_quoted_content(value, pattern)
+local function extract_quoted_content(value, pattern, opts)
   local inner = value:match(pattern)
-  return inner and handle_escapes(inner)
+  return inner and handle_escapes(inner, opts)
 end
 
 ---Get a variable's value from env_vars or shell environment
@@ -71,6 +82,10 @@ end
 ---@param opts InterpolationOptions The interpolation options
 ---@return string The substituted value
 local function process_var_substitution(match, env_vars, opts)
+  if not opts.features or not opts.features.variables then
+    return match
+  end
+
   local var_name, operator, default_value = match:match(PATTERNS.VAR_PARTS)
   if not var_name then
     return ""
@@ -80,14 +95,18 @@ local function process_var_substitution(match, env_vars, opts)
   local is_empty = not var or not var.value or var.value == ""
 
   if operator == OPERATORS.DEFAULT and is_empty then
-    return handle_escapes(default_value)
+    if not opts.features or opts.features.defaults then
+      return handle_escapes(default_value, opts)
+    end
   end
 
   if operator == OPERATORS.ALTERNATE and not var then
-    return handle_escapes(default_value)
+    if not opts.features or opts.features.alternates then
+      return handle_escapes(default_value, opts)
+    end
   end
 
-  return var and var.value and handle_escapes(tostring(var.value)) or ""
+  return var and var.value and handle_escapes(tostring(var.value), opts) or ""
 end
 
 ---Process command substitution in a string
@@ -121,32 +140,41 @@ function M.interpolate(value, env_vars, opts)
     return ""
   end
 
-  opts = vim.tbl_extend("force", {
+  opts = vim.tbl_deep_extend("force", {
     max_iterations = 10,
     warn_on_undefined = true,
     fail_on_cmd_error = false,
+    features = {
+      variables = true,
+      defaults = true,
+      alternates = true,
+      commands = true,
+      escapes = true,
+    },
   }, opts or {})
 
-  local inner = extract_quoted_content(value, PATTERNS.SINGLE_QUOTED)
+  local inner = extract_quoted_content(value, PATTERNS.SINGLE_QUOTED, opts)
   if inner then
     return inner:gsub("\\n", "\n")
   end
 
   local is_double_quoted = value:match(PATTERNS.DOUBLE_QUOTED)
   if is_double_quoted then
-    value = extract_quoted_content(value, PATTERNS.DOUBLE_QUOTED) or value
+    value = extract_quoted_content(value, PATTERNS.DOUBLE_QUOTED, opts) or value
   end
 
   local prev_value
   local iteration = 0
   repeat
     prev_value = value
-    value = value:gsub(PATTERNS.BRACE_VAR, function(match)
-      return process_var_substitution(match, env_vars, opts)
-    end)
-    value = value:gsub(PATTERNS.SIMPLE_VAR, function(match)
-      return process_var_substitution(match, env_vars, opts)
-    end)
+    if opts.features.variables then
+      value = value:gsub(PATTERNS.BRACE_VAR, function(match)
+        return process_var_substitution(match, env_vars, opts)
+      end)
+      value = value:gsub(PATTERNS.SIMPLE_VAR, function(match)
+        return process_var_substitution(match, env_vars, opts)
+      end)
+    end
     iteration = iteration + 1
   until prev_value == value or iteration >= opts.max_iterations
 
@@ -154,22 +182,25 @@ function M.interpolate(value, env_vars, opts)
     vim.notify("Maximum interpolation iterations reached", vim.log.levels.WARN)
   end
 
-  local success, result = pcall(function()
-    return value:gsub(PATTERNS.CMD_SUBST, function(cmd)
-      return process_cmd_substitution(cmd, opts)
+  if opts.features.commands then
+    local success, result = pcall(function()
+      return value:gsub(PATTERNS.CMD_SUBST, function(cmd)
+        return process_cmd_substitution(cmd, opts)
+      end)
     end)
-  end)
 
-  if not success then
-    if opts.fail_on_cmd_error then
-      error(result)
-    else
-      vim.notify(result, vim.log.levels.ERROR)
-      return value
+    if not success then
+      if opts.fail_on_cmd_error then
+        error(result)
+      else
+        vim.notify(result, vim.log.levels.ERROR)
+        return value
+      end
     end
+    value = result
   end
 
-  return handle_escapes(result)
+  return value
 end
 
 return M

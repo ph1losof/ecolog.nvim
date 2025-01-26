@@ -18,6 +18,21 @@ local interpolation = require("ecolog.interpolation")
 ---@field selected_env_file? string
 ---@field _env_line_cache table
 
+---Get interpolation configuration, handling both boolean and table cases
+---@param opts table Configuration options
+---@return table interpolation_config The normalized interpolation configuration
+local function get_interpolation_config(opts)
+  if type(opts.interpolation) == "boolean" then
+    return {
+      enabled = opts.interpolation,
+      max_iterations = 10,
+      warn_on_undefined = true,
+      fail_on_cmd_error = false,
+    }
+  end
+  return opts.interpolation or { enabled = false }
+end
+
 ---@param line string The line to parse from the env file
 ---@param file_path string The path of the env file
 ---@param _env_line_cache table Cache for parsed lines
@@ -47,8 +62,9 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
     return nil
   end
 
-  if opts.interpolation and opts.interpolation.enabled ~= false then
-    value = interpolation.interpolate(value, env_vars, opts.interpolation)
+  local interpolation_config = get_interpolation_config(opts)
+  if interpolation_config.enabled then
+    value = interpolation.interpolate(value, env_vars, interpolation_config)
   end
 
   local type_name, transformed_value = types.detect_type(value)

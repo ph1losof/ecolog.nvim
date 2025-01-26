@@ -17,6 +17,7 @@ local schedule = vim.schedule
 ---@field sort_fn? function Custom function for sorting env files
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
+---@field interpolation boolean Enable/disable environment variable interpolation
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
@@ -78,6 +79,7 @@ local DEFAULT_CONFIG = {
   },
   env_file_pattern = nil,
   sort_fn = nil,
+  interpolation = false,
 }
 
 ---@class EcologState

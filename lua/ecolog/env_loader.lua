@@ -17,12 +17,105 @@ local shell = require("ecolog.shell")
 ---@field selected_env_file? string
 ---@field _env_line_cache table
 
+---@param value string The value to interpolate
+---@param env_vars table<string, EnvVarInfo> The environment variables table
+---@return string interpolated_value The value with variables interpolated
+local function interpolate_value(value, env_vars)
+  if not value then
+    return ""
+  end
+
+  if value:match("^'.*'$") then
+    local inner = value:sub(2, -2)
+    return inner:gsub("\\n", "\n")
+  end
+
+  local is_double_quoted = value:match('^".*"$')
+  if is_double_quoted then
+    value = value:sub(2, -2)
+  end
+
+  local function handle_escapes(str)
+    return str:gsub("\\([nrt\"'\\])", {
+      ["n"] = "\n",
+      ["r"] = "\r",
+      ["t"] = "\t",
+      ["\\"] = "\\",
+      ['"'] = '"',
+      ["'"] = "'",
+    })
+  end
+
+  local function replace_var(match)
+    local var_name, operator, default_value = match:match("([^:%-]+)([:%-]?%-?)(.*)")
+    local is_default = operator == ":-"
+    local is_alternate = operator == "-"
+
+    local var = env_vars[var_name]
+    local shell_value
+    if not var then
+      shell_value = vim.fn.getenv(var_name)
+      if shell_value and shell_value ~= vim.NIL then
+        var = { value = shell_value }
+      end
+    end
+
+    if is_default then
+      if not var or not var.value or var.value == "" then
+        return handle_escapes(default_value)
+      end
+      return handle_escapes(tostring(var.value))
+    end
+
+    if is_alternate then
+      if not var then
+        return handle_escapes(default_value)
+      end
+      return handle_escapes(tostring(var.value))
+    end
+
+    if var and var.value then
+      return handle_escapes(tostring(var.value))
+    end
+
+    return ""
+  end
+
+  local prev_value
+  repeat
+    prev_value = value
+    value = value:gsub("%${([^}]+)}", replace_var)
+    value = value:gsub("$([%w_]+)", replace_var)
+  until prev_value == value
+
+  value = value:gsub("%$%((.-)%)", function(cmd)
+    local output = vim.fn.system(cmd)
+    local exit_code = vim.v.shell_error
+    if exit_code ~= 0 then
+      vim.notify(
+        string.format("Command substitution failed: %s (exit code: %d)", output, exit_code),
+        vim.log.levels.WARN
+      )
+      return ""
+    end
+    return output:gsub("%s+$", "")
+  end)
+
+  return handle_escapes(value)
+end
+
 ---@param line string The line to parse from the env file
 ---@param file_path string The path of the env file
 ---@param _env_line_cache table Cache for parsed lines
+---@param env_vars table<string, EnvVarInfo> Current environment variables
+---@param opts table Configuration options
 ---@return string? key The environment variable key if found
 ---@return EnvVarInfo? var_info The environment variable info if found
-local function parse_env_line(line, file_path, _env_line_cache)
+local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
+  if not opts then
+    opts = {}
+  end
+
   local cache_key = { line = line, path = file_path }
   local cache_entry = _env_line_cache[cache_key]
   if cache_entry then
@@ -38,6 +131,10 @@ local function parse_env_line(line, file_path, _env_line_cache)
   if not key or not value then
     _env_line_cache[cache_key] = { nil }
     return nil
+  end
+
+  if opts.interpolation ~= false then
+    value = interpolate_value(value, env_vars)
   end
 
   local type_name, transformed_value = types.detect_type(value)
@@ -58,48 +155,56 @@ end
 
 ---@param file_path string Path to the env file
 ---@param _env_line_cache table Cache for parsed lines
+---@param env_vars table<string, EnvVarInfo> Current environment variables
+---@param opts table Configuration options
 ---@return table<string, EnvVarInfo>
-local function load_env_file(file_path, _env_line_cache)
-  local env_vars = {}
+local function load_env_file(file_path, _env_line_cache, env_vars, opts)
+  local env_vars_result = {}
   local env_file = io.open(file_path, "r")
   if not env_file then
     vim.notify(string.format("Could not open environment file: %s", file_path), vim.log.levels.WARN)
-    return env_vars
+    return env_vars_result
   end
 
-  local buffer = ""
-  local chunk_size = 4096
-  while true do
-    local chunk = env_file:read(chunk_size)
-    if not chunk then
-      break
-    end
-    buffer = buffer .. chunk
-
-    local start = 1
-    local line_end = buffer:find("\n", start)
-    while line_end do
-      local line = buffer:sub(start, line_end - 1)
-      local key, var_info = parse_env_line(line, file_path, _env_line_cache)
-      if key then
-        env_vars[key] = var_info
-      end
-      start = line_end + 1
-      line_end = buffer:find("\n", start)
-    end
-
-    buffer = buffer:sub(start)
-  end
-
-  if #buffer > 0 then
-    local key, var_info = parse_env_line(buffer, file_path, _env_line_cache)
+  local lines = {}
+  for line in env_file:lines() do
+    table.insert(lines, line)
+    local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, { interpolation = false })
     if key then
-      env_vars[key] = var_info
+      env_vars_result[key] = var_info
+    end
+  end
+  env_file:close()
+
+  local changes_made = true
+  local max_iterations = 10
+  local iteration = 0
+
+  while changes_made and iteration < max_iterations do
+    changes_made = false
+    iteration = iteration + 1
+
+    for _, line in ipairs(lines) do
+      local key, var_info = parse_env_line(line, file_path, {}, env_vars_result, { interpolation = true })
+      if key and var_info then
+        local old_value = env_vars_result[key] and env_vars_result[key].value
+        local new_value = var_info.value
+        if old_value ~= new_value then
+          env_vars_result[key] = var_info
+          changes_made = true
+        end
+      end
     end
   end
 
-  env_file:close()
-  return env_vars
+  if iteration >= max_iterations then
+    vim.notify(
+      "Warning: Maximum interpolation iterations reached. Some variables may not be fully interpolated.",
+      vim.log.levels.WARN
+    )
+  end
+
+  return env_vars_result
 end
 
 ---@param target table<string, EnvVarInfo> Target table to merge into
@@ -194,12 +299,12 @@ function M.load_environment(opts, state, force)
     merge_vars(env_vars, shell_vars, true)
 
     if state.selected_env_file then
-      local file_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
+      local file_vars = load_env_file(state.selected_env_file, state._env_line_cache or {}, env_vars, opts)
       merge_vars(env_vars, file_vars, false)
     end
   else
     if state.selected_env_file then
-      env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {})
+      env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {}, env_vars, opts)
     end
 
     if shell_enabled then
@@ -215,4 +320,3 @@ function M.load_environment(opts, state, force)
 end
 
 return M
-

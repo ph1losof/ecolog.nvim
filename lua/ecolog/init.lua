@@ -449,25 +449,31 @@ local function create_commands(config)
     },
     EcologAWSSelect = {
       callback = function()
-        if not config.integrations.secret_managers or not config.integrations.secret_managers.aws then
-          notify("AWS Secrets Manager is not configured", vim.log.levels.ERROR)
-          return
-        end
         local aws = get_secret_manager("aws")
         aws.select()
       end,
-      desc = "Select AWS Secrets Manager secrets to load",
+      desc = "Open interactive picker to select AWS Secrets Manager secrets",
     },
     EcologVaultSelect = {
       callback = function()
-        if not config.integrations.secret_managers or not config.integrations.secret_managers.vault then
-          notify("HashiCorp Vault is not configured", vim.log.levels.ERROR)
-          return
-        end
         local vault = get_secret_manager("vault")
         vault.select()
       end,
-      desc = "Select HashiCorp Vault secrets to load",
+      desc = "Open interactive picker to select HCP Vault applications",
+    },
+    EcologAWSConfig = {
+      callback = function()
+        local aws = get_secret_manager("aws")
+        aws.select_config()
+      end,
+      desc = "Configure AWS Secrets Manager settings (region, profile)",
+    },
+    EcologVaultConfig = {
+      callback = function()
+        local vault = get_secret_manager("vault")
+        vault.select_config()
+      end,
+      desc = "Configure HCP Vault settings (organization, project, credentials)",
     },
   }
 

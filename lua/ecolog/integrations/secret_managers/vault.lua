@@ -25,7 +25,6 @@ end
 ---@field level number
 
 local VAULT_TIMEOUT_MS = 300000
-local VAULT_TOKEN_CACHE_SEC = 300
 
 ---@type table<string, VaultError>
 local VAULT_ERRORS = {
@@ -35,7 +34,7 @@ local VAULT_ERRORS = {
     level = vim.log.levels.ERROR,
   },
   ACCESS_DENIED = {
-    message = "Access denied: Check your HCP service principal permissions",
+    message = "Access denied: Check your HCP permissions",
     code = "AccessDenied",
     level = vim.log.levels.ERROR,
   },
@@ -52,11 +51,6 @@ local VAULT_ERRORS = {
   NO_HCP_CLI = {
     message = "HCP CLI is not installed or not in PATH",
     code = "NoHcpCli",
-    level = vim.log.levels.ERROR,
-  },
-  NO_AUTH = {
-    message = "Not authenticated with HCP CLI. Please run 'hcp auth login' first",
-    code = "NoAuth",
     level = vim.log.levels.ERROR,
   },
   INVALID_RESPONSE = {
@@ -82,8 +76,6 @@ local VAULT_ERRORS = {
 }
 
 ---@class VaultSecretsState : SecretManagerState
----@field token_valid boolean
----@field last_token_check number
 ---@field app_secrets table<string, string[]> Map of app names to their selected secret paths
 ---@field app_loaded_secrets table<string, table<string, any>> Map of app names to their loaded secrets
 
@@ -97,14 +89,12 @@ local VaultSecretsManager = setmetatable({}, { __index = BaseSecretManager })
 ---@param state VaultSecretsState State object to track jobs
 ---@param on_success fun(stdout: string) Success callback
 ---@param on_error fun(err: VaultError) Error callback
----@param env? table<string, string> Optional environment variables
 ---@return number job_id
-function VaultSecretsManager:create_vault_job(cmd, state, on_success, on_error, env)
+function VaultSecretsManager:create_vault_job(cmd, state, on_success, on_error)
   local stdout_chunks = {}
   local stderr_chunks = {}
 
   local job_id = vim.fn.jobstart(cmd, {
-    env = env,
     on_stdout = function(_, data)
       if data then
         vim.list_extend(stdout_chunks, data)
@@ -169,7 +159,7 @@ end
 ---Create initial state or reset existing state
 ---@param preserve_token? boolean Whether to preserve token validation state
 ---@return VaultSecretsState
-function VaultSecretsManager:create_initial_state(preserve_token)
+function VaultSecretsManager:create_initial_state()
   return {
     selected_secrets = {},
     loaded_secrets = {},
@@ -179,8 +169,6 @@ function VaultSecretsManager:create_initial_state(preserve_token)
     pending_env_updates = {},
     app_loaded_secrets = {},
     is_refreshing = false,
-    token_valid = preserve_token and self.state.token_valid or false,
-    last_token_check = preserve_token and self.state.last_token_check or 0,
   }
 end
 
@@ -199,9 +187,7 @@ end
 ---@return VaultError
 function VaultSecretsManager:process_error(stderr, path)
   local err
-  if stderr:match("No authentication detected") or stderr:match("failed to get new token") then
-    err = VAULT_ERRORS.NO_AUTH
-  elseif stderr:match("permission denied") or stderr:match("access denied") then
+  if stderr:match("permission denied") or stderr:match("access denied") then
     err = VAULT_ERRORS.ACCESS_DENIED
   elseif stderr:match("connection refused") or stderr:match("connection error") then
     err = VAULT_ERRORS.CONNECTION_ERROR
@@ -225,77 +211,6 @@ function VaultSecretsManager:process_error(stderr, path)
   end
 
   return err
-end
-
----Check HCP service principal credentials
----@param callback fun(ok: boolean, err?: string)
-function VaultSecretsManager:check_token(callback)
-  local now = os.time()
-  if self.state.token_valid and (now - self.state.last_token_check) < VAULT_TOKEN_CACHE_SEC then
-    callback(true)
-    return
-  end
-
-  local cmd = {
-    "hcp",
-    "vault-secrets",
-    "secrets",
-    "list",
-  }
-
-  self:create_vault_job(cmd, self.state, function()
-    self.state.token_valid = true
-    self.state.last_token_check = now
-    callback(true)
-  end, function(err)
-    self.state.token_valid = false
-    callback(false, err.message)
-  end, {
-    HCP_CLIENT_ID = self.config.client_id,
-    HCP_CLIENT_SECRET = self.config.token,
-  })
-end
-
----Create a job to fetch a secret
----@param secret { app: string, path: string }
----@param on_success fun(value: string)
----@param on_error fun(err: VaultError)
----@return number job_id
-function VaultSecretsManager:create_secret_job(secret, on_success, on_error)
-  local cmd = {
-    "hcp",
-    "vault-secrets",
-    "secrets",
-    "open",
-    secret.path,
-    "--app",
-    secret.app,
-    "--format=json",
-  }
-
-  return self:create_vault_job(cmd, self.state, function(stdout)
-    local parsed, err = parse_vault_response(stdout, secret.path)
-    if err then
-      on_error({
-        message = err,
-        code = "InvalidResponse",
-        level = vim.log.levels.ERROR,
-      })
-      return
-    end
-
-    if parsed and parsed.static_version and parsed.static_version.value then
-      on_success(parsed.static_version.value)
-    else
-      on_error({
-        message = string.format("Invalid response format for secret %s", secret.path),
-        code = "InvalidResponse",
-        level = vim.log.levels.ERROR,
-      })
-    end
-  end, function(err)
-    on_error(err)
-  end)
 end
 
 ---List available secrets in HCP Vault Secrets
@@ -326,10 +241,7 @@ function VaultSecretsManager:list_secrets(callback)
     callback(secrets)
   end, function(err)
     callback(nil, err.message)
-  end, {
-    HCP_CLIENT_ID = self.config.client_id,
-    HCP_CLIENT_SECRET = self.config.token,
-  })
+  end)
 end
 
 ---List available apps in HCP Vault Secrets
@@ -386,18 +298,15 @@ end
 ---@protected
 ---@param config VaultSecretsConfig
 function VaultSecretsManager:_load_secrets_impl(config)
-  -- Set loading lock if not already set
   if not self.state.loading_lock then
     self.state.loading_lock = {}
   end
 
-  -- Skip validation and checks if not enabled
   if not config.enabled then
     secret_utils.cleanup_state(self.state)
     return {}
   end
 
-  -- Validate configuration
   local is_valid, error_message = validate_config(config)
   if not is_valid then
     local err = vim.deepcopy(VAULT_ERRORS.INVALID_CONFIG)
@@ -415,7 +324,6 @@ function VaultSecretsManager:_load_secrets_impl(config)
 
   self.state.app_loaded_secrets = self.state.app_loaded_secrets or {}
 
-  -- If no apps specified, silently return empty secrets
   if not config.apps or #config.apps == 0 then
     secret_utils.cleanup_state(self.state)
     return {}
@@ -436,7 +344,6 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
 
   self.state.loaded_secrets = {}
 
-  -- Clean up removed apps
   for app_name, _ in pairs(self.state.app_secrets or {}) do
     if not current_apps[app_name] then
       self.state.app_secrets[app_name] = nil
@@ -446,7 +353,6 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
     end
   end
 
-  -- Set timeout timer
   self.state.timeout_timer = vim.fn.timer_start(VAULT_TIMEOUT_MS, function()
     if self.state.loading_lock then
       vim.notify(VAULT_ERRORS.TIMEOUT.message, VAULT_ERRORS.TIMEOUT.level)
@@ -672,7 +578,7 @@ function VaultSecretsManager:handle_app_selection(selected_apps, callback)
     return
   end
 
-  self.state = self:create_initial_state(true)
+  self.state = self:create_initial_state()
   self.config = vim.tbl_extend("force", self.config or {}, {
     apps = chosen_apps,
     enabled = true,
@@ -721,6 +627,169 @@ function VaultSecretsManager:setup_cleanup()
   })
 end
 
+---Get available configuration options for Vault
+---@protected
+---@return table<string, { name: string, current: string|nil, options: string[]|nil, type: "multi-select"|"single-select"|"input" }>
+function VaultSecretsManager:_get_config_options()
+  local options = {}
+
+  local cmd = { "hcp", "organizations", "list", "--format=json" }
+  local output = vim.fn.system(cmd)
+  if vim.v.shell_error == 0 and output ~= "" then
+    local ok, parsed = pcall(vim.json.decode, output)
+    if ok and parsed then
+      local orgs = {}
+      local current_org = vim.env.HCP_ORGANIZATION
+
+      if not current_org then
+        for _, org in ipairs(parsed) do
+          if org.state == "ACTIVE" then
+            current_org = org.name
+            break
+          end
+        end
+      end
+
+      for _, org in ipairs(parsed) do
+        if org.name then
+          table.insert(orgs, org.name)
+        end
+      end
+      if #orgs > 0 then
+        options.organization = {
+          name = "HCP Organization",
+          current = current_org,
+          type = "single-select",
+          options = orgs,
+        }
+      end
+    end
+  end
+
+  local cmd_projects = { "hcp", "projects", "list", "--format=json" }
+  local output_projects = vim.fn.system(cmd_projects)
+  if vim.v.shell_error == 0 and output_projects ~= "" then
+    local ok, parsed = pcall(vim.json.decode, output_projects)
+    if ok and parsed then
+      local projects = {}
+      local current_project = vim.env.HCP_PROJECT
+
+      if not current_project then
+        for _, proj in ipairs(parsed) do
+          if proj.state == "ACTIVE" then
+            current_project = proj.name
+            break
+          end
+        end
+      end
+
+      for _, proj in ipairs(parsed) do
+        if proj.name then
+          table.insert(projects, proj.name)
+        end
+      end
+      if #projects > 0 then
+        options.project = {
+          name = "HCP Project",
+          current = current_project,
+          type = "single-select",
+          options = projects,
+        }
+      end
+    end
+  end
+
+  return options
+end
+
+---Handle configuration change for Vault
+---@protected
+---@param option string The configuration option being changed
+---@param value any The new value
+function VaultSecretsManager:_handle_config_change(option, value)
+  if not self.config then
+    self.config = { enabled = true }
+  end
+
+  if option == "organization" then
+    if vim.env.HCP_ORGANIZATION ~= value then
+      vim.env.HCP_ORGANIZATION = value
+      self.state.selected_secrets = {}
+      self.state.loaded_secrets = {}
+      self.state.initialized = false
+
+      local current_env = ecolog.get_env_vars() or {}
+      local final_vars = {}
+      for key, value in pairs(current_env) do
+        if not (value.source and value.source:match("^" .. self.source_prefix)) then
+          final_vars[key] = value
+        end
+      end
+      secret_utils.update_environment(final_vars, false, self.source_prefix)
+      vim.notify("Vault secrets unloaded due to organization change", vim.log.levels.INFO)
+    end
+  elseif option == "project" then
+    if vim.env.HCP_PROJECT ~= value then
+      vim.env.HCP_PROJECT = value
+      self.state.selected_secrets = {}
+      self.state.loaded_secrets = {}
+      self.state.initialized = false
+
+      local current_env = ecolog.get_env_vars() or {}
+      local final_vars = {}
+      for key, value in pairs(current_env) do
+        if not (value.source and value.source:match("^" .. self.source_prefix)) then
+          final_vars[key] = value
+        end
+      end
+      secret_utils.update_environment(final_vars, false, self.source_prefix)
+      vim.notify("Vault secrets unloaded due to project change", vim.log.levels.INFO)
+    end
+  end
+end
+
+---Create a job to fetch a secret
+---@param secret { app: string, path: string }
+---@param on_success fun(value: string)
+---@param on_error fun(err: VaultError)
+---@return number job_id
+function VaultSecretsManager:create_secret_job(secret, on_success, on_error)
+  local cmd = {
+    "hcp",
+    "vault-secrets",
+    "secrets",
+    "open",
+    secret.path,
+    "--app",
+    secret.app,
+    "--format=json",
+  }
+
+  return self:create_vault_job(cmd, self.state, function(stdout)
+    local parsed, err = parse_vault_response(stdout, secret.path)
+    if err then
+      on_error({
+        message = err,
+        code = "InvalidResponse",
+        level = vim.log.levels.ERROR,
+      })
+      return
+    end
+
+    if parsed and parsed.static_version and parsed.static_version.value then
+      on_success(parsed.static_version.value)
+    else
+      on_error({
+        message = string.format("Invalid response format for secret %s", secret.path),
+        code = "InvalidResponse",
+        level = vim.log.levels.ERROR,
+      })
+    end
+  end, function(err)
+    on_error(err)
+  end)
+end
+
 local instance = VaultSecretsManager:new()
 instance:setup_cleanup()
 
@@ -730,5 +799,8 @@ return {
   end,
   select = function()
     return instance:select()
+  end,
+  select_config = function()
+    return instance:select_config()
   end,
 }

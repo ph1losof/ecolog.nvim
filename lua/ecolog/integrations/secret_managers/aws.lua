@@ -1,5 +1,6 @@
 local api = vim.api
 local ecolog = require("ecolog")
+local utils = require("ecolog.utils")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
 
@@ -547,6 +548,287 @@ function AwsSecretsManager:setup_cleanup()
   })
 end
 
+---Get available configuration options for AWS Secrets Manager
+---@protected
+---@return table<string, { name: string, current: string|nil, options: string[]|nil, type: "multi-select"|"single-select"|"input" }>
+function AwsSecretsManager:_get_config_options()
+  local options = {}
+  
+  -- Region configuration
+  options.region = {
+    name = "AWS Region",
+    current = self.config and self.config.region or nil,
+    type = "single-select",
+    options = {
+      "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+      "eu-west-1", "eu-west-2", "eu-central-1",
+      "ap-northeast-1", "ap-northeast-2", "ap-southeast-1", "ap-southeast-2",
+      "sa-east-1"
+    }
+  }
+
+  -- Profile configuration
+  local cmd = { "aws", "configure", "list-profiles" }
+  local output = vim.fn.system(cmd)
+  if vim.v.shell_error == 0 and output ~= "" then
+    local profiles = {}
+    for profile in output:gmatch("[^\r\n]+") do
+      table.insert(profiles, profile)
+    end
+    if #profiles > 0 then
+      options.profile = {
+        name = "AWS Profile",
+        current = self.config and self.config.profile or nil,
+        type = "single-select",
+        options = profiles
+      }
+    end
+  end
+
+  return options
+end
+
+---Handle configuration change for AWS Secrets Manager
+---@protected
+---@param option string The configuration option being changed
+---@param value any The new value
+function AwsSecretsManager:_handle_config_change(option, value)
+  if not self.config then
+    self.config = { enabled = true }
+  end
+
+  if option == "region" then
+    -- Only reset if region actually changes
+    if self.config.region ~= value then
+      self.config.region = value
+      -- Reset and unload secrets when region changes
+      self.state.selected_secrets = {}
+      self.state.loaded_secrets = {}
+      self.state.initialized = false
+      
+      -- Update environment to remove AWS secrets
+      local current_env = ecolog.get_env_vars() or {}
+      local final_vars = {}
+      for key, value in pairs(current_env) do
+        if not (value.source and value.source:match("^" .. self.source_prefix)) then
+          final_vars[key] = value
+        end
+      end
+      secret_utils.update_environment(final_vars, false, self.source_prefix)
+      vim.notify("AWS secrets unloaded due to region change", vim.log.levels.INFO)
+    end
+  elseif option == "profile" then
+    -- Only reset if profile actually changes
+    if self.config.profile ~= value then
+      self.config.profile = value
+      -- Reset and unload secrets when profile changes
+      self.state.selected_secrets = {}
+      self.state.loaded_secrets = {}
+      self.state.initialized = false
+      
+      -- Update environment to remove AWS secrets
+      local current_env = ecolog.get_env_vars() or {}
+      local final_vars = {}
+      for key, value in pairs(current_env) do
+        if not (value.source and value.source:match("^" .. self.source_prefix)) then
+          final_vars[key] = value
+        end
+      end
+      secret_utils.update_environment(final_vars, false, self.source_prefix)
+      vim.notify("AWS secrets unloaded due to profile change", vim.log.levels.INFO)
+    end
+  end
+
+  -- Don't automatically reload secrets after config change
+  -- Let user explicitly select secrets again
+end
+
+---Show configuration selection UI
+function AwsSecretsManager:select_config()
+  local options = self:_get_config_options()
+  if vim.tbl_isempty(options) then
+    vim.notify("No configurable options available for " .. self.manager_name, vim.log.levels.WARN)
+    return
+  end
+
+  local option_names = vim.tbl_keys(options)
+  table.sort(option_names)
+
+  local cursor_idx = 1
+  local function get_content()
+    local content = {}
+    for i, option_name in ipairs(option_names) do
+      local option = options[option_name]
+      local current = option.current or "not set"
+      local prefix = i == cursor_idx and " → " or "   "
+      table.insert(content, string.format("%s%s: %s", prefix, option.name, current))
+    end
+    return content
+  end
+
+  local float_opts = utils.create_minimal_win_opts(60, #option_names)
+  local bufnr = api.nvim_create_buf(false, true)
+
+  api.nvim_buf_set_option(bufnr, "buftype", "nofile")
+  api.nvim_buf_set_option(bufnr, "bufhidden", "wipe")
+  api.nvim_buf_set_option(bufnr, "modifiable", true)
+  api.nvim_buf_set_option(bufnr, "filetype", "ecolog")
+
+  local winid = api.nvim_open_win(bufnr, true, float_opts)
+
+  api.nvim_win_set_option(winid, "conceallevel", 2)
+  api.nvim_win_set_option(winid, "concealcursor", "niv")
+  api.nvim_win_set_option(winid, "cursorline", true)
+  api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+
+  local function update_buffer()
+    local content = get_content()
+    api.nvim_buf_set_option(bufnr, "modifiable", true)
+    api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
+    api.nvim_buf_set_option(bufnr, "modifiable", false)
+
+    api.nvim_buf_clear_namespace(bufnr, -1, 0, -1)
+    for i = 1, #content do
+      local hl_group = i == cursor_idx and "EcologCursor" or "EcologVariable"
+      api.nvim_buf_add_highlight(bufnr, -1, hl_group, i - 1, 0, -1)
+    end
+
+    api.nvim_win_set_cursor(winid, { cursor_idx, 4 })
+  end
+
+  local function close_window()
+    if api.nvim_win_is_valid(winid) then
+      api.nvim_win_close(winid, true)
+    end
+  end
+
+  local function handle_option_selection()
+    local option_name = option_names[cursor_idx]
+    local option = options[option_name]
+
+    if option.type == "single-select" then
+      close_window()
+      -- For both region and profile, show a simple selection UI
+      local current_value = option.current
+      local select_idx = 1
+      
+      -- Find current selection index
+      for i, value in ipairs(option.options) do
+        if value == current_value then
+          select_idx = i
+          break
+        end
+      end
+
+      local select_bufnr = api.nvim_create_buf(false, true)
+      local select_winid = api.nvim_open_win(select_bufnr, true, utils.create_minimal_win_opts(30, #option.options))
+
+      local function update_select_buffer()
+        local content = {}
+        for i, value in ipairs(option.options) do
+          local prefix = i == select_idx and " → " or "   "
+          table.insert(content, string.format("%s%s", prefix, value))
+        end
+
+        api.nvim_buf_set_option(select_bufnr, "modifiable", true)
+        api.nvim_buf_set_lines(select_bufnr, 0, -1, false, content)
+        api.nvim_buf_set_option(select_bufnr, "modifiable", false)
+
+        api.nvim_buf_clear_namespace(select_bufnr, -1, 0, -1)
+        for i = 1, #content do
+          local hl_group = i == select_idx and "EcologCursor" or "EcologVariable"
+          api.nvim_buf_add_highlight(select_bufnr, -1, hl_group, i - 1, 0, -1)
+        end
+
+        api.nvim_win_set_cursor(select_winid, { select_idx, 4 })
+      end
+
+      local function close_select_window()
+        if api.nvim_win_is_valid(select_winid) then
+          api.nvim_win_close(select_winid, true)
+        end
+      end
+
+      api.nvim_buf_set_option(select_bufnr, "buftype", "nofile")
+      api.nvim_buf_set_option(select_bufnr, "bufhidden", "wipe")
+      api.nvim_buf_set_option(select_bufnr, "modifiable", true)
+      api.nvim_buf_set_option(select_bufnr, "filetype", "ecolog")
+
+      api.nvim_win_set_option(select_winid, "conceallevel", 2)
+      api.nvim_win_set_option(select_winid, "concealcursor", "niv")
+      api.nvim_win_set_option(select_winid, "cursorline", true)
+      api.nvim_win_set_option(select_winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+
+      vim.keymap.set("n", "j", function()
+        if select_idx < #option.options then
+          select_idx = select_idx + 1
+          update_select_buffer()
+        end
+      end, { buffer = select_bufnr, nowait = true })
+
+      vim.keymap.set("n", "k", function()
+        if select_idx > 1 then
+          select_idx = select_idx - 1
+          update_select_buffer()
+        end
+      end, { buffer = select_bufnr, nowait = true })
+
+      vim.keymap.set("n", "<CR>", function()
+        local selected_value = option.options[select_idx]
+        close_select_window()
+        self:_handle_config_change(option_name, selected_value)
+      end, { buffer = select_bufnr, nowait = true })
+
+      vim.keymap.set("n", "q", close_select_window, { buffer = select_bufnr, nowait = true })
+      vim.keymap.set("n", "<ESC>", close_select_window, { buffer = select_bufnr, nowait = true })
+
+      api.nvim_create_autocmd("BufLeave", {
+        buffer = select_bufnr,
+        once = true,
+        callback = close_select_window,
+      })
+
+      update_select_buffer()
+    elseif option.type == "input" then
+      close_window()
+      vim.ui.input({
+        prompt = string.format("Enter %s: ", option.name),
+        default = option.current or "",
+      }, function(value)
+        if value then
+          self:_handle_config_change(option_name, value)
+        end
+      end)
+    end
+  end
+
+  vim.keymap.set("n", "j", function()
+    if cursor_idx < #option_names then
+      cursor_idx = cursor_idx + 1
+      update_buffer()
+    end
+  end, { buffer = bufnr, nowait = true })
+
+  vim.keymap.set("n", "k", function()
+    if cursor_idx > 1 then
+      cursor_idx = cursor_idx - 1
+      update_buffer()
+    end
+  end, { buffer = bufnr, nowait = true })
+
+  vim.keymap.set("n", "<CR>", handle_option_selection, { buffer = bufnr, nowait = true })
+  vim.keymap.set("n", "q", close_window, { buffer = bufnr, nowait = true })
+  vim.keymap.set("n", "<ESC>", close_window, { buffer = bufnr, nowait = true })
+
+  api.nvim_create_autocmd("BufLeave", {
+    buffer = bufnr,
+    once = true,
+    callback = close_window,
+  })
+
+  update_buffer()
+end
+
 local instance = AwsSecretsManager:new()
 instance:setup_cleanup()
 
@@ -556,5 +838,8 @@ return {
   end,
   select = function()
     return instance:select()
+  end,
+  select_config = function()
+    return instance:select_config()
   end,
 }

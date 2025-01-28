@@ -422,8 +422,8 @@ The provider will be automatically loaded when editing files of the specified fi
 | `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
 | `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
 | `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
-| `:EcologAWSSelect`                         | Open interactive picker to select AWS Secrets Manager secrets                         |
-| `:EcologVaultSelect`                       | Open interactive picker to select HCP Vault applications                              |
+| `:EcologAWSConfig`                         | Open configuration menu for AWS Secrets Manager (region, profile, secrets)            |
+| `:EcologVaultConfig`                       | Open configuration menu for HCP Vault (organization, project, apps)                   |
 
 ## 📝 Environment File Priority
 

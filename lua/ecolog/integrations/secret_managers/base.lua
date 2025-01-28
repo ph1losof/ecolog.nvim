@@ -318,25 +318,65 @@ function BaseSecretManager:select_config()
     update_select_buffer()
   end
 
+  local function handle_multi_select(option, option_name)
+    close_window()
+    
+    local function show_selection_ui(options_list)
+      local selected = {}
+      local current_value = option.current
+      if current_value and current_value ~= "none" then
+        -- Split and filter out any empty strings
+        local current_values = vim.split(current_value, ",")
+        for _, value in ipairs(current_values) do
+          local trimmed = vim.trim(value)
+          if trimmed ~= "" then
+            selected[trimmed] = true
+          end
+        end
+      end
+
+      -- Filter out any empty strings from options list
+      local filtered_options = vim.tbl_filter(function(opt)
+        return type(opt) == "string" and opt ~= ""
+      end, options_list)
+
+      if #filtered_options == 0 then
+        vim.notify("No valid options available", vim.log.levels.WARN)
+        return
+      end
+
+      secret_utils.create_secret_selection_ui(filtered_options, selected, function(selected_options)
+        -- Filter out any empty selections before passing to handler
+        local valid_selections = {}
+        for opt, is_selected in pairs(selected_options) do
+          if type(opt) == "string" and opt ~= "" then
+            valid_selections[opt] = is_selected
+          end
+        end
+        self:_handle_config_change(option_name, valid_selections)
+      end, self.source_prefix)
+    end
+
+    if option.dynamic_options then
+      vim.notify("Loading options...", vim.log.levels.INFO)
+      option.dynamic_options(function(options_list)
+        if not options_list or #options_list == 0 then
+          vim.notify("No options available", vim.log.levels.WARN)
+          return
+        end
+        show_selection_ui(options_list)
+      end)
+    else
+      show_selection_ui(option.options or {})
+    end
+  end
+
   local function handle_option_selection()
     local option_name = option_names[cursor_idx]
     local option = options[option_name]
 
-    if option.type == "multi-select" and option.options then
-      close_window()
-      local selected = {}
-      local current_value = option.current
-
-      secret_utils.create_secret_selection_ui(option.options, {
-        [current_value or ""] = true,
-      }, function(selected_options)
-        for value, is_selected in pairs(selected_options) do
-          if is_selected then
-            self:_handle_config_change(option_name, value)
-            break
-          end
-        end
-      end, self.source_prefix)
+    if option.type == "multi-select" then
+      handle_multi_select(option, option_name)
     elseif option.type == "single-select" and option.options then
       close_window()
       handle_single_select(option, option_name)

@@ -699,6 +699,30 @@ function VaultSecretsManager:_get_config_options()
     end
   end
 
+  -- Add apps selection option
+  options.apps = {
+    name = "Vault Applications",
+    current = self.config and self.config.apps and #self.config.apps > 0 and table.concat(vim.tbl_filter(function(app)
+      return type(app) == "string" and app ~= ""
+    end, self.config.apps), ", ") or "none",
+    type = "multi-select",
+    options = {},
+    dynamic_options = function(callback)
+      self:list_apps(function(apps, err)
+        if err then
+          vim.notify(err, vim.log.levels.ERROR)
+          callback({})
+          return
+        end
+        -- Filter out any empty strings from the apps list
+        local filtered_apps = vim.tbl_filter(function(app)
+          return type(app) == "string" and app ~= ""
+        end, apps or {})
+        callback(filtered_apps)
+      end)
+    end
+  }
+
   return options
 end
 
@@ -718,6 +742,9 @@ function VaultSecretsManager:_handle_config_change(option, value)
       self.state.loaded_secrets = {}
       self.state.initialized = false
 
+      -- Clear apps from config
+      self.config.apps = nil
+
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
       for key, value in pairs(current_env) do
@@ -735,6 +762,9 @@ function VaultSecretsManager:_handle_config_change(option, value)
       self.state.loaded_secrets = {}
       self.state.initialized = false
 
+      -- Clear apps from config
+      self.config.apps = nil
+
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
       for key, value in pairs(current_env) do
@@ -745,6 +775,42 @@ function VaultSecretsManager:_handle_config_change(option, value)
       secret_utils.update_environment(final_vars, false, self.source_prefix)
       vim.notify("Vault secrets unloaded due to project change", vim.log.levels.INFO)
     end
+  elseif option == "apps" then
+    local selected_apps = {}
+    for app_name, is_selected in pairs(value) do
+      if is_selected and type(app_name) == "string" and app_name ~= "" then
+        table.insert(selected_apps, app_name)
+      end
+    end
+
+    if #selected_apps == 0 then
+      local current_env = ecolog.get_env_vars() or {}
+      local final_vars = {}
+
+      for key, value in pairs(current_env) do
+        if not (value.source and value.source:match("^vault:")) then
+          final_vars[key] = value
+        end
+      end
+
+      self.state = self:create_initial_state()
+      
+      -- Clear apps from config
+      self.config.apps = nil
+      
+      ecolog.refresh_env_vars()
+      secret_utils.update_environment(final_vars, false, "vault:")
+      vim.notify("All Vault secrets unloaded", vim.log.levels.INFO)
+      return
+    end
+
+    self.state = self:create_initial_state()
+    self.config = vim.tbl_extend("force", self.config or {}, {
+      apps = selected_apps,
+      enabled = true,
+    })
+
+    self:load_secrets(self.config)
   end
 end
 

@@ -447,20 +447,6 @@ local function create_commands(config)
       nargs = "?",
       desc = "Copy environment variable value to clipboard",
     },
-    EcologAWSSelect = {
-      callback = function()
-        local aws = get_secret_manager("aws")
-        aws.select()
-      end,
-      desc = "Open interactive picker to select AWS Secrets Manager secrets",
-    },
-    EcologVaultSelect = {
-      callback = function()
-        local vault = get_secret_manager("vault")
-        vault.select()
-      end,
-      desc = "Open interactive picker to select HCP Vault applications",
-    },
     EcologAWSConfig = {
       callback = function()
         local aws = get_secret_manager("aws")

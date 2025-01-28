@@ -1108,7 +1108,7 @@ All keymaps are customizable through the configuration.
 
 The AWS Secrets Manager integration allows you to load secrets from AWS Secrets Manager into your environment variables. This integration requires the AWS CLI to be installed and configured with appropriate credentials.
 
-> ⚠️ **Note**: This is a beta feature and may have breaking changes in future releases.
+> ⚠️ **Note**: This is a WIP feature and may have breaking changes in future releases.
 
 #### Configuration
 
@@ -1203,7 +1203,7 @@ The integration provides clear error messages for common issues:
 
 The HashiCorp Vault Secrets integration allows you to load secrets from HCP Vault Secrets into your environment variables. This integration requires the HCP CLI to be installed and configured with appropriate credentials.
 
-> ⚠️ **Note**: This is a beta feature and may have breaking changes in future releases.
+> ⚠️ **Note**: This is a WIP feature and may have breaking changes in future releases.
 
 #### Configuration
 

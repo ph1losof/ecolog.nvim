@@ -1121,7 +1121,7 @@ require('ecolog').setup({
         override = false, -- When true, AWS secrets take precedence over .env files and shell variables
         region = "us-west-2", -- Required: AWS region where your secrets are stored
         profile = "default", -- Optional: AWS profile to use
-        secrets = { -- Required: List of secret names to fetch
+        secrets = { -- Optional: List of secret names to fetch on startup
           "my-app/dev/database",
           "my-app/dev/api"
         },
@@ -1147,26 +1147,35 @@ require('ecolog').setup({
 - Integration with shelter mode for sensitive data protection
 - Automatic credential validation and error handling
 - Support for AWS profiles and regions
+- Direct configuration access through `:EcologAWSConfig` command
+- Real-time configuration changes with automatic secret reloading
+- Parallel secret loading with retry support
+- Proper cleanup on Neovim exit
 
-#### Interactive Secret Selection
+#### Interactive Configuration
 
-The `:EcologAWSSelect` command opens an interactive picker that allows you to:
+The `:EcologAWSConfig` command provides access to three main configuration options:
 
-- Browse all available secrets in your AWS region
-- Select multiple secrets using the space key
-- See which secrets are currently selected with a checkmark (✓)
-- Navigate through secrets with j/k keys
-- Confirm selection with Enter
-- Cancel selection with q or Escape
+1. **Region**: Select or change the AWS region
+2. **Profile**: Choose the AWS profile to use
+3. **Secrets**: Select which secrets to load
 
-Default keybindings in the picker:
+Each option can be accessed directly using:
 
-| Key       | Action                               |
-| --------- | ------------------------------------ |
-| `j`/`k`   | Navigate through secrets             |
-| `<space>` | Toggle selection of current secret   |
-| `<CR>`    | Confirm selection and load secrets   |
-| `q`/`ESC` | Close picker without loading secrets |
+```vim
+:EcologAWSConfig region    " Configure AWS region
+:EcologAWSConfig profile   " Configure AWS profile
+:EcologAWSConfig secrets   " Configure which secrets to load
+```
+
+Default keybindings in the configuration UI:
+
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| `j`/`k`   | Navigate through options            |
+| `<space>` | Toggle selection (for multi-select) |
+| `<CR>`    | Select option or confirm selection  |
+| `q`/`ESC` | Close without changes               |
 
 #### Requirements
 
@@ -1187,6 +1196,8 @@ The integration provides clear error messages for common issues:
 - Access denied errors
 - Region configuration issues
 - Missing or invalid secrets
+- Command timeout errors
+- AWS CLI installation issues
 
 ### HashiCorp Vault Secrets
 
@@ -1229,26 +1240,34 @@ require('ecolog').setup({
 - Integration with shelter mode for sensitive data protection
 - Automatic credential validation and error handling
 - Support for HCP service principal authentication
+- Direct configuration access through `:EcologVaultConfig` command
+- Real-time configuration changes with automatic secret reloading
+- Proper cleanup on Neovim exit
 
-#### Interactive Secret Selection
+#### Interactive Configuration
 
-The `:EcologVaultSelect` command opens an interactive picker that allows you to:
+The `:EcologVaultConfig` command provides access to three main configuration options:
 
-- Browse all available applications in your HCP organization
-- Select multiple applications using the space key
-- See which applications are currently selected with a checkmark (✓)
-- Navigate through applications with j/k keys
-- Confirm selection with Enter
-- Cancel selection with q or Escape
+1. **Organization**: Select or change the HCP organization
+2. **Project**: Choose the HCP project to use
+3. **Apps**: Select which applications to load secrets from
 
-Default keybindings in the picker:
+Each option can be accessed directly using:
 
-| Key       | Action                                  |
-| --------- | --------------------------------------- |
-| `j`/`k`   | Navigate through applications           |
-| `<space>` | Toggle selection of current application |
-| `<CR>`    | Confirm selection and load secrets      |
-| `q`/`ESC` | Close picker without loading secrets    |
+```vim
+:EcologVaultConfig organization    " Configure HCP organization
+:EcologVaultConfig project        " Configure HCP project
+:EcologVaultConfig apps           " Configure which apps to load secrets from
+```
+
+Default keybindings in the configuration UI:
+
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| `j`/`k`   | Navigate through options            |
+| `<space>` | Toggle selection (for multi-select) |
+| `<CR>`    | Select option or confirm selection  |
+| `q`/`ESC` | Close without changes               |
 
 #### Requirements
 
@@ -1267,6 +1286,8 @@ The integration provides clear error messages for common issues:
 - Access denied errors
 - Missing or invalid applications
 - Missing or invalid secrets
+- Command timeout errors
+- HCP CLI installation issues
 
 ### 🔍 Shelter Previewers
 

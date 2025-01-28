@@ -448,18 +448,52 @@ local function create_commands(config)
       desc = "Copy environment variable value to clipboard",
     },
     EcologAWSConfig = {
-      callback = function()
+      callback = function(args)
         local aws = get_secret_manager("aws")
-        aws.select_config()
+        if args.args ~= "" then
+          -- Try to match against known options
+          local valid_options = { region = true, profile = true, secrets = true }
+          local option = args.args:lower()
+          if valid_options[option] then
+            aws.instance:select_config(option)
+          else
+            vim.notify("Invalid AWS config option: " .. option, vim.log.levels.ERROR)
+          end
+        else
+          aws.instance:select_config()
+        end
       end,
-      desc = "Configure AWS Secrets Manager settings (region, profile)",
+      nargs = "?",
+      desc = "Configure AWS Secrets Manager settings (region, profile, secrets)",
+      complete = function(arglead)
+        return vim.tbl_filter(function(item)
+          return item:find(arglead, 1, true)
+        end, { "region", "profile", "secrets" })
+      end,
     },
     EcologVaultConfig = {
-      callback = function()
+      callback = function(args)
         local vault = get_secret_manager("vault")
-        vault.select_config()
+        if args.args ~= "" then
+          -- Try to match against known options
+          local valid_options = { organization = true, project = true, apps = true }
+          local option = args.args:lower()
+          if valid_options[option] then
+            vault.instance:select_config(option)
+          else
+            vim.notify("Invalid Vault config option: " .. option, vim.log.levels.ERROR)
+          end
+        else
+          vault.instance:select_config()
+        end
       end,
-      desc = "Configure HCP Vault settings (organization, project, credentials)",
+      nargs = "?",
+      desc = "Configure HCP Vault settings (organization, project, apps)",
+      complete = function(arglead)
+        return vim.tbl_filter(function(item)
+          return item:find(arglead, 1, true)
+        end, { "organization", "project", "apps" })
+      end,
     },
   }
 

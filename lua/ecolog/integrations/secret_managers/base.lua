@@ -176,14 +176,202 @@ function BaseSecretManager:_handle_config_change(option, value)
   -- To be implemented by derived classes
 end
 
+---Handle single select option
+---@private
+---@param option table The option configuration
+---@param option_name string The name of the option
+function BaseSecretManager:_handle_single_select(option, option_name)
+  local current_value = option.current
+  local select_idx = 1
+  
+  -- Find current selection index
+  for i, value in ipairs(option.options) do
+    if value == current_value then
+      select_idx = i
+      break
+    end
+  end
+
+  local select_bufnr = api.nvim_create_buf(false, true)
+  local select_winid = api.nvim_open_win(select_bufnr, true, utils.create_minimal_win_opts(30, #option.options))
+
+  local function update_select_buffer()
+    local content = {}
+    for i, value in ipairs(option.options) do
+      local prefix = i == select_idx and " → " or "   "
+      table.insert(content, string.format("%s%s", prefix, value))
+    end
+
+    api.nvim_buf_set_option(select_bufnr, "modifiable", true)
+    api.nvim_buf_set_lines(select_bufnr, 0, -1, false, content)
+    api.nvim_buf_set_option(select_bufnr, "modifiable", false)
+
+    api.nvim_buf_clear_namespace(select_bufnr, -1, 0, -1)
+    for i = 1, #content do
+      local hl_group = i == select_idx and "EcologCursor" or "EcologVariable"
+      api.nvim_buf_add_highlight(select_bufnr, -1, hl_group, i - 1, 0, -1)
+    end
+
+    api.nvim_win_set_cursor(select_winid, { select_idx, 4 })
+  end
+
+  local function close_select_window()
+    if api.nvim_win_is_valid(select_winid) then
+      api.nvim_win_close(select_winid, true)
+    end
+  end
+
+  api.nvim_buf_set_option(select_bufnr, "buftype", "nofile")
+  api.nvim_buf_set_option(select_bufnr, "bufhidden", "wipe")
+  api.nvim_buf_set_option(select_bufnr, "modifiable", true)
+  api.nvim_buf_set_option(select_bufnr, "filetype", "ecolog")
+
+  api.nvim_win_set_option(select_winid, "conceallevel", 2)
+  api.nvim_win_set_option(select_winid, "concealcursor", "niv")
+  api.nvim_win_set_option(select_winid, "cursorline", true)
+  api.nvim_win_set_option(select_winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+
+  vim.keymap.set("n", "j", function()
+    if select_idx < #option.options then
+      select_idx = select_idx + 1
+      update_select_buffer()
+    end
+  end, { buffer = select_bufnr, nowait = true })
+
+  vim.keymap.set("n", "k", function()
+    if select_idx > 1 then
+      select_idx = select_idx - 1
+      update_select_buffer()
+    end
+  end, { buffer = select_bufnr, nowait = true })
+
+  vim.keymap.set("n", "<CR>", function()
+    local selected_value = option.options[select_idx]
+    close_select_window()
+    self:_handle_config_change(option_name, selected_value)
+  end, { buffer = select_bufnr, nowait = true })
+
+  vim.keymap.set("n", "q", close_select_window, { buffer = select_bufnr, nowait = true })
+  vim.keymap.set("n", "<ESC>", close_select_window, { buffer = select_bufnr, nowait = true })
+
+  api.nvim_create_autocmd("BufLeave", {
+    buffer = select_bufnr,
+    once = true,
+    callback = close_select_window,
+  })
+
+  update_select_buffer()
+end
+
+---Handle multi select option
+---@private
+---@param option table The option configuration
+---@param option_name string The name of the option
+function BaseSecretManager:_handle_multi_select(option, option_name)
+  local function show_selection_ui(options_list)
+    local selected = {}
+    local current_value = option.current
+    if current_value and current_value ~= "none" then
+      -- Split and filter out any empty strings
+      local current_values = vim.split(current_value, ",")
+      for _, value in ipairs(current_values) do
+        local trimmed = vim.trim(value)
+        if trimmed ~= "" then
+          selected[trimmed] = true
+        end
+      end
+    end
+
+    -- Filter out any empty strings from options list
+    local filtered_options = vim.tbl_filter(function(opt)
+      return type(opt) == "string" and opt ~= ""
+    end, options_list)
+
+    if #filtered_options == 0 then
+      vim.notify("No valid options available", vim.log.levels.WARN)
+      return
+    end
+
+    secret_utils.create_secret_selection_ui(filtered_options, selected, function(selected_options)
+      -- Filter out any empty selections before passing to handler
+      local valid_selections = {}
+      for opt, is_selected in pairs(selected_options) do
+        if type(opt) == "string" and opt ~= "" then
+          valid_selections[opt] = is_selected
+        end
+      end
+      self:_handle_config_change(option_name, valid_selections)
+    end, self.source_prefix)
+  end
+
+  if option.dynamic_options then
+    vim.notify("Loading options...", vim.log.levels.INFO)
+    option.dynamic_options(function(options_list)
+      if not options_list or #options_list == 0 then
+        vim.notify("No options available", vim.log.levels.WARN)
+        return
+      end
+      show_selection_ui(options_list)
+    end)
+  else
+    show_selection_ui(option.options or {})
+  end
+end
+
 ---Show configuration selection UI
-function BaseSecretManager:select_config()
+---@param direct_option? string Optional configuration option to select directly
+function BaseSecretManager:select_config(direct_option)
   local options = self:_get_config_options()
   if vim.tbl_isempty(options) then
     vim.notify("No configurable options available for " .. self.manager_name, vim.log.levels.WARN)
     return
   end
 
+  -- If a direct option is specified, try to handle it directly
+  if direct_option then
+    local option_name, matched_option
+    
+    -- First try exact match
+    if options[direct_option] then
+      option_name = direct_option
+      matched_option = options[direct_option]
+    else
+      -- Try case-insensitive match against option names and display names
+      local direct_lower = direct_option:lower()
+      for name, option in pairs(options) do
+        if name:lower() == direct_lower or (option.name and option.name:lower() == direct_lower) then
+          option_name = name
+          matched_option = option
+          break
+        end
+      end
+    end
+
+    if not option_name or not matched_option then
+      vim.notify("Invalid configuration option: " .. direct_option, vim.log.levels.ERROR)
+      return
+    end
+
+    if matched_option.type == "multi-select" then
+      self:_handle_multi_select(matched_option, option_name)
+      return
+    elseif matched_option.type == "single-select" and matched_option.options then
+      self:_handle_single_select(matched_option, option_name)
+      return
+    elseif matched_option.type == "input" then
+      vim.ui.input({
+        prompt = string.format("Enter %s: ", matched_option.name),
+        default = matched_option.current or "",
+      }, function(value)
+        if value then
+          self:_handle_config_change(option_name, value)
+        end
+      end)
+      return
+    end
+  end
+
+  -- If we get here, either no direct option was specified or handling it failed
   local option_names = vim.tbl_keys(options)
   table.sort(option_names)
 
@@ -235,151 +423,15 @@ function BaseSecretManager:select_config()
     end
   end
 
-  local function handle_single_select(option, option_name)
-    local current_value = option.current
-    local select_idx = 1
-    
-    -- Find current selection index
-    for i, value in ipairs(option.options) do
-      if value == current_value then
-        select_idx = i
-        break
-      end
-    end
-
-    local select_bufnr = api.nvim_create_buf(false, true)
-    local select_winid = api.nvim_open_win(select_bufnr, true, utils.create_minimal_win_opts(30, #option.options))
-
-    local function update_select_buffer()
-      local content = {}
-      for i, value in ipairs(option.options) do
-        local prefix = i == select_idx and " → " or "   "
-        table.insert(content, string.format("%s%s", prefix, value))
-      end
-
-      api.nvim_buf_set_option(select_bufnr, "modifiable", true)
-      api.nvim_buf_set_lines(select_bufnr, 0, -1, false, content)
-      api.nvim_buf_set_option(select_bufnr, "modifiable", false)
-
-      api.nvim_buf_clear_namespace(select_bufnr, -1, 0, -1)
-      for i = 1, #content do
-        local hl_group = i == select_idx and "EcologCursor" or "EcologVariable"
-        api.nvim_buf_add_highlight(select_bufnr, -1, hl_group, i - 1, 0, -1)
-      end
-
-      api.nvim_win_set_cursor(select_winid, { select_idx, 4 })
-    end
-
-    local function close_select_window()
-      if api.nvim_win_is_valid(select_winid) then
-        api.nvim_win_close(select_winid, true)
-      end
-    end
-
-    api.nvim_buf_set_option(select_bufnr, "buftype", "nofile")
-    api.nvim_buf_set_option(select_bufnr, "bufhidden", "wipe")
-    api.nvim_buf_set_option(select_bufnr, "modifiable", true)
-    api.nvim_buf_set_option(select_bufnr, "filetype", "ecolog")
-
-    api.nvim_win_set_option(select_winid, "conceallevel", 2)
-    api.nvim_win_set_option(select_winid, "concealcursor", "niv")
-    api.nvim_win_set_option(select_winid, "cursorline", true)
-    api.nvim_win_set_option(select_winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
-
-    vim.keymap.set("n", "j", function()
-      if select_idx < #option.options then
-        select_idx = select_idx + 1
-        update_select_buffer()
-      end
-    end, { buffer = select_bufnr, nowait = true })
-
-    vim.keymap.set("n", "k", function()
-      if select_idx > 1 then
-        select_idx = select_idx - 1
-        update_select_buffer()
-      end
-    end, { buffer = select_bufnr, nowait = true })
-
-    vim.keymap.set("n", "<CR>", function()
-      local selected_value = option.options[select_idx]
-      close_select_window()
-      self:_handle_config_change(option_name, selected_value)
-    end, { buffer = select_bufnr, nowait = true })
-
-    vim.keymap.set("n", "q", close_select_window, { buffer = select_bufnr, nowait = true })
-    vim.keymap.set("n", "<ESC>", close_select_window, { buffer = select_bufnr, nowait = true })
-
-    api.nvim_create_autocmd("BufLeave", {
-      buffer = select_bufnr,
-      once = true,
-      callback = close_select_window,
-    })
-
-    update_select_buffer()
-  end
-
-  local function handle_multi_select(option, option_name)
-    close_window()
-    
-    local function show_selection_ui(options_list)
-      local selected = {}
-      local current_value = option.current
-      if current_value and current_value ~= "none" then
-        -- Split and filter out any empty strings
-        local current_values = vim.split(current_value, ",")
-        for _, value in ipairs(current_values) do
-          local trimmed = vim.trim(value)
-          if trimmed ~= "" then
-            selected[trimmed] = true
-          end
-        end
-      end
-
-      -- Filter out any empty strings from options list
-      local filtered_options = vim.tbl_filter(function(opt)
-        return type(opt) == "string" and opt ~= ""
-      end, options_list)
-
-      if #filtered_options == 0 then
-        vim.notify("No valid options available", vim.log.levels.WARN)
-        return
-      end
-
-      secret_utils.create_secret_selection_ui(filtered_options, selected, function(selected_options)
-        -- Filter out any empty selections before passing to handler
-        local valid_selections = {}
-        for opt, is_selected in pairs(selected_options) do
-          if type(opt) == "string" and opt ~= "" then
-            valid_selections[opt] = is_selected
-          end
-        end
-        self:_handle_config_change(option_name, valid_selections)
-      end, self.source_prefix)
-    end
-
-    if option.dynamic_options then
-      vim.notify("Loading options...", vim.log.levels.INFO)
-      option.dynamic_options(function(options_list)
-        if not options_list or #options_list == 0 then
-          vim.notify("No options available", vim.log.levels.WARN)
-          return
-        end
-        show_selection_ui(options_list)
-      end)
-    else
-      show_selection_ui(option.options or {})
-    end
-  end
-
   local function handle_option_selection()
     local option_name = option_names[cursor_idx]
     local option = options[option_name]
 
     if option.type == "multi-select" then
-      handle_multi_select(option, option_name)
+      self:_handle_multi_select(option, option_name)
     elseif option.type == "single-select" and option.options then
       close_window()
-      handle_single_select(option, option_name)
+      self:_handle_single_select(option, option_name)
     elseif option.type == "input" then
       close_window()
       vim.ui.input({

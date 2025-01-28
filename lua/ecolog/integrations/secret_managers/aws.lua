@@ -726,9 +726,9 @@ function AwsSecretsManager:_handle_config_change(option, value)
 end
 
 ---Show configuration selection UI
-function AwsSecretsManager:select_config()
+function AwsSecretsManager:select_config(direct_option)
   -- Use the base implementation
-  return BaseSecretManager.select_config(self)
+  return BaseSecretManager.select_config(self, direct_option)
 end
 
 local instance = AwsSecretsManager:new()
@@ -741,7 +741,8 @@ return {
   select = function()
     return instance:select()
   end,
-  select_config = function()
-    return instance:select_config()
+  select_config = function(direct_option)
+    return instance:select_config(direct_option)
   end,
+  instance = instance,  -- Export the instance directly
 }

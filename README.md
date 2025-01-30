@@ -1816,9 +1816,8 @@ The plugin seamlessly integrates with your current colorscheme:
 It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
 
 ```lua
-return {
-  {
-    'philosofonusus/ecolog.nvim',
+ {
+   'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
@@ -1839,6 +1838,9 @@ return {
       },
       shelter = {
         configuration = {
+          sources = {
+            ['.env.example'] = 'none',
+          },
           partial_mode = {
             min_mask = 5,
             show_start = 1,
@@ -1850,13 +1852,13 @@ return {
           files = true,
           peek = false,
           snacks_previewer = true,
+          snacks = false,
           cmp = true,
         },
       },
       path = vim.fn.getcwd(),
     },
-  },
-}
+  }
 ```
 
 ## 🔄 Comparisons

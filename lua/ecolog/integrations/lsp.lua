@@ -52,6 +52,16 @@ local function handle_definition(err, result, ctx, config, providers, ecolog)
       return
     end
 
+    if var.source == "shell" then
+      vim.notify("Cannot go to definition of shell variables", vim.log.levels.WARN)
+      return
+    end
+
+    if var.source:match("^asm:") or var.source:match("^vault:") then
+      vim.notify("Cannot go to definition of secret manager variables", vim.log.levels.WARN)
+      return
+    end
+
     cmd("edit " .. fn.fnameescape(var.source))
 
     local lines = api.nvim_buf_get_lines(0, 0, -1, false)

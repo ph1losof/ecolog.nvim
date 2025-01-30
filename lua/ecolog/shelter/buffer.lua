@@ -20,29 +20,42 @@ local active_buffers = setmetatable({}, {
   __mode = "k",
 })
 
-local COMMENT_PATTERN = "^%s*[#%s]"
+local COMMENT_PATTERN = "^#"
 local KEY_PATTERN = "^%s*(.-)%s*$"
 local VALUE_PATTERN = "^%s*(.-)%s*$"
 
-local function process_line(line, eq_pos)
+local function find_next_key_value(text, start_pos)
+  start_pos = start_pos or 1
+
+  local eq_pos = string_find(text, "=", start_pos)
   if not eq_pos then
     return nil
   end
 
-  local key = string_match(string_sub(line, 1, eq_pos - 1), KEY_PATTERN)
-  local value_part = string_sub(line, eq_pos + 1)
-  local value = string_match(value_part, VALUE_PATTERN)
-
-  if not (key and value) then
-    return nil
+  local key_start = eq_pos
+  while key_start > start_pos do
+    local char = text:sub(key_start - 1, key_start - 1)
+    if char:match("[%s#]") then
+      break
+    end
+    key_start = key_start - 1
   end
 
-  local first_char = value:sub(1, 1)
-  if first_char == '"' or first_char == "'" then
+  local key = string_match(string_sub(text, key_start, eq_pos - 1), KEY_PATTERN)
+  if not key then
+    return find_next_key_value(text, eq_pos + 1)
+  end
+
+  local pos = eq_pos + 1
+  local value = ""
+  local quote_char = text:sub(pos, pos)
+  local in_quotes = quote_char == '"' or quote_char == "'"
+
+  if in_quotes then
+    pos = pos + 1
     local end_quote_pos = nil
-    local pos = 2
-    while pos <= #value do
-      if value:sub(pos, pos) == first_char and value:sub(pos - 1, pos - 1) ~= "\\" then
+    while pos <= #text do
+      if text:sub(pos, pos) == quote_char and text:sub(pos - 1, pos - 1) ~= "\\" then
         end_quote_pos = pos
         break
       end
@@ -50,26 +63,79 @@ local function process_line(line, eq_pos)
     end
 
     if end_quote_pos then
-      local quoted_value = value:sub(2, end_quote_pos - 1)
-      local rest = value:sub(end_quote_pos + 1)
-      if rest then
-        local comment = rest:match("^%s*#%s*(.-)%s*$")
-        if comment then
-          return key, quoted_value, first_char
-        end
+      value = text:sub(eq_pos + 2, end_quote_pos - 1)
+      pos = end_quote_pos + 1
+    else
+      return find_next_key_value(text, eq_pos + 1)
+    end
+  else
+    while pos <= #text do
+      local char = text:sub(pos, pos)
+      if char:match("[%s#]") then
+        break
       end
-      return key, quoted_value, first_char
+      pos = pos + 1
+    end
+    value = string_match(text:sub(eq_pos + 1, pos - 1), VALUE_PATTERN)
+  end
+
+  if not value or #value == 0 then
+    return find_next_key_value(text, eq_pos + 1)
+  end
+
+  return {
+    key = key,
+    value = value,
+    quote_char = in_quotes and quote_char or nil,
+    eq_pos = eq_pos,
+    next_pos = pos,
+  },
+    pos
+end
+
+local function process_line(line)
+  local results = {}
+  local is_comment_line = string_find(line, COMMENT_PATTERN)
+  local comment_start = string_find(line, "#")
+
+  if not is_comment_line then
+    local kv, pos = find_next_key_value(line)
+    if kv then
+      if not comment_start or kv.eq_pos < comment_start then
+        table_insert(results, {
+          key = kv.key,
+          value = kv.value,
+          quote_char = kv.quote_char,
+          eq_pos = kv.eq_pos,
+          is_comment = false,
+        })
+      end
     end
   end
 
-  local hash_pos = value:find("#")
-  if hash_pos then
-    if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
-      value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+  if comment_start then
+    local comment_text = string_sub(line, comment_start + 1)
+    local pos = 1
+
+    while pos <= #comment_text do
+      local kv, next_pos = find_next_key_value(comment_text, pos)
+      if not kv then
+        break
+      end
+
+      table_insert(results, {
+        key = kv.key,
+        value = kv.value,
+        quote_char = kv.quote_char,
+        eq_pos = comment_start + kv.eq_pos,
+        is_comment = true,
+      })
+
+      pos = next_pos
     end
   end
 
-  return key, value, nil
+  return results
 end
 
 local function get_cached_line(line, line_num, bufname)
@@ -77,9 +143,18 @@ local function get_cached_line(line, line_num, bufname)
   return line_cache:get(cache_key)
 end
 
-local function cache_line(line, line_num, bufname, processed_data)
+local function cache_line(line, line_num, bufname, extmark)
   local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
-  line_cache:put(cache_key, processed_data)
+  local existing = line_cache:get(cache_key)
+  if existing then
+    if not existing.extmarks then
+      existing.extmarks = {}
+    end
+    table_insert(existing.extmarks, extmark)
+    line_cache:put(cache_key, existing)
+  else
+    line_cache:put(cache_key, { extmarks = { extmark } })
+  end
 end
 
 local function cleanup_invalid_buffers()
@@ -137,7 +212,6 @@ function M.shelter_buffer()
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
-  local skip_comments = state.get_buffer_state().skip_comments
 
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
     local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
@@ -147,49 +221,43 @@ function M.shelter_buffer()
       local line_num = chunk_start + i
 
       local cached_data = get_cached_line(line, line_num, bufname)
-      if cached_data then
-        if cached_data.extmark then
-          table_insert(extmarks, cached_data.extmark)
+      if cached_data and cached_data.extmarks then
+        for _, extmark in ipairs(cached_data.extmarks) do
+          table_insert(extmarks, extmark)
         end
         goto continue
       end
 
-      local is_comment = string_find(line, COMMENT_PATTERN)
-      if is_comment and skip_comments then
-        goto continue
-      end
+      local processed_items = process_line(line)
+      for _, item in ipairs(processed_items) do
+        if item.value and #item.value > 0 then
+          local is_revealed = state.is_line_revealed(line_num)
+          local raw_value = item.quote_char and (item.quote_char .. item.value .. item.quote_char) or item.value
+          local masked_value = is_revealed and raw_value
+            or utils.determine_masked_value(raw_value, {
+              partial_mode = config_partial_mode,
+              key = item.key,
+              source = bufname,
+            })
 
-      local eq_pos = string_find(line, "=")
-      local key, actual_value, quote_char = process_line(line, eq_pos)
-
-      if actual_value and #actual_value > 0 then
-        local is_revealed = state.is_line_revealed(line_num)
-        local raw_value = quote_char and (quote_char .. actual_value .. quote_char) or actual_value
-        local masked_value = is_revealed and raw_value
-          or utils.determine_masked_value(raw_value, {
-            partial_mode = config_partial_mode,
-            key = key,
-            source = bufname,
-          })
-
-        if masked_value and #masked_value > 0 then
-          local extmark = {
-            line_num - 1,
-            eq_pos,
-            {
-              virt_text = {
-                { masked_value, (is_revealed or masked_value == raw_value) and "String" or config_highlight_group },
+          if masked_value and #masked_value > 0 then
+            local extmark = {
+              line_num - 1,
+              item.eq_pos,
+              {
+                virt_text = {
+                  { masked_value, (is_revealed or masked_value == raw_value) and "String" or config_highlight_group },
+                },
+                virt_text_pos = "overlay",
+                hl_mode = "combine",
+                priority = item.is_comment and 10000 or 9999,
+                strict = true,
               },
-              virt_text_pos = "overlay",
-              hl_mode = "combine",
-              priority = 9999,
-              strict = true,
-            },
-          }
+            }
 
-          table_insert(extmarks, extmark)
-
-          cache_line(line, line_num, bufname, { extmark = extmark })
+            table_insert(extmarks, extmark)
+            cache_line(line, line_num, bufname, extmark)
+          end
         end
       end
       ::continue::
@@ -198,12 +266,12 @@ function M.shelter_buffer()
 
   if #extmarks > 0 then
     local temp_ns = api.nvim_create_namespace("")
+    api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
 
     for _, mark in ipairs(extmarks) do
       api.nvim_buf_set_extmark(bufnr, temp_ns, mark[1], mark[2], mark[3])
     end
 
-    api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
     for _, mark in ipairs(extmarks) do
       api.nvim_buf_set_extmark(bufnr, namespace, mark[1], mark[2], mark[3])
     end
@@ -248,7 +316,7 @@ function M.setup_file_shelter()
       local bufnr = ev.buf
 
       vim.bo[bufnr].buftype = ""
-      
+
       local ft = vim.filetype.match({ filename = filename })
       if ft then
         vim.bo[bufnr].filetype = ft

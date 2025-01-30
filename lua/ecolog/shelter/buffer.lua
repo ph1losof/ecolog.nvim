@@ -277,7 +277,7 @@ function M.shelter_buffer()
       end
 
       local cached_data = get_cached_line(line, line_num, bufname)
-      if cached_data and cached_data.extmarks then
+      if cached_data and cached_data.extmarks and not state.is_line_revealed(line_num) then
         for _, extmark in ipairs(cached_data.extmarks) do
           table_insert(extmarks, extmark)
         end

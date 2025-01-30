@@ -137,6 +137,7 @@ function M.shelter_buffer()
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
+  local skip_comments = state.get_buffer_state().skip_comments
 
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
     local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
@@ -153,7 +154,8 @@ function M.shelter_buffer()
         goto continue
       end
 
-      if string_find(line, COMMENT_PATTERN) then
+      local is_comment = string_find(line, COMMENT_PATTERN)
+      if is_comment and skip_comments then
         goto continue
       end
 
@@ -246,7 +248,13 @@ function M.setup_file_shelter()
       local bufnr = ev.buf
 
       vim.bo[bufnr].buftype = ""
-      vim.bo[bufnr].filetype = "sh"
+      
+      local ft = vim.filetype.match({ filename = filename })
+      if ft then
+        vim.bo[bufnr].filetype = ft
+      else
+        vim.bo[bufnr].filetype = "sh"
+      end
 
       local ok, err = pcall(function()
         vim.bo[bufnr].modifiable = true

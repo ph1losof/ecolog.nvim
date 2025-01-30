@@ -37,6 +37,7 @@ local state = {
   buffer = {
     revealed_lines = {},
     disable_cmp = true,
+    skip_comments = false,
   },
   telescope = {
     last_selection = nil,
@@ -144,7 +145,9 @@ end
 
 function M.update_buffer_state(key, value)
   state.buffer[key] = value
-  _buffer_cache[key] = nil
+  if _buffer_cache[key] then
+    _buffer_cache[key] = value
+  end
 end
 
 function M.get_buffer_state()

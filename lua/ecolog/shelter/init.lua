@@ -60,12 +60,14 @@ function M.setup(opts)
         state.set_initial_feature_state(feature, true)
         state.get_config().shelter_on_leave = partial[feature].shelter_on_leave
         state.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
+        state.update_buffer_state("skip_comments", partial[feature].skip_comments ~= false)
       else
         state.set_feature_state(feature, value)
         state.set_initial_feature_state(feature, value)
         if value then
           state.get_config().shelter_on_leave = true
           state.update_buffer_state("disable_cmp", true)
+          state.update_buffer_state("skip_comments", true)
         end
       end
     else

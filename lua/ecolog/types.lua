@@ -59,7 +59,7 @@ local TYPE_DEFINITIONS = {
     end,
   },
   database_url = {
-    pattern = "[%w%+]+://" .. "[^:/@]+" .. ":[^@]+" .. "@[^/@]+" .. "/?[^%s]*",
+    pattern = "[%w%+]+://[^/@]+@[^/@]+/?[^%s]*",
     validate = function(url)
       local protocol = url:match("^([%w%+]+)://")
       if not protocol then
@@ -83,15 +83,35 @@ local TYPE_DEFINITIONS = {
         return false
       end
 
-      local user, pass, host = url:match("^[%w%+]+://([^:]+):([^@]+)@([^/?]+)")
-      if not (user and pass and host) then
+      -- Check for user:pass@host format
+      local auth_host = url:match("^[%w%+]+://([^/]+)")
+      if not auth_host then
         return false
       end
 
-      local port = url:match(":(%d+)/")
-      if port then
+      local user_pass, host = auth_host:match("([^@]+)@(.+)")
+      if not (user_pass and host) then
+        return false
+      end
+
+      local user, pass = user_pass:match("([^:]+):(.+)")
+      if not (user and pass) then
+        return false
+      end
+
+      -- Check port if present (required for most database URLs)
+      local host_part, port = host:match("([^:]+):(%d+)")
+      if host_part then
+        if not port then
+          return false
+        end
         port = tonumber(port)
         if not port or port < 1 or port > 65535 then
+          return false
+        end
+      else
+        -- Port is required for most database URLs except mongodb+srv
+        if protocol:lower() ~= "mongodb+srv" then
           return false
         end
       end

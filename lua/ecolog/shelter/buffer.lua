@@ -12,19 +12,26 @@ local state = require("ecolog.shelter.state")
 local utils = require("ecolog.shelter.utils")
 local lru_cache = require("ecolog.shelter.lru_cache")
 
-local namespace = api.nvim_create_namespace("ecolog_shelter")
+local NAMESPACE = api.nvim_create_namespace("ecolog_shelter")
 local CHUNK_SIZE = 1000
-local line_cache = lru_cache.new(1000)
-
-local active_buffers = setmetatable({}, {
-  __mode = "k",
-})
-
+local CLEANUP_INTERVAL = 300000
+local BUFFER_TIMEOUT = 3600000
 local COMMENT_PATTERN = "^#"
 local KEY_PATTERN = "^%s*(.-)%s*$"
 local VALUE_PATTERN = "^%s*(.-)%s*$"
 
+local line_cache = lru_cache.new(1000)
+local active_buffers = setmetatable({}, { __mode = "k" })
+
+---@param text string
+---@param start_pos number?
+---@return table?, number?
 local function find_next_key_value(text, start_pos)
+  vim.validate({
+    text = { text, "string" },
+    start_pos = { start_pos, "number", true },
+  })
+
   start_pos = start_pos or 1
 
   local eq_pos = string_find(text, "=", start_pos)
@@ -93,7 +100,11 @@ local function find_next_key_value(text, start_pos)
     pos
 end
 
+---@param line string
+---@return table
 local function process_line(line)
+  vim.validate({ line = { line, "string" } })
+
   local results = {}
   local is_comment_line = string_find(line, COMMENT_PATTERN)
   local comment_start = string_find(line, "#")
@@ -138,12 +149,33 @@ local function process_line(line)
   return results
 end
 
+---@param line string
+---@param line_num number
+---@param bufname string
+---@return table?
 local function get_cached_line(line, line_num, bufname)
+  vim.validate({
+    line = { line, "string" },
+    line_num = { line_num, "number" },
+    bufname = { bufname, "string" },
+  })
+
   local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
   return line_cache:get(cache_key)
 end
 
+---@param line string
+---@param line_num number
+---@param bufname string
+---@param extmark table
 local function cache_line(line, line_num, bufname, extmark)
+  vim.validate({
+    line = { line, "string" },
+    line_num = { line_num, "number" },
+    bufname = { bufname, "string" },
+    extmark = { extmark, "table" },
+  })
+
   local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
   local existing = line_cache:get(cache_key)
   if existing then
@@ -160,24 +192,33 @@ end
 local function cleanup_invalid_buffers()
   local current_time = vim.loop.now()
   for bufnr, timestamp in pairs(active_buffers) do
-    if not api.nvim_buf_is_valid(bufnr) or (current_time - timestamp) > 3600000 then
-      pcall(api.nvim_buf_clear_namespace, bufnr, namespace, 0, -1)
-
+    if not api.nvim_buf_is_valid(bufnr) or (current_time - timestamp) > BUFFER_TIMEOUT then
+      pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
       line_cache:remove(bufnr)
       active_buffers[bufnr] = nil
     end
   end
 end
 
+---@param bufnr number
+---@return boolean
+local function is_buffer_valid(bufnr)
+  return type(bufnr) == "number" and api.nvim_buf_is_valid(bufnr)
+end
+
 function M.unshelter_buffer()
   local bufnr = api.nvim_get_current_buf()
-  api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
+  if not is_buffer_valid(bufnr) then
+    vim.notify("Invalid buffer", vim.log.levels.WARN)
+    return
+  end
+
+  api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
   state.reset_revealed_lines()
   active_buffers[bufnr] = nil
 
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = true
-
     if utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = true })
     end
@@ -193,15 +234,19 @@ function M.shelter_buffer()
   end
 
   local bufnr = api.nvim_get_current_buf()
+  if not is_buffer_valid(bufnr) then
+    vim.notify("Invalid buffer", vim.log.levels.WARN)
+    return
+  end
+
   active_buffers[bufnr] = vim.loop.now()
 
-  if vim.loop.now() % 300000 == 0 then
+  if vim.loop.now() % CLEANUP_INTERVAL == 0 then
     cleanup_invalid_buffers()
   end
 
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = false
-
     if utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = false })
     end
@@ -216,7 +261,12 @@ function M.shelter_buffer()
 
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
     local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
-    local lines = api.nvim_buf_get_lines(bufnr, chunk_start, chunk_end + 1, false)
+    local ok, lines = pcall(api.nvim_buf_get_lines, bufnr, chunk_start, chunk_end + 1, false)
+
+    if not ok then
+      vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
+      return
+    end
 
     for i, line in ipairs(lines) do
       local line_num = chunk_start + i
@@ -277,16 +327,25 @@ function M.shelter_buffer()
 
   if #extmarks > 0 then
     local temp_ns = api.nvim_create_namespace("")
-    api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
+    pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
 
-    for _, mark in ipairs(extmarks) do
-      api.nvim_buf_set_extmark(bufnr, temp_ns, mark[1], mark[2], mark[3])
+    local BATCH_SIZE = 100
+    for i = 1, #extmarks, BATCH_SIZE do
+      local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
+      for j = i, batch_end do
+        local mark = extmarks[j]
+        pcall(api.nvim_buf_set_extmark, bufnr, temp_ns, mark[1], mark[2], mark[3])
+      end
     end
 
-    for _, mark in ipairs(extmarks) do
-      api.nvim_buf_set_extmark(bufnr, namespace, mark[1], mark[2], mark[3])
+    for i = 1, #extmarks, BATCH_SIZE do
+      local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
+      for j = i, batch_end do
+        local mark = extmarks[j]
+        pcall(api.nvim_buf_set_extmark, bufnr, NAMESPACE, mark[1], mark[2], mark[3])
+      end
     end
-    api.nvim_buf_clear_namespace(bufnr, temp_ns, 0, -1)
+    pcall(api.nvim_buf_clear_namespace, bufnr, temp_ns, 0, -1)
   end
 end
 

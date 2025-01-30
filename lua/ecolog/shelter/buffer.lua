@@ -355,10 +355,11 @@ function M.setup_file_shelter()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   local watch_patterns = {}
 
-  local shelter_config = type(config.shelter) == "table" and
-    type(config.shelter.modules) == "table" and
-    type(config.shelter.modules.files) == "table" and
-    config.shelter.modules.files or {}
+  local shelter_config = type(config.shelter) == "table"
+      and type(config.shelter.modules) == "table"
+      and type(config.shelter.modules.files) == "table"
+      and config.shelter.modules.files
+    or {}
   local buffer_state = {
     skip_comments = type(shelter_config) == "table" and shelter_config.skip_comments == true,
     disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp == true,

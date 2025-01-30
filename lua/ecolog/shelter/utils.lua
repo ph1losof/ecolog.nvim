@@ -4,6 +4,13 @@ local config = require("ecolog.shelter.state").get_config
 local string_sub = string.sub
 local string_rep = string.rep
 
+---@param pattern string
+---@return string
+local function convert_to_lua_pattern(pattern)
+  local escaped = pattern:gsub("[%.%[%]%(%)%+%-%^%$%%]", "%%%1")
+  return escaped:gsub("%*", ".*")
+end
+
 ---@param key string|nil
 ---@param source string|nil
 ---@return "none"|"partial"|"full"
@@ -12,7 +19,7 @@ function M.determine_masking_mode(key, source)
 
   if key and conf.patterns then
     for pattern, mode in pairs(conf.patterns) do
-      local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+      local lua_pattern = convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
         return mode
       end
@@ -21,8 +28,13 @@ function M.determine_masking_mode(key, source)
 
   if source and conf.sources then
     for pattern, mode in pairs(conf.sources) do
-      local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
-      if source:match("^" .. lua_pattern .. "$") then
+      local lua_pattern = convert_to_lua_pattern(pattern)
+      local source_to_match = source
+      -- TODO: This has to be refactored not to match the hardcoded source pattern for vault/asm
+      if source ~= "vault" and source ~= "asm" then
+        source_to_match = vim.fn.fnamemodify(source, ":t")
+      end
+      if source_to_match:match("^" .. lua_pattern .. "$") then
         return mode
       end
     end

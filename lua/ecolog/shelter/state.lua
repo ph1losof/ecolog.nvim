@@ -150,6 +150,12 @@ function M.update_buffer_state(key, value)
   end
 end
 
+function M.set_buffer_state(new_state)
+  for key, value in pairs(new_state) do
+    M.update_buffer_state(key, value)
+  end
+end
+
 function M.get_buffer_state()
   check_memory_usage()
   return state.buffer

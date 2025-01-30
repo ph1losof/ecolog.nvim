@@ -212,6 +212,7 @@ function M.shelter_buffer()
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
+  local skip_comments = state.get_buffer_state().skip_comments
 
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
     local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
@@ -219,6 +220,11 @@ function M.shelter_buffer()
 
     for i, line in ipairs(lines) do
       local line_num = chunk_start + i
+      local is_comment_line = string_find(line, COMMENT_PATTERN)
+
+      if is_comment_line and skip_comments then
+        goto continue
+      end
 
       local cached_data = get_cached_line(line, line_num, bufname)
       if cached_data and cached_data.extmarks then
@@ -230,6 +236,10 @@ function M.shelter_buffer()
 
       local processed_items = process_line(line)
       for _, item in ipairs(processed_items) do
+        if skip_comments and item.is_comment then
+          goto continue_item
+        end
+
         if item.value and #item.value > 0 then
           local is_revealed = state.is_line_revealed(line_num)
           local raw_value = item.quote_char and (item.quote_char .. item.value .. item.quote_char) or item.value
@@ -259,6 +269,7 @@ function M.shelter_buffer()
             cache_line(line, line_num, bufname, extmark)
           end
         end
+        ::continue_item::
       end
       ::continue::
     end
@@ -284,6 +295,14 @@ function M.setup_file_shelter()
 
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   local watch_patterns = {}
+
+  local shelter_config = config.shelter and config.shelter.modules and config.shelter.modules.files or {}
+  local buffer_state = {
+    skip_comments = shelter_config.skip_comments == true,
+    disable_cmp = config.shelter and config.shelter.modules and config.shelter.modules.cmp == true,
+    revealed_lines = {},
+  }
+  state.set_buffer_state(buffer_state)
 
   if not config.env_file_pattern then
     watch_patterns[1] = ".env*"

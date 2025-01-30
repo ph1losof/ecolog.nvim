@@ -299,7 +299,7 @@ function M.setup_file_shelter()
   local shelter_config = config.shelter and config.shelter.modules and config.shelter.modules.files or {}
   local buffer_state = {
     skip_comments = shelter_config.skip_comments == true,
-    disable_cmp = config.shelter and config.shelter.modules and config.shelter.modules.cmp == true,
+    disable_cmp = shelter_config.disable_cmp == true,
     revealed_lines = {},
   }
   state.set_buffer_state(buffer_state)

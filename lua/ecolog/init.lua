@@ -505,6 +505,24 @@ local function create_commands(config)
         end, { "organization", "project", "apps" })
       end,
     },
+    EcologInterpolationToggle = {
+      callback = function()
+        if not state.last_opts then
+          notify("Ecolog not initialized", vim.log.levels.ERROR)
+          return
+        end
+
+        state.last_opts.interpolation.enabled = not state.last_opts.interpolation.enabled
+
+        M.refresh_env_vars(state.last_opts)
+
+        notify(
+          string.format("Interpolation %s", state.last_opts.interpolation.enabled and "enabled" or "disabled"),
+          vim.log.levels.INFO
+        )
+      end,
+      desc = "Toggle environment variable interpolation",
+    },
   }
 
   for name, cmd in pairs(commands) do
@@ -536,16 +554,11 @@ function M.setup(opts)
   elseif type(config.interpolation) == "table" then
     -- Ensure all feature flags are properly initialized
     if config.interpolation.features then
-      config.interpolation.features = vim.tbl_deep_extend("force", 
-        DEFAULT_CONFIG.interpolation.features,
-        config.interpolation.features
-      )
+      config.interpolation.features =
+        vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
     end
     -- Merge with default interpolation config
-    config.interpolation = vim.tbl_deep_extend("force",
-      DEFAULT_CONFIG.interpolation,
-      config.interpolation
-    )
+    config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
   end
 
   state.selected_env_file = nil

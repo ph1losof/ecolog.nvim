@@ -172,7 +172,7 @@ function M.interpolate(value, env_vars, opts)
 
   local inner = extract_quoted_content(value, PATTERNS.SINGLE_QUOTED, opts)
   if inner then
-    return inner:gsub("\\n", "\n")
+    return handle_escapes(inner, opts)
   end
 
   local is_double_quoted = value:match(PATTERNS.DOUBLE_QUOTED)
@@ -217,7 +217,7 @@ function M.interpolate(value, env_vars, opts)
     value = result
   end
 
-  return value
+  return handle_escapes(value, opts)
 end
 
 return M

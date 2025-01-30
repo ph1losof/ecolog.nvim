@@ -3,6 +3,23 @@ local ecolog = require("ecolog")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
 
+-- Add validation function that was undefined
+---Validate the vault configuration
+---@param config VaultSecretsConfig
+---@return boolean is_valid
+---@return string? error_message
+local function validate_config(config)
+  if type(config) ~= "table" then
+    return false, "Configuration must be a table"
+  end
+
+  if config.apps and type(config.apps) ~= "table" then
+    return false, "apps must be a table of strings"
+  end
+
+  return true
+end
+
 ---Parse JSON response from Vault CLI
 ---@param stdout string Raw stdout from Vault CLI
 ---@param error_context string Context for error message
@@ -18,6 +35,7 @@ end
 
 ---@class VaultSecretsConfig : BaseSecretManagerConfig
 ---@field apps? string[] Optional list of enabled HCP Vault Secrets application names
+---@field override boolean Whether to override existing environment variables
 
 ---@class VaultError
 ---@field message string
@@ -93,8 +111,9 @@ local VaultSecretsManager = setmetatable({}, { __index = BaseSecretManager })
 function VaultSecretsManager:create_vault_job(cmd, state, on_success, on_error)
   local stdout_chunks = {}
   local stderr_chunks = {}
+  local job_id
 
-  local job_id = vim.fn.jobstart(cmd, {
+  job_id = vim.fn.jobstart(cmd, {
     on_stdout = function(_, data)
       if data then
         vim.list_extend(stdout_chunks, data)
@@ -106,7 +125,9 @@ function VaultSecretsManager:create_vault_job(cmd, state, on_success, on_error)
       end
     end,
     on_exit = function(_, code)
-      secret_utils.untrack_job(job_id, state.active_jobs)
+      if job_id then -- Add nil check
+        secret_utils.untrack_job(job_id, state.active_jobs)
+      end
       local stdout = table.concat(stdout_chunks, "\n")
       local stderr = table.concat(stderr_chunks, "\n")
 
@@ -126,38 +147,14 @@ function VaultSecretsManager:create_vault_job(cmd, state, on_success, on_error)
       level = vim.log.levels.ERROR,
     })
   else
+    -- Only track if job creation succeeded
     secret_utils.track_job(job_id, state.active_jobs)
   end
 
   return job_id
 end
 
----Validate configuration
----@param config VaultSecretsConfig
----@return boolean is_valid
----@return string|nil error_message
-local function validate_config(config)
-  if not config then
-    return false, "Configuration is required"
-  end
-
-  if config.apps then
-    if type(config.apps) ~= "table" then
-      return false, "Applications list must be a table"
-    end
-
-    for _, app in ipairs(config.apps) do
-      if type(app) ~= "string" or app == "" then
-        return false, "Application names must be non-empty strings"
-      end
-    end
-  end
-
-  return true
-end
-
 ---Create initial state or reset existing state
----@param preserve_token? boolean Whether to preserve token validation state
 ---@return VaultSecretsState
 function VaultSecretsManager:create_initial_state()
   return {
@@ -353,12 +350,15 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
     end
   end
 
-  self.state.timeout_timer = vim.fn.timer_start(VAULT_TIMEOUT_MS, function()
+  local timeout_timer
+  timeout_timer = vim.defer_fn(function()
     if self.state.loading_lock then
       vim.notify(VAULT_ERRORS.TIMEOUT.message, VAULT_ERRORS.TIMEOUT.level)
       secret_utils.cleanup_state(self.state)
     end
-  end)
+  end, VAULT_TIMEOUT_MS)
+
+  self.state.timeout_timer = timeout_timer
 
   local total_apps = #config.apps
   local completed_apps = 0
@@ -702,9 +702,12 @@ function VaultSecretsManager:_get_config_options()
   -- Add apps selection option
   options.apps = {
     name = "Vault Applications",
-    current = self.config and self.config.apps and #self.config.apps > 0 and table.concat(vim.tbl_filter(function(app)
-      return type(app) == "string" and app ~= ""
-    end, self.config.apps), ", ") or "none",
+    current = self.config and self.config.apps and #self.config.apps > 0 and table.concat(
+      vim.tbl_filter(function(app)
+        return type(app) == "string" and app ~= ""
+      end, self.config.apps),
+      ", "
+    ) or "none",
     type = "multi-select",
     options = {},
     dynamic_options = function(callback)
@@ -720,10 +723,17 @@ function VaultSecretsManager:_get_config_options()
         end, apps or {})
         callback(filtered_apps)
       end)
-    end
+    end,
   }
 
   return options
+end
+
+local function safe_extend(t1, t2)
+  if type(t1) ~= "table" or type(t2) ~= "table" then
+    return t1 or {}
+  end
+  return vim.tbl_extend("force", t1, t2)
 end
 
 ---Handle configuration change for Vault
@@ -731,9 +741,7 @@ end
 ---@param option string The configuration option being changed
 ---@param value any The new value
 function VaultSecretsManager:_handle_config_change(option, value)
-  if not self.config then
-    self.config = { enabled = true }
-  end
+  self.config = safe_extend(self.config or { enabled = true, override = false }, {})
 
   if option == "organization" then
     if vim.env.HCP_ORGANIZATION ~= value then
@@ -747,9 +755,9 @@ function VaultSecretsManager:_handle_config_change(option, value)
 
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
-      for key, value in pairs(current_env) do
-        if not (value.source and value.source:match("^" .. self.source_prefix)) then
-          final_vars[key] = value
+      for env_key, env_value in pairs(current_env) do
+        if not (env_value.source and env_value.source:match("^" .. self.source_prefix)) then
+          final_vars[env_key] = env_value
         end
       end
       secret_utils.update_environment(final_vars, false, self.source_prefix)
@@ -767,9 +775,9 @@ function VaultSecretsManager:_handle_config_change(option, value)
 
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
-      for key, value in pairs(current_env) do
-        if not (value.source and value.source:match("^" .. self.source_prefix)) then
-          final_vars[key] = value
+      for env_key, env_value in pairs(current_env) do
+        if not (env_value.source and env_value.source:match("^" .. self.source_prefix)) then
+          final_vars[env_key] = env_value
         end
       end
       secret_utils.update_environment(final_vars, false, self.source_prefix)
@@ -787,17 +795,17 @@ function VaultSecretsManager:_handle_config_change(option, value)
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
 
-      for key, value in pairs(current_env) do
-        if not (value.source and value.source:match("^vault:")) then
-          final_vars[key] = value
+      for env_key, env_value in pairs(current_env) do
+        if not (env_value.source and env_value.source:match("^vault:")) then
+          final_vars[env_key] = env_value
         end
       end
 
       self.state = self:create_initial_state()
-      
+
       -- Clear apps from config
       self.config.apps = nil
-      
+
       ecolog.refresh_env_vars()
       secret_utils.update_environment(final_vars, false, "vault:")
       vim.notify("All Vault secrets unloaded", vim.log.levels.INFO)
@@ -808,6 +816,7 @@ function VaultSecretsManager:_handle_config_change(option, value)
     self.config = vim.tbl_extend("force", self.config or {}, {
       apps = selected_apps,
       enabled = true,
+      override = false,
     })
 
     self:load_secrets(self.config)
@@ -869,5 +878,5 @@ return {
   select_config = function(direct_option)
     return instance:select_config(direct_option)
   end,
-  instance = instance,  -- Export the instance directly
+  instance = instance,
 }

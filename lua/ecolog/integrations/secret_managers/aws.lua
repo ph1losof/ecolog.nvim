@@ -553,18 +553,26 @@ end
 ---@return table<string, { name: string, current: string|nil, options: string[]|nil, type: "multi-select"|"single-select"|"input" }>
 function AwsSecretsManager:_get_config_options()
   local options = {}
-  
+
   -- Region configuration
   options.region = {
     name = "AWS Region",
     current = self.config and self.config.region or nil,
     type = "single-select",
     options = {
-      "us-east-1", "us-east-2", "us-west-1", "us-west-2",
-      "eu-west-1", "eu-west-2", "eu-central-1",
-      "ap-northeast-1", "ap-northeast-2", "ap-southeast-1", "ap-southeast-2",
-      "sa-east-1"
-    }
+      "us-east-1",
+      "us-east-2",
+      "us-west-1",
+      "us-west-2",
+      "eu-west-1",
+      "eu-west-2",
+      "eu-central-1",
+      "ap-northeast-1",
+      "ap-northeast-2",
+      "ap-southeast-1",
+      "ap-southeast-2",
+      "sa-east-1",
+    },
   }
 
   -- Profile configuration
@@ -580,7 +588,7 @@ function AwsSecretsManager:_get_config_options()
         name = "AWS Profile",
         current = self.config and self.config.profile or nil,
         type = "single-select",
-        options = profiles
+        options = profiles,
       }
     end
   end
@@ -588,7 +596,10 @@ function AwsSecretsManager:_get_config_options()
   -- Add secrets selection option
   options.secrets = {
     name = "AWS Secrets",
-    current = self.config and self.config.secrets and #self.config.secrets > 0 and table.concat(self.config.secrets, ", ") or "none",
+    current = self.config and self.config.secrets and #self.config.secrets > 0 and table.concat(
+      self.config.secrets,
+      ", "
+    ) or "none",
     type = "multi-select",
     options = {},
     dynamic_options = function(callback)
@@ -614,7 +625,7 @@ function AwsSecretsManager:_get_config_options()
           callback(secrets or {})
         end)
       end)
-    end
+    end,
   }
 
   return options
@@ -637,10 +648,10 @@ function AwsSecretsManager:_handle_config_change(option, value)
       self.state.selected_secrets = {}
       self.state.loaded_secrets = {}
       self.state.initialized = false
-      
+
       -- Clear secrets from config
       self.config.secrets = nil
-      
+
       -- Update environment to remove AWS secrets
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
@@ -660,10 +671,10 @@ function AwsSecretsManager:_handle_config_change(option, value)
       self.state.selected_secrets = {}
       self.state.loaded_secrets = {}
       self.state.initialized = false
-      
+
       -- Clear secrets from config
       self.config.secrets = nil
-      
+
       -- Update environment to remove AWS secrets
       local current_env = ecolog.get_env_vars() or {}
       local final_vars = {}
@@ -711,7 +722,7 @@ function AwsSecretsManager:_handle_config_change(option, value)
       secrets = chosen_secrets,
       enabled = true,
     })
-    
+
     -- Reset state for loading new secrets
     self.state.selected_secrets = chosen_secrets
     self.state.loaded_secrets = {}
@@ -744,5 +755,5 @@ return {
   select_config = function(direct_option)
     return instance:select_config(direct_option)
   end,
-  instance = instance,  -- Export the instance directly
+  instance = instance, -- Export the instance directly
 }

@@ -1530,6 +1530,40 @@ The min_mask setting ensures that sensitive values are properly protected by req
 a minimum number of masked characters between the visible parts. If this minimum
 cannot be met, the entire value is masked for security.
 
+### Configuration Options
+
+The files module can be configured in two ways:
+
+1. **Simple boolean configuration**:
+
+```lua
+shelter = {
+    modules = {
+        files = true  -- Simply enable/disable files module
+    }
+}
+```
+
+2. **Detailed configuration with options**:
+
+```lua
+shelter = {
+    modules = {
+        files = {
+            shelter_on_leave = false,  -- Control automatic re-enabling of shelter when leaving buffer
+            disable_cmp = true,        -- Disable completion in sheltered buffers (default: true)
+            skip_comments = false,     -- Skip masking comment lines in environment files (default: false)
+        }
+    }
+}
+```
+
+When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
+
+The `disable_cmp` option (enabled by default) will automatically disable both nvim-cmp and blink-cmp completions in sheltered buffers. This prevents sensitive values from being exposed through the completion menu while editing environment files. Completion is automatically re-enabled when unsheltering the buffer.
+
+The `skip_comments` option (disabled by default) allows you to keep comments visible while masking the actual environment variable values. This can be useful when you want to maintain readability of documentation in your environment files while still protecting sensitive data.
+
 ### Pattern-based Protection
 
 You can define different masking rules based on variable names or file sources:
@@ -1552,7 +1586,7 @@ shelter = {
 }
 ```
 
-### 🎨 Customization
+## 🎨 Customization
 
 1. **Custom Mask Character**:
 

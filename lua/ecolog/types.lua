@@ -59,7 +59,7 @@ local TYPE_DEFINITIONS = {
     end,
   },
   database_url = {
-    pattern = "[%w%+]+://" .. "[^:/@]+" .. ":[^@]+" .. "@[^/:]+" .. ":[0-9]+" .. "/[^%?]+",
+    pattern = "[%w%+]+://" .. "[^:/@]+" .. ":[^@]+" .. "@[^/@]+" .. "/?[^%s]*",
     validate = function(url)
       local protocol = url:match("^([%w%+]+)://")
       if not protocol then
@@ -83,14 +83,17 @@ local TYPE_DEFINITIONS = {
         return false
       end
 
-      local user, pass, host, port = url:match("^[%w%+]+://([^:]+):([^@]+)@([^:]+):(%d+)")
-      if not (user and pass and host and port) then
+      local user, pass, host = url:match("^[%w%+]+://([^:]+):([^@]+)@([^/?]+)")
+      if not (user and pass and host) then
         return false
       end
 
-      port = tonumber(port)
-      if not port or port < 1 or port > 65535 then
-        return false
+      local port = url:match(":(%d+)/")
+      if port then
+        port = tonumber(port)
+        if not port or port < 1 or port > 65535 then
+          return false
+        end
       end
 
       return true

@@ -1,5 +1,6 @@
 local interpolation = require("ecolog.interpolation")
 
+
 describe("interpolation", function()
   local env_vars = {
     NAME = { value = "John" },
@@ -180,6 +181,82 @@ describe("interpolation", function()
     it("should handle malformed interpolation expressions", function()
       local result = interpolation.interpolate("${incomplete", env_vars)
       assert.equals("${incomplete", result)
+    end)
+
+    it("should handle unclosed command substitutions", function()
+      local result = interpolation.interpolate("$(echo test", env_vars)
+      assert.equals("$(echo test", result)
+    end)
+  end)
+
+  describe("feature control", function()
+    it("should respect disabled variable interpolation", function()
+      local opts = { features = { variables = false } }
+      assert.equals("${NAME}", interpolation.interpolate("${NAME}", env_vars, opts))
+      assert.equals("$NAME", interpolation.interpolate("$NAME", env_vars, opts))
+    end)
+
+    it("should respect disabled command substitution", function()
+      local opts = { features = { commands = false } }
+      assert.equals("$(echo test)", interpolation.interpolate("$(echo test)", env_vars, opts))
+    end)
+
+    it("should respect disabled escape sequences", function()
+      local opts = { features = { escapes = false } }
+      assert.equals("\\n", interpolation.interpolate("\\n", env_vars, opts))
+      assert.equals("\\t", interpolation.interpolate("\\t", env_vars, opts))
+    end)
+
+    it("should respect disabled default values", function()
+      local opts = { features = { defaults = false, variables = true } }
+      assert.equals("", interpolation.interpolate("${UNDEFINED:-default}", env_vars, opts))
+    end)
+
+    it("should respect disabled alternate values", function()
+      local opts = { features = { alternates = false, variables = true } }
+      assert.equals("John", interpolation.interpolate("${NAME:+alternate}", env_vars, opts))
+    end)
+  end)
+
+  describe("advanced variable operations", function()
+    it("should handle alternate value if set and non-empty", function()
+      assert.equals("has-value", interpolation.interpolate("${NAME:+has-value}", env_vars))
+      assert.equals("", interpolation.interpolate("${EMPTY:+has-value}", env_vars))
+      assert.equals("", interpolation.interpolate("${UNDEFINED:+has-value}", env_vars))
+    end)
+
+    it("should handle alternate value if set", function()
+      assert.equals("has-value", interpolation.interpolate("${NAME+has-value}", env_vars))
+      assert.equals("has-value", interpolation.interpolate("${EMPTY+has-value}", env_vars))
+      assert.equals("", interpolation.interpolate("${UNDEFINED+has-value}", env_vars))
+    end)
+
+    it("should handle mixed quotes and escapes", function()
+      assert.equals('Hello "John"', interpolation.interpolate('${GREETING} \\"${NAME}\\"', env_vars))
+      assert.equals("Hello 'John'", interpolation.interpolate("${GREETING} '${NAME}'", env_vars))
+    end)
+  end)
+
+  describe("shell environment integration", function()
+    before_each(function()
+      vim.fn.setenv("TEST_VAR", "test_value")
+      vim.fn.setenv("TEST_EMPTY", "")
+    end)
+
+    after_each(function()
+      vim.env.TEST_VAR = nil
+      vim.env.TEST_EMPTY = nil
+    end)
+
+    it("should read from shell environment when not in env_vars", function()
+      assert.equals("test_value", interpolation.interpolate("${TEST_VAR}", env_vars))
+    end)
+
+    it("should prefer env_vars over shell environment", function()
+      local local_vars = {
+        TEST_VAR = { value = "local_value" }
+      }
+      assert.equals("local_value", interpolation.interpolate("${TEST_VAR}", local_vars))
     end)
   end)
 end) 

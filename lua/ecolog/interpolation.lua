@@ -71,7 +71,7 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
   if not var then
     local shell_value = vim.fn.getenv(var_name)
     if shell_value and shell_value ~= vim.NIL then
-      var.value = shell_value
+      var = { value = shell_value }
     elseif opts.warn_on_undefined and not suppress_warning then
       vim.notify(string.format("Undefined variable: %s", var_name), vim.log.levels.WARN)
     end

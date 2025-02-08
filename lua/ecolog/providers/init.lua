@@ -26,6 +26,7 @@ local _provider_filetype_map = {
   csharp = { "cs", "csharp" },
   ruby = { "ruby" },
   shell = { "sh", "bash", "zsh" },
+  kotlin = { "kotlin", "kt" },
 }
 
 -- Reverse map of filetypes to their provider modules

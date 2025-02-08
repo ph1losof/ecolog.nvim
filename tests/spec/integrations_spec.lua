@@ -295,7 +295,7 @@ describe("integrations", function()
         context = {
           cursor_before_line = "custom.",
           cursor = { 1, 7 },
-        }
+        },
       }, function(response)
         callback_called = true
         local result = response.items

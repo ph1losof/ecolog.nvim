@@ -1,8 +1,8 @@
 local M = {}
 
-local api = vim.api
 local state = require("ecolog.shelter.state")
 local previewer_utils = require("ecolog.shelter.previewer_utils")
+local shelter_utils = require("ecolog.shelter.utils")
 
 ---@param ctx snacks.picker.preview.ctx
 local function custom_file_previewer(ctx)
@@ -11,7 +11,10 @@ local function custom_file_previewer(ctx)
   end
 
   local filename = vim.fn.fnamemodify(ctx.item.file, ":t")
-  previewer_utils.mask_preview_buffer(ctx.buf, filename, "snacks")
+  local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+  if shelter_utils.match_env_file(filename, config) then
+    previewer_utils.mask_preview_buffer(ctx.buf, filename, "snacks")
+  end
 end
 
 function M.setup_snacks_shelter()
@@ -36,4 +39,3 @@ function M.setup_snacks_shelter()
 end
 
 return M
-

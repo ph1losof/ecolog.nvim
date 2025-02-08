@@ -4,7 +4,6 @@ local api = vim.api
 local fn = vim.fn
 local notify = vim.notify
 local schedule = vim.schedule
-local tbl_extend = vim.tbl_deep_extend
 
 ---@class EcologConfig
 ---@field path string Path to search for .env files
@@ -18,6 +17,7 @@ local tbl_extend = vim.tbl_deep_extend
 ---@field sort_fn? function Custom function for sorting env files
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
+---@field interpolation boolean|InterpolationConfig Enable/disable and configure environment variable interpolation
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
@@ -30,6 +30,18 @@ local tbl_extend = vim.tbl_deep_extend
 ---@field secret_managers? table Secret manager configurations
 ---@field secret_managers.aws? boolean|LoadAwsSecretsConfig AWS Secrets Manager configuration
 ---@field secret_managers.vault? boolean|LoadVaultSecretsConfig HashiCorp Vault configuration
+
+---@class InterpolationConfig
+---@field enabled boolean Enable/disable interpolation
+---@field max_iterations number Maximum iterations for nested interpolation
+---@field warn_on_undefined boolean Whether to warn about undefined variables
+---@field fail_on_cmd_error boolean Whether to fail on command substitution errors
+---@field features table Control specific interpolation features
+---@field features.variables boolean Enable variable interpolation ($VAR, ${VAR})
+---@field features.defaults boolean Enable default value syntax (${VAR:-default})
+---@field features.alternates boolean Enable alternate value syntax (${VAR-alternate})
+---@field features.commands boolean Enable command substitution ($(command))
+---@field features.escapes boolean Enable escape sequences (\n, \t, etc.)
 
 local DEFAULT_CONFIG = {
   path = vim.fn.getcwd(),
@@ -79,6 +91,19 @@ local DEFAULT_CONFIG = {
   },
   env_file_pattern = nil,
   sort_fn = nil,
+  interpolation = {
+    enabled = false,
+    max_iterations = 10,
+    warn_on_undefined = true,
+    fail_on_cmd_error = false,
+    features = {
+      variables = true,
+      defaults = true,
+      alternates = true,
+      commands = true,
+      escapes = true,
+    },
+  },
 }
 
 ---@class EcologState
@@ -94,7 +119,6 @@ local DEFAULT_CONFIG = {
 ---@field _secret_managers table<string, any>
 ---@field initialized boolean
 
--- Initialize state with weak cache for line parsing
 local state = {
   env_vars = {},
   cached_env_files = nil,
@@ -109,7 +133,6 @@ local state = {
   initialized = false,
 }
 
--- Module loading with circular dependency protection
 local _loaded_modules = {}
 local _loading = {}
 local _setup_done = false
@@ -131,7 +154,6 @@ local function require_module(name)
   return module
 end
 
--- Core module loading
 local utils = require_module("ecolog.utils")
 local providers = utils.get_module("ecolog.providers")
 local select = utils.get_module("ecolog.select")
@@ -141,7 +163,6 @@ local types = utils.get_module("ecolog.types")
 local env_loader = require_module("ecolog.env_loader")
 local file_watcher = require_module("ecolog.file_watcher")
 
--- Lazy load vim.env integration
 local function get_env_module()
   if not state._env_module then
     state._env_module = require("ecolog.env")
@@ -150,7 +171,6 @@ local function get_env_module()
   return state._env_module
 end
 
--- Lazy load secret manager
 local function get_secret_manager(name)
   if not state._secret_managers[name] then
     state._secret_managers[name] = require("ecolog.integrations.secret_managers." .. name)
@@ -158,31 +178,26 @@ local function get_secret_manager(name)
   return state._secret_managers[name]
 end
 
--- Environment variable management
 function M.refresh_env_vars(opts)
   state.cached_env_files = nil
   state.file_cache_opts = nil
-  -- Use either last_opts or DEFAULT_CONFIG as the base
+
   local base_opts = state.last_opts or DEFAULT_CONFIG
-  -- Always use full config
+
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
   env_loader.load_environment(opts, state, true)
 
-  -- Invalidate statusline cache only if integration is enabled
   if opts.integrations.statusline then
     local statusline = require("ecolog.integrations.statusline")
     statusline.invalidate_cache()
   end
 
-  -- Refresh secrets if configured
   if opts.integrations.secret_managers then
-    -- Refresh AWS secrets if configured
     if opts.integrations.secret_managers.aws then
       local aws = get_secret_manager("aws")
       aws.load_aws_secrets(opts.integrations.secret_managers.aws)
     end
 
-    -- Refresh Vault secrets if configured
     if opts.integrations.secret_managers.vault then
       local vault = get_secret_manager("vault")
       vault.load_vault_secrets(opts.integrations.secret_managers.vault)
@@ -191,7 +206,6 @@ function M.refresh_env_vars(opts)
 end
 
 function M.get_env_vars()
-  -- Check if selected file exists
   if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
     state.selected_env_file = nil
     state.env_vars = {}
@@ -203,15 +217,6 @@ function M.get_env_vars()
     env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
   end
   return state.env_vars
-end
-
--- File selection and environment handling
-local function handle_env_file_change()
-  state.cached_env_files = nil
-  M.refresh_env_vars(state.last_opts)
-  if state._env_module then
-    state._env_module.update_env_vars()
-  end
 end
 
 local function handle_env_file_selection(file, config)
@@ -228,7 +233,6 @@ local function handle_env_file_selection(file, config)
   end
 end
 
--- Integration setup
 local function setup_integrations(config)
   if config.integrations.lsp then
     local lsp = require_module("ecolog.integrations.lsp")
@@ -266,7 +270,6 @@ local function setup_integrations(config)
   end
 end
 
--- Command creation
 local function create_commands(config)
   local commands = {
     EcologPeek = {
@@ -373,6 +376,16 @@ local function create_commands(config)
           return
         end
 
+        if var.source == "shell" then
+          notify("Cannot go to definition of shell variables", vim.log.levels.WARN)
+          return
+        end
+
+        if var.source:match("^asm:") or var.source:match("^vault:") then
+          notify("Cannot go to definition of secret manager variables", vim.log.levels.WARN)
+          return
+        end
+
         vim.cmd("edit " .. fn.fnameescape(var.source))
 
         local lines = api.nvim_buf_get_lines(0, 0, -1, false)
@@ -444,27 +457,71 @@ local function create_commands(config)
       nargs = "?",
       desc = "Copy environment variable value to clipboard",
     },
-    EcologAWSSelect = {
-      callback = function()
-        if not config.integrations.secret_managers or not config.integrations.secret_managers.aws then
-          notify("AWS Secrets Manager is not configured", vim.log.levels.ERROR)
-          return
-        end
+    EcologAWSConfig = {
+      callback = function(args)
         local aws = get_secret_manager("aws")
-        aws.select()
+        if args.args ~= "" then
+          -- Try to match against known options
+          local valid_options = { region = true, profile = true, secrets = true }
+          local option = args.args:lower()
+          if valid_options[option] then
+            aws.instance:select_config(option)
+          else
+            vim.notify("Invalid AWS config option: " .. option, vim.log.levels.ERROR)
+          end
+        else
+          aws.instance:select_config()
+        end
       end,
-      desc = "Select AWS Secrets Manager secrets to load",
+      nargs = "?",
+      desc = "Configure AWS Secrets Manager settings (region, profile, secrets)",
+      complete = function(arglead)
+        return vim.tbl_filter(function(item)
+          return item:find(arglead, 1, true)
+        end, { "region", "profile", "secrets" })
+      end,
     },
-    EcologVaultSelect = {
+    EcologVaultConfig = {
+      callback = function(args)
+        local vault = get_secret_manager("vault")
+        if args.args ~= "" then
+          -- Try to match against known options
+          local valid_options = { organization = true, project = true, apps = true }
+          local option = args.args:lower()
+          if valid_options[option] then
+            vault.instance:select_config(option)
+          else
+            vim.notify("Invalid Vault config option: " .. option, vim.log.levels.ERROR)
+          end
+        else
+          vault.instance:select_config()
+        end
+      end,
+      nargs = "?",
+      desc = "Configure HCP Vault settings (organization, project, apps)",
+      complete = function(arglead)
+        return vim.tbl_filter(function(item)
+          return item:find(arglead, 1, true)
+        end, { "organization", "project", "apps" })
+      end,
+    },
+    EcologInterpolationToggle = {
       callback = function()
-        if not config.integrations.secret_managers or not config.integrations.secret_managers.vault then
-          notify("HashiCorp Vault is not configured", vim.log.levels.ERROR)
+        if not state.last_opts then
+          notify("Ecolog not initialized", vim.log.levels.ERROR)
           return
         end
-        local vault = get_secret_manager("vault")
-        vault.select()
+
+        state.last_opts.interpolation.enabled = not state.last_opts.interpolation.enabled
+
+        M.refresh_env_vars(state.last_opts)
+
+        notify(
+          string.format("Interpolation %s", state.last_opts.interpolation.enabled and "enabled" or "disabled"),
+          vim.log.levels.INFO
+        )
       end,
-      desc = "Select HashiCorp Vault secrets to load",
+      desc = "Toggle environment variable interpolation",
     },
   }
 
@@ -477,20 +534,35 @@ local function create_commands(config)
   end
 end
 
----@param opts? EcologConfig
 function M.setup(opts)
   if _setup_done then
     return
   end
   _setup_done = true
 
-  -- Merge user options with defaults
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
 
-  -- Add this near the start of setup
-  state.selected_env_file = nil -- Make sure this is tracked in state
+  -- Handle interpolation configuration
+  if type(config.interpolation) == "boolean" then
+    config.interpolation = {
+      enabled = config.interpolation,
+      max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
+      warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
+      fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
+      features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
+    }
+  elseif type(config.interpolation) == "table" then
+    -- Ensure all feature flags are properly initialized
+    if config.interpolation.features then
+      config.interpolation.features =
+        vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
+    end
+    -- Merge with default interpolation config
+    config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
+  end
 
-  -- Normalize provider_patterns to table format
+  state.selected_env_file = nil
+
   if type(config.provider_patterns) == "boolean" then
     config.provider_patterns = {
       extract = config.provider_patterns,
@@ -509,7 +581,6 @@ function M.setup(opts)
     config.integrations.nvim_cmp = false
   end
 
-  -- Core setup
   require("ecolog.highlights").setup()
   shelter.setup({
     config = config.shelter.configuration,
@@ -520,27 +591,18 @@ function M.setup(opts)
     custom_types = config.custom_types,
   })
 
-  -- Schedule integration setup
-  table.insert(_lazy_setup_tasks, function() setup_integrations(config) end)
-
-  -- Initialize secret managers if configured
   if config.integrations.secret_managers then
-    schedule(function()
-      -- Initialize AWS Secrets Manager
-      if config.integrations.secret_managers.aws then
-        local aws = get_secret_manager("aws")
-        aws.load_aws_secrets(config.integrations.secret_managers.aws)
-      end
+    if config.integrations.secret_managers.aws then
+      local aws = get_secret_manager("aws")
+      aws.load_aws_secrets(config.integrations.secret_managers.aws)
+    end
 
-      -- Initialize HashiCorp Vault
-      if config.integrations.secret_managers.vault then
-        local vault = get_secret_manager("vault")
-        vault.load_vault_secrets(config.integrations.secret_managers.vault)
-      end
-    end)
+    if config.integrations.secret_managers.vault then
+      local vault = get_secret_manager("vault")
+      vault.load_vault_secrets(config.integrations.secret_managers.vault)
+    end
   end
 
-  -- Initial environment file selection
   local initial_env_files = utils.find_env_files({
     path = config.path,
     preferred_environment = config.preferred_environment,
@@ -552,16 +614,18 @@ function M.setup(opts)
     handle_env_file_selection(initial_env_files[1], config)
   end
 
+  table.insert(_lazy_setup_tasks, function()
+    setup_integrations(config)
+  end)
+
   schedule(function()
     env_loader.load_environment(config, state)
     file_watcher.setup_watcher(config, state, M.refresh_env_vars)
 
-    -- Execute lazy setup tasks
     for _, task in ipairs(_lazy_setup_tasks) do
       task()
     end
 
-    -- Create commands
     create_commands(config)
   end)
 
@@ -572,7 +636,6 @@ function M.setup(opts)
   end
 end
 
--- Status line integration
 function M.get_status()
   if not state.last_opts or not state.last_opts.integrations.statusline then
     return ""
@@ -599,15 +662,12 @@ function M.get_lualine()
   return require("ecolog.integrations.statusline").lualine()
 end
 
--- State access
 function M.get_state()
   return state
 end
 
--- Configuration access
 function M.get_config()
   return state.last_opts or DEFAULT_CONFIG
 end
 
 return M
-

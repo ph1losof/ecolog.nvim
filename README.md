@@ -27,6 +27,15 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Configuration Options](#configuration-options)
   - [Features](#features)
   - [Best Practices](#best-practices)
+- [Variable Interpolation](#-variable-interpolation)
+  - [Supported Syntax](#supported-syntax)
+  - [Examples](#examples)
+  - [Configuration Options](#configuration-options-1)
+  - [Features](#features-1)
+  - [Best Practices](#best-practices-1)
+- [Supported Languages](#-supported-languages)
+  - [Currently Supported](#currently-supported)
+  - [Adding new languages and custom providers](#-custom-providers)
 - [Custom Environment File Patterns](#-custom-environment-file-patterns)
   - [Basic Usage](#basic-usage-1)
   - [Pattern Format](#pattern-format)
@@ -46,6 +55,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Snacks Integration](#snacks-integration)
   - [Statusline Integration](#statusline-integration)
   - [AWS Secrets Manager](#aws-secrets-manager)
+  - [HashiCorp Vault Secrets](#hashicorp-vault-secrets)
 - [Shelter Previewers](#-shelter-previewers)
   - [Telescope Previewer](#telescope-previewer)
   - [FZF Previewer](#fzf-previewer)
@@ -176,6 +186,7 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Priority-based environment file loading
 - Shell variables integration
 - vim.env synchronization
+- Advanced variable interpolation with shell-like syntax
 
 🤖 **Smart Autocompletion**
 
@@ -226,6 +237,170 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Inline documentation
 - Status indicators
 
+## 🔄 Variable Interpolation
+
+Ecolog supports advanced variable interpolation with shell-like syntax in your environment files.
+
+### Supported Syntax
+
+- **Basic Variables**: `$VAR` or `${VAR}`
+- **Default Values**: `${VAR:-default}` (use default if VAR is unset or empty)
+- **Alternate Values**: `${VAR-alternate}` (use alternate if VAR is unset)
+- **Command Substitution**: `$(command)`
+- **Quoted Strings**:
+  - Single quotes (`'...'`): No interpolation
+  - Double quotes (`"..."`): With interpolation
+
+### Examples
+
+```sh
+# Basic variable interpolation
+APP_URL=${HOST}:${PORT}
+
+# Default values
+API_TIMEOUT=${TIMEOUT:-5000}
+DB_HOST=${DATABASE_HOST:-localhost}
+
+# Alternate values
+CACHE_DIR=${CUSTOM_CACHE-/tmp/cache}
+
+# Command substitution
+GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+TIMESTAMP=$(date +%Y%m%d)
+
+# Nested interpolation
+DATABASE_URL="postgres://${DB_USER:-postgres}:${DB_PASS}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME}"
+```
+
+### Configuration Options
+
+You can customize the interpolation behavior through the plugin's configuration:
+
+```lua
+require('ecolog').setup({
+  -- Enable interpolation with default settings
+  interpolation = true,
+
+  -- Or disable interpolation
+  interpolation = false,
+
+  -- Or customize interpolation settings
+  interpolation = {
+    enabled = true,              -- Enable/disable interpolation
+    max_iterations = 10,         -- Maximum iterations for nested interpolation
+    warn_on_undefined = true,    -- Warn about undefined variables
+    fail_on_cmd_error = false,  -- How to handle command substitution errors
+    features = {
+      variables = true,         -- Enable variable interpolation ($VAR, ${VAR})
+      defaults = true,         -- Enable default value syntax (${VAR:-default})
+      alternates = true,       -- Enable alternate value syntax (${VAR-alternate})
+      commands = true,         -- Enable command substitution ($(command))
+      escapes = true,         -- Enable escape sequences (\n, \t, etc.)
+    }
+  }
+})
+```
+
+The configuration options are:
+
+| Option              | Type    | Default | Description                                               |
+| ------------------- | ------- | ------- | --------------------------------------------------------- |
+| enabled             | boolean | false   | Enable/disable interpolation                              |
+| max_iterations      | number  | 10      | Maximum iterations for nested variable interpolation      |
+| warn_on_undefined   | boolean | true    | Whether to warn when undefined variables are referenced   |
+| fail_on_cmd_error   | boolean | false   | Whether to error or warn on command substitution failures |
+| features            | table   | -       | Control specific interpolation features                   |
+| features.variables  | boolean | true    | Enable variable interpolation ($VAR, ${VAR})              |
+| features.defaults   | boolean | true    | Enable default value syntax (${VAR:-default})             |
+| features.alternates | boolean | true    | Enable alternate value syntax (${VAR-alternate})          |
+| features.commands   | boolean | true    | Enable command substitution ($(command))                  |
+| features.escapes    | boolean | true    | Enable escape sequences (\n, \t, etc.)                    |
+
+### Features
+
+- **Recursive Interpolation**: Variables can reference other variables
+- **Shell Integration**: Access shell environment variables
+- **Error Handling**: Configurable warnings and error handling
+- **Command Substitution**: Execute shell commands and use their output
+- **Escape Sequences**: Support for common escape sequences (`\n`, `\t`, etc.)
+- **Quote Handling**: Proper handling of single and double quotes
+- **Default Values**: Support for default and alternate value syntax
+- **Safety Limits**: Prevention of infinite recursion with iteration limits
+
+### Best Practices
+
+1. Use braces `${}` for clarity and to avoid ambiguity
+2. Provide default values for optional variables
+3. Use single quotes for literal strings
+4. Be cautious with command substitution in production environments
+5. Keep nesting levels reasonable for better maintainability
+6. Use feature flags to enhance security:
+   - Disable `commands` in production to prevent command injection
+   - Disable `alternates` and `defaults` if not needed
+   - Keep `variables` enabled for basic interpolation
+   - Consider disabling `escapes` if not using special characters
+
+## 🌍 Supported Languages
+
+### Currently Supported
+
+Ecolog provides intelligent environment variable detection and completion for multiple programming languages:
+
+| Language   | File Extensions  | Environment Variable Access Patterns                                                                 |
+| ---------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| TypeScript | .ts, .tsx        | `process.env.VAR`, `process.env['VAR']`, `import.meta.env.VAR`, `Bun.env.VAR`, `Deno.env.get('VAR')` |
+| JavaScript | .js, .jsx        | `process.env.VAR`, `process.env['VAR']`, `Bun.env.VAR`                                               |
+| Python     | .py              | `os.environ.get('VAR')`                                                                              |
+| PHP        | .php             | `getenv('VAR')`, `$_ENV['VAR']`, `$_SERVER['VAR']`                                                   |
+| Lua        | .lua             | `os.getenv('VAR')`                                                                                   |
+| Go         | .go              | `os.Getenv('VAR')`                                                                                   |
+| Rust       | .rs              | `env::var('VAR')`, `std::env::var('VAR')`, `std::env::var_os('VAR')`                                 |
+| Java       | .java            | `System.getenv('VAR')`, `env.get('VAR')`                                                             |
+| C#         | .cs, .csharp     | `Environment.GetEnvironmentVariable('VAR')`, `System.Environment.GetEnvironmentVariable('VAR')`      |
+| Ruby       | .rb              | `ENV['VAR']`, `ENV.fetch('VAR')`                                                                     |
+| Shell      | .sh, .bash, .zsh | `$VAR`, `${VAR}`                                                                                     |
+| Kotlin     | .kt, .kotlin     | `System.getenv('VAR')`                                                                               |
+| Dockerfile | Dockerfile       | `${VAR}`                                                                                             |
+
+Each language provider is optimized for its specific environment variable access patterns and supports both completion and detection. The providers are loaded lazily to maintain performance.
+
+### 🔌 Custom Providers
+
+You can add support for additional languages by registering custom providers. Each provider defines how environment variables are detected and extracted in specific file types.
+
+### Example: Adding a Custom Provider
+
+```lua
+require('ecolog').setup({
+  providers = {
+    {
+      -- Pattern to match environment variable access
+      pattern = "ENV%[['\"]%w['\"]%]",
+      -- Filetype(s) this provider supports (string or table)
+      filetype = "custom_lang",
+      -- Function to extract variable name from the line
+      extract_var = function(line, col)
+        local before_cursor = line:sub(1, col + 1)
+        return before_cursor:match("ENV%['\"['\"]%]$")
+      end,
+      -- Function to return completion trigger pattern
+      get_completion_trigger = function()
+        return "ENV['"
+      end
+    }
+  }
+})
+```
+
+Each provider must specify:
+
+1. `pattern`: A Lua pattern to match environment variable access in the code
+2. `filetype`: The filetype(s) this provider supports (string or table)
+3. `extract_var`: Function to extract the variable name from the line
+4. `get_completion_trigger`: Function to return the completion trigger pattern
+
+The provider will be automatically loaded when editing files of the specified filetype.
+
 ## 🚀 Usage
 
 ### Available Commands
@@ -247,6 +422,9 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 | `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
 | `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
 | `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
+| `:EcologAWSConfig`                         | Open configuration menu for AWS Secrets Manager (region, profile, secrets)            |
+| `:EcologVaultConfig`                       | Open configuration menu for HCP Vault (organization, project, apps)                   |
+| `:EcologInterpolationToggle`               | Toggle environment variable interpolation on/off                                      |
 
 ## 📝 Environment File Priority
 
@@ -931,28 +1109,30 @@ All keymaps are customizable through the configuration.
 
 The AWS Secrets Manager integration allows you to load secrets from AWS Secrets Manager into your environment variables. This integration requires the AWS CLI to be installed and configured with appropriate credentials.
 
-> ⚠️ **Note**: This is a beta feature and may have breaking changes in future releases.
+> ⚠️ **Note**: This is a WIP feature and may have breaking changes in future releases.
 
 #### Configuration
 
 ```lua
 require('ecolog').setup({
   integrations = {
-    aws_secrets_manager = {
-      enabled = true, -- Enable AWS Secrets Manager integration
-      override = false, -- When true, AWS secrets take precedence over .env files and shell variables
-      region = "us-west-2", -- Required: AWS region where your secrets are stored
-      profile = "default", -- Optional: AWS profile to use
-      secrets = { -- Required: List of secret names to fetch
-        "my-app/dev/database",
-        "my-app/dev/api"
-      },
-      filter = function(key, value) -- Optional: Filter function for secrets
-        return true -- Return true to include the secret, false to exclude it
-      end,
-      transform = function(key, value) -- Optional: Transform function for secret values
-        return value -- Return the transformed value
-      end
+    secret_managers = {
+      aws = {
+        enabled = true, -- Enable AWS Secrets Manager integration
+        override = false, -- When true, AWS secrets take precedence over .env files and shell variables
+        region = "us-west-2", -- Required: AWS region where your secrets are stored
+        profile = "default", -- Optional: AWS profile to use
+        secrets = { -- Optional: List of secret names to fetch on startup
+          "my-app/dev/database",
+          "my-app/dev/api"
+        },
+        filter = function(key, value) -- Optional: Filter function for secrets
+          return true -- Return true to include the secret, false to exclude it
+        end,
+        transform = function(key, value) -- Optional: Transform function for secret values
+          return value -- Return the transformed value
+        end
+      }
     }
   }
 })
@@ -968,26 +1148,35 @@ require('ecolog').setup({
 - Integration with shelter mode for sensitive data protection
 - Automatic credential validation and error handling
 - Support for AWS profiles and regions
+- Direct configuration access through `:EcologAWSConfig` command
+- Real-time configuration changes with automatic secret reloading
+- Parallel secret loading with retry support
+- Proper cleanup on Neovim exit
 
-#### Interactive Secret Selection
+#### Interactive Configuration
 
-The `:EcologAWSSelect` command opens an interactive picker that allows you to:
+The `:EcologAWSConfig` command provides access to three main configuration options:
 
-- Browse all available secrets in your AWS region
-- Select multiple secrets using the space key
-- See which secrets are currently selected with a checkmark (✓)
-- Navigate through secrets with j/k keys
-- Confirm selection with Enter
-- Cancel selection with q or Escape
+1. **Region**: Select or change the AWS region
+2. **Profile**: Choose the AWS profile to use
+3. **Secrets**: Select which secrets to load
 
-Default keybindings in the picker:
+Each option can be accessed directly using:
 
-| Key       | Action                                |
-| --------- | ------------------------------------- |
-| `j`/`k`   | Navigate through secrets              |
-| `<space>` | Toggle selection of current secret    |
-| `<CR>`    | Confirm selection and load secrets    |
-| `q`/`ESC` | Close picker without loading secrets  |
+```vim
+:EcologAWSConfig region    " Configure AWS region
+:EcologAWSConfig profile   " Configure AWS profile
+:EcologAWSConfig secrets   " Configure which secrets to load
+```
+
+Default keybindings in the configuration UI:
+
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| `j`/`k`   | Navigate through options            |
+| `<space>` | Toggle selection (for multi-select) |
+| `<CR>`    | Select option or confirm selection  |
+| `q`/`ESC` | Close without changes               |
 
 #### Requirements
 
@@ -1008,6 +1197,98 @@ The integration provides clear error messages for common issues:
 - Access denied errors
 - Region configuration issues
 - Missing or invalid secrets
+- Command timeout errors
+- AWS CLI installation issues
+
+### HashiCorp Vault Secrets
+
+The HashiCorp Vault Secrets integration allows you to load secrets from HCP Vault Secrets into your environment variables. This integration requires the HCP CLI to be installed and configured with appropriate credentials.
+
+> ⚠️ **Note**: This is a WIP feature and may have breaking changes in future releases.
+
+#### Configuration
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    secret_managers = {
+      vault = {
+        enabled = true, -- Enable HCP Vault Secrets integration
+        override = false, -- When true, Vault secrets take precedence over .env files and shell variables
+        apps = { -- Optional: List of application names to fetch secrets from by default
+          "sample-app",
+          "database"
+        },
+        filter = function(key, value) -- Optional: Filter function for secrets
+          return true -- Return true to include the secret, false to exclude it
+        end,
+        transform = function(key, value) -- Optional: Transform function for secret values
+          return value -- Return the transformed value
+        end
+      }
+    }
+  }
+})
+```
+
+#### Features
+
+- Load secrets from HCP Vault Secrets into your environment variables
+- Support for both JSON and plain text secrets:
+  - JSON secrets: Each key-value pair becomes a separate environment variable
+  - Plain text secrets: The secret name is used as the variable name
+- Interactive application and secret selection with visual feedback
+- Integration with shelter mode for sensitive data protection
+- Automatic credential validation and error handling
+- Support for HCP service principal authentication
+- Direct configuration access through `:EcologVaultConfig` command
+- Real-time configuration changes with automatic secret reloading
+- Proper cleanup on Neovim exit
+
+#### Interactive Configuration
+
+The `:EcologVaultConfig` command provides access to three main configuration options:
+
+1. **Organization**: Select or change the HCP organization
+2. **Project**: Choose the HCP project to use
+3. **Apps**: Select which applications to load secrets from
+
+Each option can be accessed directly using:
+
+```vim
+:EcologVaultConfig organization    " Configure HCP organization
+:EcologVaultConfig project        " Configure HCP project
+:EcologVaultConfig apps           " Configure which apps to load secrets from
+```
+
+Default keybindings in the configuration UI:
+
+| Key       | Action                              |
+| --------- | ----------------------------------- |
+| `j`/`k`   | Navigate through options            |
+| `<space>` | Toggle selection (for multi-select) |
+| `<CR>`    | Select option or confirm selection  |
+| `q`/`ESC` | Close without changes               |
+
+#### Requirements
+
+- HCP CLI installed (`hcp --version` should be available)
+- HCP CLI must be authenticated with valid credentials using one of:
+  - HCP service principal credentials (client ID and client secret)
+  - `hcp auth login` command
+- Appropriate HCP permissions to access the specified applications and secrets
+
+#### Error Handling
+
+The integration provides clear error messages for common issues:
+
+- Invalid or missing HCP credentials
+- Network connectivity problems
+- Access denied errors
+- Missing or invalid applications
+- Missing or invalid secrets
+- Command timeout errors
+- HCP CLI installation issues
 
 ### 🔍 Shelter Previewers
 
@@ -1250,6 +1531,40 @@ The min_mask setting ensures that sensitive values are properly protected by req
 a minimum number of masked characters between the visible parts. If this minimum
 cannot be met, the entire value is masked for security.
 
+### Configuration Options
+
+The files module can be configured in two ways:
+
+1. **Simple boolean configuration**:
+
+```lua
+shelter = {
+    modules = {
+        files = true  -- Simply enable/disable files module
+    }
+}
+```
+
+2. **Detailed configuration with options**:
+
+```lua
+shelter = {
+    modules = {
+        files = {
+            shelter_on_leave = false,  -- Control automatic re-enabling of shelter when leaving buffer
+            disable_cmp = true,        -- Disable completion in sheltered buffers (default: true)
+            skip_comments = false,     -- Skip masking comment lines in environment files (default: false)
+        }
+    }
+}
+```
+
+When `shelter_on_leave` is enabled (default when using boolean configuration), the shelter mode will automatically re-enable itself when you leave an environment file buffer. This provides an extra layer of security by ensuring sensitive data is always masked when not actively being viewed.
+
+The `disable_cmp` option (enabled by default) will automatically disable both nvim-cmp and blink-cmp completions in sheltered buffers. This prevents sensitive values from being exposed through the completion menu while editing environment files. Completion is automatically re-enabled when unsheltering the buffer.
+
+The `skip_comments` option (disabled by default) allows you to keep comments visible while masking the actual environment variable values. This can be useful when you want to maintain readability of documentation in your environment files while still protecting sensitive data.
+
 ### Pattern-based Protection
 
 You can define different masking rules based on variable names or file sources:
@@ -1272,7 +1587,7 @@ shelter = {
 }
 ```
 
-### 🎨 Customization
+## 🎨 Customization
 
 1. **Custom Mask Character**:
 
@@ -1501,9 +1816,8 @@ The plugin seamlessly integrates with your current colorscheme:
 It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
 
 ```lua
-return {
-  {
-    'philosofonusus/ecolog.nvim',
+ {
+   'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
@@ -1524,6 +1838,9 @@ return {
       },
       shelter = {
         configuration = {
+          sources = {
+            ['.env.example'] = 'none',
+          },
           partial_mode = {
             min_mask = 5,
             show_start = 1,
@@ -1535,13 +1852,13 @@ return {
           files = true,
           peek = false,
           snacks_previewer = true,
+          snacks = false,
           cmp = true,
         },
       },
       path = vim.fn.getcwd(),
     },
-  },
-}
+  }
 ```
 
 ## 🔄 Comparisons

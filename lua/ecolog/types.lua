@@ -9,9 +9,8 @@
 
 local M = {}
 
--- Built-in type definitions with their patterns and validation functions
 local TYPE_DEFINITIONS = {
-  -- Data types
+
   boolean = {
     pattern = "^[a-zA-Z0-9]+$",
     validate = function(value)
@@ -38,11 +37,9 @@ local TYPE_DEFINITIONS = {
       return status
     end,
   },
-  -- Network types
+
   url = {
-    pattern = "^https?://[%w%-%.]+"  -- hostname part
-      .. "%.[%w%-%.]+"  -- domain part
-      .. "[%w%-%./:%?=&#]*$",  -- path and query part
+    pattern = "^https?://[%w%-%.]+" .. "%.[%w%-%.]+" .. "[%w%-%./:%?=&#]*$",
   },
   localhost = {
     pattern = "^https?://[^/:]+:?%d*/?.*$",
@@ -62,12 +59,7 @@ local TYPE_DEFINITIONS = {
     end,
   },
   database_url = {
-    pattern = "[%w%+]+://"  -- protocol
-      .. "[^:/@]+"  -- username
-      .. ":[^@]+"   -- password
-      .. "@[^/:]+"  -- host
-      .. ":[0-9]+"  -- port
-      .. "/[^%?]+", -- database name
+    pattern = "[%w%+]+://[^/@]+@[^/@]+/?[^%s]*",
     validate = function(url)
       local protocol = url:match("^([%w%+]+)://")
       if not protocol then
@@ -91,14 +83,37 @@ local TYPE_DEFINITIONS = {
         return false
       end
 
-      local user, pass, host, port = url:match("^[%w%+]+://([^:]+):([^@]+)@([^:]+):(%d+)")
-      if not (user and pass and host and port) then
+      -- Check for user:pass@host format
+      local auth_host = url:match("^[%w%+]+://([^/]+)")
+      if not auth_host then
         return false
       end
 
-      port = tonumber(port)
-      if not port or port < 1 or port > 65535 then
+      local user_pass, host = auth_host:match("([^@]+)@(.+)")
+      if not (user_pass and host) then
         return false
+      end
+
+      local user, pass = user_pass:match("([^:]+):(.+)")
+      if not (user and pass) then
+        return false
+      end
+
+      -- Check port if present (required for most database URLs)
+      local host_part, port = host:match("([^:]+):(%d+)")
+      if host_part then
+        if not port then
+          return false
+        end
+        port = tonumber(port)
+        if not port or port < 1 or port > 65535 then
+          return false
+        end
+      else
+        -- Port is required for most database URLs except mongodb+srv
+        if protocol:lower() ~= "mongodb+srv" then
+          return false
+        end
       end
 
       return true
@@ -120,7 +135,7 @@ local TYPE_DEFINITIONS = {
       return true
     end,
   },
-  -- Date and time
+
   iso_date = {
     pattern = "^%d%d%d%d%-%d%d%-%d%d$",
     validate = function(value)
@@ -158,83 +173,71 @@ local TYPE_DEFINITIONS = {
       return hour >= 0 and hour < 24 and minute >= 0 and minute < 60 and second >= 0 and second < 60
     end,
   },
-  -- Visual
+
   hex_color = {
     pattern = "^#%x+$",
     validate = function(value)
-      local hex = value:sub(2)  -- Remove the #
+      local hex = value:sub(2)
       return (#hex == 3 or #hex == 6) and hex:match("^%x+$") ~= nil
     end,
   },
 }
 
--- Configuration state
 local config = {
   enabled_types = {},
   custom_types = {},
 }
 
--- Initialize enabled types with all TYPE_DEFINITIONS enabled
 local function init_enabled_types()
   for type_name, _ in pairs(TYPE_DEFINITIONS) do
     config.enabled_types[type_name] = true
   end
 end
 
--- Pre-compile all patterns for better performance
 local function compile_patterns()
   for type_name, type_def in pairs(TYPE_DEFINITIONS) do
     if type_def.pattern then
-      -- Store both Lua pattern and vim.regex pattern
       type_def._lua_pattern = type_def.pattern
-      -- Convert Lua pattern to vim regex pattern
+
       local vim_pattern = type_def.pattern:gsub("%%", "\\")
       type_def._compiled_pattern = vim.regex(vim_pattern)
     end
   end
 end
 
--- Initialize configuration with defaults
 init_enabled_types()
 compile_patterns()
 
--- Setup function for types module
 function M.setup(opts)
   opts = opts or {}
 
-  -- Reset to defaults first
   init_enabled_types()
   config.custom_types = {}
 
-  -- Handle types configuration
   if type(opts.types) == "table" then
-    -- Reset all types to false first
     for type_name, _ in pairs(TYPE_DEFINITIONS) do
       config.enabled_types[type_name] = false
     end
-    -- Enable only specified types
+
     for type_name, enabled in pairs(opts.types) do
       if TYPE_DEFINITIONS[type_name] then
         config.enabled_types[type_name] = enabled
       end
     end
   elseif type(opts.types) == "boolean" then
-    -- Enable/disable all built-in types based on boolean value
     for type_name, _ in pairs(TYPE_DEFINITIONS) do
       config.enabled_types[type_name] = opts.types
     end
   end
 
-  -- Handle custom types
   if opts.custom_types then
     for name, def in pairs(opts.custom_types) do
       if type(def) == "table" and def.pattern then
-        -- Store both Lua pattern and vim.regex pattern
         def._lua_pattern = def.pattern
-        -- Convert Lua pattern to vim regex pattern
+
         local vim_pattern = def.pattern:gsub("%%", "\\")
         def._compiled_pattern = vim.regex(vim_pattern)
-        
+
         config.custom_types[name] = {
           pattern = def.pattern,
           _lua_pattern = def._lua_pattern,
@@ -242,33 +245,29 @@ function M.setup(opts)
           validate = def.validate,
           transform = def.transform,
         }
-        -- Always enable custom types
+
         config.enabled_types[name] = true
       end
     end
   end
 end
 
--- Helper function to check if a value matches a pattern
 local function matches_pattern(value, type_def)
-  -- First try Lua pattern match
   if type_def._lua_pattern and value:match(type_def._lua_pattern) then
     return true
   end
-  -- Then try vim.regex match
+
   if type_def._compiled_pattern and type_def._compiled_pattern:match_str(value) then
     return true
   end
   return false
 end
 
--- Optimized type detection function
 function M.detect_type(value)
   if not value then
     return "string", value
   end
 
-  -- Check custom types first
   for type_name, type_def in pairs(config.custom_types) do
     if matches_pattern(value, type_def) then
       if not type_def.validate or type_def.validate(value) then
@@ -280,7 +279,6 @@ function M.detect_type(value)
     end
   end
 
-  -- Special case for boolean - check validation first
   if config.enabled_types.boolean then
     local type_def = TYPE_DEFINITIONS.boolean
     if type_def.validate(value) then
@@ -288,7 +286,6 @@ function M.detect_type(value)
     end
   end
 
-  -- Check built-in types in specific order
   local type_check_order = {
     "localhost",
     "database_url",
@@ -323,7 +320,6 @@ function M.detect_type(value)
     end
   end
 
-  -- Default to string type
   return "string", value
 end
 

@@ -1,13 +1,9 @@
 local M = {}
 local api = vim.api
-local fn = vim.fn
 
--- Store module references
 local _shelter = nil
 
--- Create completion source
 local function setup_completion(cmp, opts, providers)
-  -- Create highlight groups for cmp
   api.nvim_set_hl(0, "CmpItemKindEcolog", { link = "EcologVariable" })
   api.nvim_set_hl(0, "CmpItemAbbrMatchEcolog", { link = "EcologVariable" })
   api.nvim_set_hl(0, "CmpItemAbbrMatchFuzzyEcolog", { link = "EcologVariable" })
@@ -19,12 +15,12 @@ local function setup_completion(cmp, opts, providers)
       if not has_ecolog then
         return {}
       end
-      
+
       local config = ecolog.get_config()
       if not config.provider_patterns.cmp then
         return { "" }
       end
-      
+
       local triggers = {}
       local available_providers = providers.get_providers(vim.bo.filetype)
 
@@ -83,7 +79,7 @@ local function setup_completion(cmp, opts, providers)
           end
         end
       else
-        should_complete = true 
+        should_complete = true
       end
 
       if not should_complete then
@@ -93,17 +89,15 @@ local function setup_completion(cmp, opts, providers)
 
       local items = {}
       for var_name, var_info in pairs(env_vars) do
-        -- Get masked value if shelter is enabled
-        local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
+        local display_value = _shelter.is_enabled("cmp")
+            and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
           or var_info.value
 
-        -- Create documentation string with comment if available
         local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
         if var_info.comment then
           doc_value = doc_value .. string.format("\n\n**Comment:** %s", var_info.comment)
         end
 
-        -- Create base completion item
         local item = {
           label = var_name,
           kind = cmp.lsp.CompletionItemKind.Variable,
@@ -117,7 +111,6 @@ local function setup_completion(cmp, opts, providers)
           abbr_hl_group = "CmpItemAbbrMatchEcolog",
         }
 
-        -- Add provider-specific customizations if available
         if matched_provider and matched_provider.format_completion then
           item = matched_provider.format_completion(item, var_name, var_info)
         end
@@ -131,15 +124,12 @@ local function setup_completion(cmp, opts, providers)
 end
 
 function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
-  -- Store module references
   _shelter = shelter
 
-  -- Set up lazy loading for cmp
   vim.api.nvim_create_autocmd("InsertEnter", {
     callback = function()
       local has_cmp, cmp = pcall(require, "cmp")
       if has_cmp and not M._cmp_loaded then
-        -- Set up completion
         setup_completion(cmp, opts, providers)
         M._cmp_loaded = true
       end
@@ -149,4 +139,3 @@ function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
 end
 
 return M
-

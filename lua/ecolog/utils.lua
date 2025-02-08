@@ -1,10 +1,9 @@
 local M = {}
 
--- Optimized patterns with fewer captures and combined operations
 M.PATTERNS = {
-  -- Combined env file patterns for single match operation
+
   env_file_combined = "^.+/%.env[^.]*$",
-  -- Simpler patterns that maintain compatibility
+
   env_line = "^[^#](.+)$",
   key_value = "([^=]+)=(.+)",
   quoted = "^['\"](.*)['\"]$",
@@ -13,7 +12,6 @@ M.PATTERNS = {
   env_var = "^[%w_]+$",
 }
 
--- Pre-compile frequently used patterns for better performance
 local COMPILED_PATTERNS = {
   env_file = vim.regex(M.PATTERNS.env_file_combined),
   key_value = vim.regex("^([^=]+)=(.+)$"),
@@ -21,37 +19,51 @@ local COMPILED_PATTERNS = {
   comment = vim.regex("#.*$"),
 }
 
--- Helper function to extract parts using pre-compiled patterns
 function M.extract_line_parts(line)
-  -- Skip comments and empty lines
   if line:match("^%s*#") or line:match("^%s*$") then
     return nil
   end
 
-  -- Extract key and value using basic pattern first
   local key, value = line:match("^%s*([^=]+)%s*=%s*(.-)%s*$")
   if not key or not value then
     return nil
   end
 
-  -- Handle comments in value
-  local comment_start = value:find("#")
-  local comment
-  if comment_start then
-    comment = value:sub(comment_start + 1):match("^%s*(.-)%s*$")
-    value = value:sub(1, comment_start - 1):match("^%s*(.-)%s*$")
-  end
+  local first_char = value:sub(1, 1)
+  if first_char == '"' or first_char == "'" then
+    local end_quote_pos = nil
+    local pos = 2
+    while pos <= #value do
+      if value:sub(pos, pos) == first_char and value:sub(pos - 1, pos - 1) ~= "\\" then
+        end_quote_pos = pos
+        break
+      end
+      pos = pos + 1
+    end
 
-  -- Handle quoted values
-  local quote_char = value:match("^(['\"'])")
-  if quote_char then
-    local quoted_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
-    if quoted_value then
-      value = quoted_value
+    if end_quote_pos then
+      local quoted_value = value:sub(2, end_quote_pos - 1)
+      local rest = value:sub(end_quote_pos + 1)
+      if rest then
+        local comment = rest:match("^%s*#%s*(.-)%s*$")
+        if comment then
+          return key, quoted_value, comment, first_char
+        end
+      end
+      return key, quoted_value, nil, first_char
     end
   end
 
-  return key, value, comment
+  local hash_pos = value:find("#")
+  if hash_pos then
+    if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
+      local comment = value:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+      value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+      return key, value, comment, nil
+    end
+  end
+
+  return key, value, nil, nil
 end
 
 function M.filter_env_files(files, patterns)
@@ -63,14 +75,12 @@ function M.filter_env_files(files, patterns)
     return f ~= nil
   end, files)
 
-  -- Use the optimized combined pattern if no custom patterns
   if not patterns then
     return vim.tbl_filter(function(file)
       return COMPILED_PATTERNS.env_file:match_str(file) ~= nil
     end, files)
   end
 
-  -- Handle custom patterns
   if type(patterns) == "string" then
     patterns = { patterns }
   elseif type(patterns) ~= "table" then
@@ -81,7 +91,6 @@ function M.filter_env_files(files, patterns)
     return files
   end
 
-  -- Compile custom patterns for better performance
   local compiled_patterns = {}
   for _, pattern in ipairs(patterns) do
     if type(pattern) == "string" then
@@ -188,26 +197,21 @@ function M.find_word_boundaries(line, col)
     return nil, nil
   end
 
-  -- Adjust column if it's beyond line length
   if col >= #line then
     col = #line - 1
   end
 
-  -- If we're not on a word character, search forward and backward
   if not line:sub(col + 1, col + 1):match(M.PATTERNS.word) then
-    -- Search backward first
     local back_col = col
     while back_col > 0 and not line:sub(back_col, back_col):match(M.PATTERNS.word) do
       back_col = back_col - 1
     end
 
-    -- Search forward if backward search failed
     local forward_col = col
     while forward_col < #line and not line:sub(forward_col + 1, forward_col + 1):match(M.PATTERNS.word) do
       forward_col = forward_col + 1
     end
 
-    -- Choose the closest word boundary
     if back_col > 0 and line:sub(back_col, back_col):match(M.PATTERNS.word) then
       col = back_col
     elseif forward_col < #line and line:sub(forward_col + 1, forward_col + 1):match(M.PATTERNS.word) then
@@ -217,19 +221,16 @@ function M.find_word_boundaries(line, col)
     end
   end
 
-  -- Find start of word
   local word_start = col
   while word_start > 0 and line:sub(word_start, word_start):match(M.PATTERNS.word) do
     word_start = word_start - 1
   end
 
-  -- Find end of word
   local word_end = col
   while word_end < #line and line:sub(word_end + 1, word_end + 1):match(M.PATTERNS.word) do
     word_end = word_end + 1
   end
 
-  -- Verify we found a valid word
   if not line:sub(word_start + 1, word_end):match(M.PATTERNS.word) then
     return nil, nil
   end
@@ -313,7 +314,6 @@ function M.get_var_word_under_cursor(providers)
   local config = ecolog.get_config()
   local provider_patterns = config and config.provider_patterns
 
-  -- Check if provider patterns are enabled for extraction
   if provider_patterns and provider_patterns.extract then
     for _, provider in ipairs(providers) do
       local extracted = provider.extract_var(line, word_end)
@@ -324,7 +324,6 @@ function M.get_var_word_under_cursor(providers)
     return ""
   end
 
-  -- If provider patterns are disabled for extraction, return the word under cursor
   return line:sub(word_start, word_end)
 end
 

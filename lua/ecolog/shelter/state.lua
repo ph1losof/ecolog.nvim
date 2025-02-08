@@ -1,7 +1,17 @@
 local M = {}
 
-local FEATURES =
-  { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "fzf_previewer", "snacks_previewer", "snacks" }
+local FEATURES = {
+  "cmp",
+  "peek",
+  "files",
+  "telescope",
+  "fzf",
+  "telescope_previewer",
+  "fzf_previewer",
+  "snacks_previewer",
+  "snacks",
+}
+
 local DEFAULT_PARTIAL_MODE = {
   show_start = 3,
   show_end = 3,
@@ -10,16 +20,30 @@ local DEFAULT_PARTIAL_MODE = {
 
 local MEMORY_CHECK_INTERVAL = 300000
 local MEMORY_THRESHOLD = 50 * 1024 * 1024
-local last_memory_check = 0
 
-local _state_cache = setmetatable({}, {
-  __mode = "k",
-})
+-- State initialization
+---@class StateConfig
+---@field partial_mode boolean|table
+---@field mask_char string
+---@field patterns table
+---@field sources table
+---@field default_mode string
+---@field shelter_on_leave boolean
+---@field highlight_group string
 
-local _buffer_cache = setmetatable({}, {
-  __mode = "k",
-})
+---@class BufferState
+---@field revealed_lines table<number, boolean>
+---@field disable_cmp boolean
+---@field skip_comments boolean
 
+---@class State
+---@field config StateConfig
+---@field features table
+---@field buffer BufferState
+---@field telescope table
+---@field memory table
+
+---@type State
 local state = {
   config = {
     partial_mode = false,
@@ -37,6 +61,7 @@ local state = {
   buffer = {
     revealed_lines = {},
     disable_cmp = true,
+    skip_comments = false,
   },
   telescope = {
     last_selection = nil,
@@ -47,6 +72,11 @@ local state = {
   },
 }
 
+local _state_cache = setmetatable({}, { __mode = "k" })
+local _buffer_cache = setmetatable({}, { __mode = "k" })
+local last_memory_check = 0
+
+---@return table
 local function get_memory_usage()
   local stats = {}
   stats.lua_used = collectgarbage("count") * 1024
@@ -83,33 +113,37 @@ local function check_memory_usage()
   end
 end
 
+---Force garbage collection and clear caches
 function M.force_garbage_collection()
   _state_cache = setmetatable({}, { __mode = "k" })
   _buffer_cache = setmetatable({}, { __mode = "k" })
-
   state.buffer.revealed_lines = {}
-
   collectgarbage("collect")
-
   state.memory.last_gc = vim.loop.now()
-
   vim.notify("Memory cleanup performed", vim.log.levels.INFO)
 end
 
+---@return State
 function M.get_state()
   check_memory_usage()
   return state
 end
 
+---@return string[]
 function M.get_features()
   return FEATURES
 end
 
+---@return table
 function M.get_default_partial_mode()
-  return DEFAULT_PARTIAL_MODE
+  return vim.deepcopy(DEFAULT_PARTIAL_MODE)
 end
 
+---@param feature string
+---@return boolean
 function M.is_enabled(feature)
+  vim.validate({ feature = { feature, "string" } })
+
   local cache_key = "feature_enabled_" .. feature
   if _state_cache[cache_key] ~= nil then
     return _state_cache[cache_key]
@@ -119,22 +153,39 @@ function M.is_enabled(feature)
   return enabled
 end
 
+---@return StateConfig
 function M.get_config()
   return state.config
 end
 
+---@param feature string
+---@param enabled boolean
 function M.set_feature_state(feature, enabled)
+  vim.validate({
+    feature = { feature, "string" },
+    enabled = { enabled, "boolean" },
+  })
+
   state.features.enabled[feature] = enabled
   _state_cache["feature_enabled_" .. feature] = enabled
 end
 
+---@param feature string
+---@param enabled boolean
 function M.set_initial_feature_state(feature, enabled)
+  vim.validate({
+    feature = { feature, "string" },
+    enabled = { enabled, "boolean" },
+  })
+
   state.features.initial[feature] = enabled
 end
 
+---@param config StateConfig
 function M.set_config(config)
-  state.config = config
+  vim.validate({ config = { config, "table" } })
 
+  state.config = config
   for k in pairs(_state_cache) do
     if k:match("^config_") then
       _state_cache[k] = nil
@@ -142,11 +193,27 @@ function M.set_config(config)
   end
 end
 
+---@param key string
+---@param value any
 function M.update_buffer_state(key, value)
+  vim.validate({ key = { key, "string" } })
+
   state.buffer[key] = value
-  _buffer_cache[key] = nil
+  if _buffer_cache[key] then
+    _buffer_cache[key] = value
+  end
 end
 
+---@param new_state BufferState
+function M.set_buffer_state(new_state)
+  vim.validate({ new_state = { new_state, "table" } })
+
+  for key, value in pairs(new_state) do
+    M.update_buffer_state(key, value)
+  end
+end
+
+---@return BufferState
 function M.get_buffer_state()
   check_memory_usage()
   return state.buffer
@@ -157,20 +224,32 @@ function M.reset_revealed_lines()
   _buffer_cache.revealed_lines = nil
 end
 
+---@param line_num number
+---@param revealed boolean
 function M.set_revealed_line(line_num, revealed)
+  vim.validate({
+    line_num = { line_num, "number" },
+    revealed = { revealed, "boolean" },
+  })
+
   state.buffer.revealed_lines[line_num] = revealed
   if _buffer_cache.revealed_lines then
     _buffer_cache.revealed_lines[line_num] = revealed
   end
 end
 
+---@param line_num number
+---@return boolean
 function M.is_line_revealed(line_num)
+  vim.validate({ line_num = { line_num, "number" } })
+
   if not _buffer_cache.revealed_lines then
     _buffer_cache.revealed_lines = vim.deepcopy(state.buffer.revealed_lines)
   end
-  return _buffer_cache.revealed_lines[line_num]
+  return _buffer_cache.revealed_lines[line_num] or false
 end
 
+---@return table
 function M.get_memory_stats()
   check_memory_usage()
   return state.memory.stats

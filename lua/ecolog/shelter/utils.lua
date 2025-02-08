@@ -4,33 +4,42 @@ local config = require("ecolog.shelter.state").get_config
 local string_sub = string.sub
 local string_rep = string.rep
 
+---@param pattern string
+---@return string
+local function convert_to_lua_pattern(pattern)
+  local escaped = pattern:gsub("[%.%[%]%(%)%+%-%^%$%%]", "%%%1")
+  return escaped:gsub("%*", ".*")
+end
+
 ---@param key string|nil
 ---@param source string|nil
 ---@return "none"|"partial"|"full"
 function M.determine_masking_mode(key, source)
   local conf = config()
-  
-  -- Check pattern-based rules first (they take precedence)
+
   if key and conf.patterns then
     for pattern, mode in pairs(conf.patterns) do
-      local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
+      local lua_pattern = convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
         return mode
       end
     end
   end
 
-  -- Then check source-based rules
   if source and conf.sources then
     for pattern, mode in pairs(conf.sources) do
-      local lua_pattern = pattern:gsub("%*", ".*"):gsub("%%", "%%%%")
-      if source:match("^" .. lua_pattern .. "$") then
+      local lua_pattern = convert_to_lua_pattern(pattern)
+      local source_to_match = source
+      -- TODO: This has to be refactored not to match the hardcoded source pattern for vault/asm
+      if source ~= "vault" and source ~= "asm" then
+        source_to_match = vim.fn.fnamemodify(source, ":t")
+      end
+      if source_to_match:match("^" .. lua_pattern .. "$") then
         return mode
       end
     end
   end
 
-  -- Fall back to default mode
   return conf.default_mode or "partial"
 end
 
@@ -46,8 +55,15 @@ function M.determine_masked_value(value, settings)
     return value
   end
 
+  -- Extract quotes if present
+  local first_char = value:sub(1, 1)
+  local last_char = value:sub(-1)
+  local has_quotes = (first_char == '"' or first_char == "'") and first_char == last_char
+  local inner_value = has_quotes and value:sub(2, -2) or value
+
   if mode == "full" or not config().partial_mode then
-    return string_rep(config().mask_char, #value)
+    local masked = string_rep(config().mask_char, #inner_value)
+    return has_quotes and (first_char .. masked .. first_char) or masked
   end
 
   local partial_mode = config().partial_mode
@@ -63,13 +79,17 @@ function M.determine_masked_value(value, settings)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
 
-  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    return string_rep(config().mask_char, #value)
+  if #inner_value <= (show_start + show_end) or #inner_value < (show_start + show_end + min_mask) then
+    local masked = string_rep(config().mask_char, #inner_value)
+    return has_quotes and (first_char .. masked .. first_char) or masked
   end
 
-  local mask_length = math.max(min_mask, #value - show_start - show_end)
+  local mask_length = math.max(min_mask, #inner_value - show_start - show_end)
+  local masked = string_sub(inner_value, 1, show_start)
+    .. string_rep(config().mask_char, mask_length)
+    .. string_sub(inner_value, -show_end)
 
-  return string_sub(value, 1, show_start) .. string_rep(config().mask_char, mask_length) .. string_sub(value, -show_end)
+  return has_quotes and (first_char .. masked .. first_char) or masked
 end
 
 ---@param value string
@@ -80,15 +100,15 @@ function M.extract_value(value_part)
   end
 
   local value = vim.trim(value_part)
-  local quote_char = value:match("^([\"'])")
-  
-  if quote_char then
-    local actual_value = value:match("^" .. quote_char .. "(.-)" .. quote_char)
-    if actual_value then
-      return actual_value, quote_char
-    end
+
+  -- Only treat it as quoted if it starts AND ends with the same quote character
+  local first_char = value:sub(1, 1)
+  local last_char = value:sub(-1)
+
+  if (first_char == '"' or first_char == "'") and first_char == last_char then
+    return value:sub(2, -2), first_char
   end
-  
+
   return value, nil
 end
 
@@ -112,4 +132,3 @@ function M.has_cmp()
 end
 
 return M
-

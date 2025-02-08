@@ -1,12 +1,9 @@
 --- @type blink.cmp.Source
 local M = {}
 
--- Store module references
 local _providers = nil
 local _shelter = nil
-local fn = vim.fn
 
--- Cache trigger patterns
 local trigger_patterns = {}
 
 function M.new()
@@ -26,7 +23,7 @@ function M:get_trigger_characters()
 
   local config = ecolog.get_config()
   if not config.provider_patterns.cmp then
-    trigger_patterns[ft] = { "" } 
+    trigger_patterns[ft] = { "" }
     return trigger_patterns[ft]
   end
 
@@ -56,11 +53,11 @@ end
 function M:get_completions(ctx, callback)
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
-    callback({ 
-      context = ctx, 
-      items = {}, 
+    callback({
+      context = ctx,
+      items = {},
       is_incomplete_forward = true,
-      is_incomplete_backward = true
+      is_incomplete_backward = true,
     })
     return function() end
   end
@@ -68,11 +65,11 @@ function M:get_completions(ctx, callback)
   local config = ecolog.get_config()
   local env_vars = ecolog.get_env_vars()
   if vim.tbl_count(env_vars) == 0 then
-    callback({ 
-      context = ctx, 
-      items = {}, 
+    callback({
+      context = ctx,
+      items = {},
       is_incomplete_forward = true,
-      is_incomplete_backward = true
+      is_incomplete_backward = true,
     })
     return function() end
   end
@@ -82,7 +79,7 @@ function M:get_completions(ctx, callback)
   local cursor = ctx.cursor[2]
   local line = ctx.line
   local before_line = string.sub(line, 1, cursor)
-  
+
   local should_complete = false
   local matched_provider
 
@@ -111,22 +108,24 @@ function M:get_completions(ctx, callback)
       end
     end
   else
-    should_complete = true 
+    should_complete = true
   end
 
   if not should_complete then
-    callback({ 
-      context = ctx, 
-      items = {}, 
+    callback({
+      context = ctx,
+      items = {},
       is_incomplete_forward = true,
-      is_incomplete_backward = true
+      is_incomplete_backward = true,
     })
     return function() end
   end
 
   local items = {}
   for var_name, var_info in pairs(env_vars) do
-    local display_value = _shelter.is_enabled("cmp") and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source) or var_info.value
+    local display_value = _shelter.is_enabled("cmp")
+        and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
+      or var_info.value
 
     local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
     if var_info.comment then
@@ -154,11 +153,11 @@ function M:get_completions(ctx, callback)
     table.insert(items, item)
   end
 
-  callback({ 
-    context = ctx, 
+  callback({
+    context = ctx,
     items = items,
     is_incomplete_forward = true,
-    is_incomplete_backward = true
+    is_incomplete_backward = true,
   })
   return function() end
 end

@@ -60,12 +60,14 @@ function M.setup(opts)
         state.set_initial_feature_state(feature, true)
         state.get_config().shelter_on_leave = partial[feature].shelter_on_leave
         state.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
+        state.update_buffer_state("skip_comments", partial[feature].skip_comments == false)
       else
         state.set_feature_state(feature, value)
         state.set_initial_feature_state(feature, value)
         if value then
           state.get_config().shelter_on_leave = true
           state.update_buffer_state("disable_cmp", true)
+          state.update_buffer_state("skip_comments", false)
         end
       end
     else
@@ -90,7 +92,6 @@ function M.setup(opts)
     require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
   end
 
-  -- Setup line peek command
   api.nvim_create_user_command("EcologShelterLinePeek", function()
     if not state.is_enabled("files") then
       notify("Shelter mode for files is not enabled", vim.log.levels.WARN)
@@ -112,7 +113,7 @@ function M.setup(opts)
         then
           state.reset_revealed_lines()
           buffer.shelter_buffer()
-          return true -- Delete the autocmd
+          return true
         end
       end,
       desc = "Hide revealed env values on cursor move",
@@ -198,6 +199,12 @@ function M.set_state(command, feature)
         buffer.unshelter_buffer()
         state.get_config().shelter_on_leave = false
       end
+    elseif feature == "telescope_previewer" then
+      require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+    elseif feature == "fzf_previewer" then
+      require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+    elseif feature == "snacks_previewer" then
+      require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
     end
     notify(
       string.format("Shelter mode for %s is now %s", feature:upper(), should_enable and "enabled" or "disabled"),
@@ -213,6 +220,9 @@ function M.set_state(command, feature)
     if should_enable then
       buffer.setup_file_shelter()
       buffer.shelter_buffer()
+      require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+      require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+      require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
     else
       buffer.unshelter_buffer()
     end
@@ -224,4 +234,3 @@ function M.set_state(command, feature)
 end
 
 return M
-

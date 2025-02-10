@@ -2,6 +2,7 @@ local M = {}
 
 local api = vim.api
 local fn = vim.fn
+local utils = require("ecolog.utils")
 
 ---@param state table
 local function cleanup_watchers(state)
@@ -22,21 +23,7 @@ function M.setup_watcher(config, state, refresh_callback)
 
   state.current_watcher_group = api.nvim_create_augroup("EcologFileWatcher", { clear = true })
 
-  local watch_patterns = {}
-
-  if not config.env_file_pattern then
-    watch_patterns = {
-      config.path .. "/.env*",
-    }
-  else
-    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
-      or config.env_file_pattern
-
-    for _, pattern in ipairs(patterns) do
-      local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
-      table.insert(watch_patterns, config.path .. glob_pattern:gsub("^%.%+/", "/"))
-    end
-  end
+  local watch_patterns = utils.get_watch_patterns(config)
 
   table.insert(
     state._file_watchers,

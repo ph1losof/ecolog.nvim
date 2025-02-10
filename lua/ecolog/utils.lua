@@ -442,4 +442,75 @@ function M.parse_env_line(line)
   return key, value, eq_pos
 end
 
+---Convert a Lua pattern to a glob pattern for file watching
+---@param pattern string The Lua pattern to convert
+---@return string The converted glob pattern
+function M.convert_pattern_to_glob(pattern)
+  local glob = pattern:gsub("^%^", ""):gsub("%$$", "")
+  glob = glob:gsub("%%.", "")
+  glob = glob:gsub("%.%+", "*")
+  return glob
+end
+
+---Convert a glob/wildcard pattern to a Lua pattern
+---@param pattern string The pattern to convert
+---@return string The converted Lua pattern
+function M.convert_to_lua_pattern(pattern)
+  local escaped = pattern:gsub("[%.%[%]%(%)%+%-%^%$%%]", "%%%1")
+  return escaped:gsub("%*", ".*")
+end
+
+---Generate watch patterns for file watching based on config
+---@param config table The config containing path and env_file_pattern
+---@param opts? {use_absolute_path?: boolean} Optional settings
+---@return string[] List of watch patterns
+function M.get_watch_patterns(config, opts)
+  opts = opts or {}
+  if not config.env_file_pattern then
+    return opts.use_absolute_path and { config.path .. "/.env*" } or { ".env*" }
+  end
+
+  local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
+    or config.env_file_pattern
+    or {}
+
+  local watch_patterns = {}
+  for _, pattern in ipairs(patterns) do
+    if type(pattern) == "string" then
+      local glob_pattern = M.convert_pattern_to_glob(pattern)
+      local final_pattern = glob_pattern:gsub("^%.%+/", "")
+      if opts.use_absolute_path and config.path then
+        table.insert(watch_patterns, config.path .. "/" .. final_pattern)
+      else
+        table.insert(watch_patterns, final_pattern)
+      end
+    end
+  end
+
+  if #watch_patterns == 0 then
+    return opts.use_absolute_path and config.path and { config.path .. "/.env*" } or { ".env*" }
+  end
+
+  return watch_patterns
+end
+
+---Match a filename against env file patterns
+---@param filename string The filename to check
+---@param config table The config containing env_file_patterns
+---@return boolean Whether the file matches any pattern
+function M.match_env_file(filename, config)
+  if not filename then
+    return false
+  end
+
+  local patterns = config.env_file_patterns or { "%.env.*" }
+  for _, pattern in ipairs(patterns) do
+    if filename:match(pattern) then
+      return true
+    end
+  end
+
+  return false
+end
+
 return M

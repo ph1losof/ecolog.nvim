@@ -9,7 +9,8 @@ local fn = vim.fn
 local pcall = pcall
 
 local state = require("ecolog.shelter.state")
-local utils = require("ecolog.shelter.utils")
+local shelter_utils = require("ecolog.shelter.utils")
+local main_utils = require("ecolog.utils")
 local lru_cache = require("ecolog.shelter.lru_cache")
 
 local NAMESPACE = api.nvim_create_namespace("ecolog_shelter")
@@ -219,7 +220,7 @@ function M.unshelter_buffer()
 
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = true
-    if utils.has_cmp() then
+    if shelter_utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = true })
     end
   end
@@ -229,7 +230,7 @@ function M.shelter_buffer()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   local filename = fn.fnamemodify(fn.bufname(), ":t")
 
-  if not utils.match_env_file(filename, config) then
+  if not shelter_utils.match_env_file(filename, config) then
     return
   end
 
@@ -247,7 +248,7 @@ function M.shelter_buffer()
 
   if state.get_buffer_state().disable_cmp then
     vim.b.completion = false
-    if utils.has_cmp() then
+    if shelter_utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = false })
     end
   end
@@ -294,7 +295,7 @@ function M.shelter_buffer()
           local is_revealed = state.is_line_revealed(line_num)
           local raw_value = item.quote_char and (item.quote_char .. item.value .. item.quote_char) or item.value
           local masked_value = is_revealed and raw_value
-            or utils.determine_masked_value(raw_value, {
+            or shelter_utils.determine_masked_value(raw_value, {
               partial_mode = config_partial_mode,
               key = item.key,
               source = bufname,
@@ -353,7 +354,7 @@ function M.setup_file_shelter()
   local group = api.nvim_create_augroup("ecolog_shelter", { clear = true })
 
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
-  local watch_patterns = {}
+  local watch_patterns = main_utils.get_watch_patterns(config)
 
   local shelter_config = type(config.shelter) == "table"
       and type(config.shelter.modules) == "table"
@@ -367,22 +368,8 @@ function M.setup_file_shelter()
   }
   state.set_buffer_state(buffer_state)
 
-  if not config.env_file_pattern then
-    watch_patterns[1] = ".env*"
-  else
-    local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
-      or config.env_file_pattern
-      or {}
-    for _, pattern in ipairs(patterns) do
-      if type(pattern) == "string" then
-        local glob_pattern = pattern:gsub("^%^", ""):gsub("%$$", ""):gsub("%%.", "")
-        watch_patterns[#watch_patterns + 1] = glob_pattern:gsub("^%.%+/", "")
-      end
-    end
-  end
-
   if #watch_patterns == 0 then
-    watch_patterns[1] = ".env*"
+    watch_patterns = { ".env*" }
   end
 
   api.nvim_create_autocmd("BufReadCmd", {
@@ -390,7 +377,7 @@ function M.setup_file_shelter()
     group = group,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")
-      if not utils.match_env_file(filename, config) then
+      if not shelter_utils.match_env_file(filename, config) then
         return
       end
 
@@ -425,7 +412,7 @@ function M.setup_file_shelter()
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")
-      if utils.match_env_file(filename, config) then
+      if shelter_utils.match_env_file(filename, config) then
         if state.is_enabled("files") then
           vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
         else
@@ -440,7 +427,7 @@ function M.setup_file_shelter()
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")
-      if utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
+      if shelter_utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
         state.set_feature_state("files", true)
 
         if state.get_state().features.initial.telescope_previewer then

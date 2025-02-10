@@ -1,6 +1,7 @@
 local M = {}
 
 local config = require("ecolog.shelter.state").get_config
+local utils = require("ecolog.utils")
 local string_sub = string.sub
 local string_rep = string.rep
 
@@ -19,7 +20,7 @@ function M.determine_masking_mode(key, source)
 
   if key and conf.patterns then
     for pattern, mode in pairs(conf.patterns) do
-      local lua_pattern = convert_to_lua_pattern(pattern)
+      local lua_pattern = utils.convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
         return mode
       end
@@ -28,7 +29,7 @@ function M.determine_masking_mode(key, source)
 
   if source and conf.sources then
     for pattern, mode in pairs(conf.sources) do
-      local lua_pattern = convert_to_lua_pattern(pattern)
+      local lua_pattern = utils.convert_to_lua_pattern(pattern)
       local source_to_match = source
       -- TODO: This has to be refactored not to match the hardcoded source pattern for vault/asm
       if source ~= "vault" and source ~= "asm" then
@@ -112,19 +113,11 @@ function M.extract_value(value_part)
   return value, nil
 end
 
+---@param filename string
+---@param config table
+---@return boolean
 function M.match_env_file(filename, config)
-  if not filename then
-    return false
-  end
-
-  local patterns = config.env_file_patterns or { "%.env.*" }
-  for _, pattern in ipairs(patterns) do
-    if filename:match(pattern) then
-      return true
-    end
-  end
-
-  return false
+  return utils.match_env_file(filename, config)
 end
 
 function M.has_cmp()

@@ -94,9 +94,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   'philosofonusus/ecolog.nvim',
-  dependencies = {
-    'hrsh7th/nvim-cmp', -- Optional: for autocompletion support (recommended)
-  },
   -- Optional: you can add some keybindings
   -- (I personally use lspsaga so check out lspsaga integration or lsp integration for a smoother experience without separate keybindings)
   keys = {
@@ -890,10 +887,6 @@ The integration adds two commands that intelligently handle both environment var
 ```lua
 {
   'philosofonusus/ecolog.nvim',
-  dependencies = {
-    'nvimdev/lspsaga.nvim',
-    'hrsh7th/nvim-cmp',
-  },
   opts = {
     integrations = {
       lspsaga = true,
@@ -1887,7 +1880,7 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | Mask sensitive values on startup | ✅ Full support, never leak environment variables                                       | ❌ Doesn't support masking on startup, flashes values |
 | Mask on leave                    | ✅ Supports                                                                             | ✅ Supports                                           |
 | Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                                   | 🟡 Only nvim-cmp and can't disable                    |
-| Custom mask and highlights       | ✅ Supports                                                                             | ✅ Supports                                           |
+| Custom mask and highlights       | �� Supports                                                                             | ✅ Supports                                           |
 | Performance                      | ✅ Better performance, especially in previewer buffers due to LRU caching               | 🟡 Minimal implementation but also good               |
 | Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
 | Static mask length               | ❌ Chose not to support it due to neovim limitations                                    | 🟡 Supports but have caveats                          |

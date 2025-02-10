@@ -394,21 +394,17 @@ function M.setup_file_shelter()
         return
       end
 
-      local lines = vim.fn.readfile(ev.file)
       local bufnr = ev.buf
-
-      vim.bo[bufnr].buftype = ""
-
-      local ft = vim.filetype.match({ filename = filename })
-      if ft then
-        vim.bo[bufnr].filetype = ft
-      else
-        vim.bo[bufnr].filetype = "sh"
-      end
-
       local ok, err = pcall(function()
-        vim.bo[bufnr].modifiable = true
-        api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+        vim.cmd('keepalt edit ' .. vim.fn.fnameescape(ev.file))
+        
+        local ft = vim.filetype.match({ filename = filename })
+        if ft then
+          vim.bo[bufnr].filetype = ft
+        else
+          vim.bo[bufnr].filetype = "sh"
+        end
+        
         vim.bo[bufnr].modified = false
       end)
 

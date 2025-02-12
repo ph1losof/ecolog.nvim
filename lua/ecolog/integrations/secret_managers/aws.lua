@@ -1,6 +1,5 @@
 local api = vim.api
 local ecolog = require("ecolog")
-local utils = require("ecolog.utils")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
 

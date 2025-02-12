@@ -1,7 +1,5 @@
 local M = {}
-local utils = require("ecolog.utils")
 
--- Use utils lazy loading with caching
 M.providers = setmetatable({}, {
   __index = function(t, k)
     t[k] = {}
@@ -9,11 +7,9 @@ M.providers = setmetatable({}, {
   end,
 })
 
--- Provider cache
 local _provider_cache = {}
 local _provider_loading = {}
 
--- Map of provider modules to their supported filetypes
 local _provider_filetype_map = {
   typescript = { "typescript", "typescriptreact" },
   javascript = { "javascript", "javascriptreact" },
@@ -29,7 +25,6 @@ local _provider_filetype_map = {
   kotlin = { "kotlin", "kt" },
 }
 
--- Reverse map of filetypes to their provider modules
 local _filetype_provider_map = {}
 for provider, filetypes in pairs(_provider_filetype_map) do
   for _, ft in ipairs(filetypes) do
@@ -37,7 +32,6 @@ for provider, filetypes in pairs(_provider_filetype_map) do
   end
 end
 
--- Load a specific provider module
 local function load_provider(name)
   if _provider_cache[name] then
     return _provider_cache[name]
@@ -59,7 +53,6 @@ local function load_provider(name)
   return nil
 end
 
--- Load providers for a specific filetype
 function M.load_providers_for_filetype(filetype)
   local provider_name = _filetype_provider_map[filetype]
   if not provider_name then
@@ -80,9 +73,8 @@ function M.load_providers_for_filetype(filetype)
   end
 end
 
--- Optimized register function with validation caching
 local _pattern_cache = setmetatable({}, {
-  __mode = "k" -- Weak keys to avoid memory leaks
+  __mode = "k",
 })
 
 function M.register(provider)
@@ -103,7 +95,6 @@ function M.register(provider)
   end
 end
 
--- Optimized register_many
 function M.register_many(providers)
   if type(providers) ~= "table" then
     error("Providers must be a table")
@@ -114,7 +105,6 @@ function M.register_many(providers)
   end
 end
 
--- Get providers for a specific filetype, loading them if needed
 function M.get_providers(filetype)
   if not M.providers[filetype] or #M.providers[filetype] == 0 then
     M.load_providers_for_filetype(filetype)

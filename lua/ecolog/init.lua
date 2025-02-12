@@ -461,7 +461,6 @@ local function create_commands(config)
       callback = function(args)
         local aws = get_secret_manager("aws")
         if args.args ~= "" then
-          -- Try to match against known options
           local valid_options = { region = true, profile = true, secrets = true }
           local option = args.args:lower()
           if valid_options[option] then
@@ -485,7 +484,6 @@ local function create_commands(config)
       callback = function(args)
         local vault = get_secret_manager("vault")
         if args.args ~= "" then
-          -- Try to match against known options
           local valid_options = { organization = true, project = true, apps = true }
           local option = args.args:lower()
           if valid_options[option] then
@@ -542,7 +540,6 @@ function M.setup(opts)
 
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
 
-  -- Handle interpolation configuration
   if type(config.interpolation) == "boolean" then
     config.interpolation = {
       enabled = config.interpolation,
@@ -552,12 +549,11 @@ function M.setup(opts)
       features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
     }
   elseif type(config.interpolation) == "table" then
-    -- Ensure all feature flags are properly initialized
     if config.interpolation.features then
       config.interpolation.features =
         vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
     end
-    -- Merge with default interpolation config
+
     config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
   end
 

@@ -78,7 +78,6 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
     return env_vars_result
   end
 
-  -- First pass: parse all lines without interpolation
   for line in env_file:lines() do
     local initial_opts = vim.tbl_deep_extend("force", {}, opts)
     local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts)
@@ -88,10 +87,8 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
   end
   env_file:close()
 
-  -- Second pass: apply interpolation if enabled
   if opts.interpolation and opts.interpolation.enabled then
     for key, var_info in pairs(env_vars_result) do
-      -- Skip interpolation for single-quoted values
       if var_info.quote_char ~= "'" then
         local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
         if interpolated_value ~= var_info.raw_value then

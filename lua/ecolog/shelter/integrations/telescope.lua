@@ -7,8 +7,8 @@ local shelter_utils = require("ecolog.shelter.utils")
 
 function M.create_masked_previewer(opts, preview_type)
   if not state.is_enabled("telescope_previewer") then
-    local conf = require("telescope.config").values
-    local original_previewer = preview_type == "file" and state._original_file_previewer or state._original_grep_previewer
+    local original_previewer = preview_type == "file" and state._original_file_previewer
+      or state._original_grep_previewer
     if not original_previewer then
       return nil
     end

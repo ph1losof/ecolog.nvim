@@ -383,15 +383,15 @@ function M.setup_file_shelter()
 
       local bufnr = ev.buf
       local ok, err = pcall(function()
-        vim.cmd('keepalt edit ' .. vim.fn.fnameescape(ev.file))
-        
+        vim.cmd("keepalt edit " .. vim.fn.fnameescape(ev.file))
+
         local ft = vim.filetype.match({ filename = filename })
         if ft then
           vim.bo[bufnr].filetype = ft
         else
           vim.bo[bufnr].filetype = "sh"
         end
-        
+
         vim.bo[bufnr].modified = false
       end)
 

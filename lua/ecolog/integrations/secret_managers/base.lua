@@ -183,8 +183,7 @@ end
 function BaseSecretManager:_handle_single_select(option, option_name)
   local current_value = option.current
   local select_idx = 1
-  
-  -- Find current selection index
+
   for i, value in ipairs(option.options) do
     if value == current_value then
       select_idx = i
@@ -272,7 +271,6 @@ function BaseSecretManager:_handle_multi_select(option, option_name)
     local selected = {}
     local current_value = option.current
     if current_value and current_value ~= "none" then
-      -- Split and filter out any empty strings
       local current_values = vim.split(current_value, ",")
       for _, value in ipairs(current_values) do
         local trimmed = vim.trim(value)
@@ -282,7 +280,6 @@ function BaseSecretManager:_handle_multi_select(option, option_name)
       end
     end
 
-    -- Filter out any empty strings from options list
     local filtered_options = vim.tbl_filter(function(opt)
       return type(opt) == "string" and opt ~= ""
     end, options_list)
@@ -293,7 +290,6 @@ function BaseSecretManager:_handle_multi_select(option, option_name)
     end
 
     secret_utils.create_secret_selection_ui(filtered_options, selected, function(selected_options)
-      -- Filter out any empty selections before passing to handler
       local valid_selections = {}
       for opt, is_selected in pairs(selected_options) do
         if type(opt) == "string" and opt ~= "" then
@@ -327,16 +323,13 @@ function BaseSecretManager:select_config(direct_option)
     return
   end
 
-  -- If a direct option is specified, try to handle it directly
   if direct_option then
     local option_name, matched_option
-    
-    -- First try exact match
+
     if options[direct_option] then
       option_name = direct_option
       matched_option = options[direct_option]
     else
-      -- Try case-insensitive match against option names and display names
       local direct_lower = direct_option:lower()
       for name, option in pairs(options) do
         if name:lower() == direct_lower or (option.name and option.name:lower() == direct_lower) then
@@ -371,7 +364,6 @@ function BaseSecretManager:select_config(direct_option)
     end
   end
 
-  -- If we get here, either no direct option was specified or handling it failed
   local option_names = vim.tbl_keys(options)
   table.sort(option_names)
 

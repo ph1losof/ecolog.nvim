@@ -5,13 +5,6 @@ local utils = require("ecolog.utils")
 local string_sub = string.sub
 local string_rep = string.rep
 
----@param pattern string
----@return string
-local function convert_to_lua_pattern(pattern)
-  local escaped = pattern:gsub("[%.%[%]%(%)%+%-%^%$%%]", "%%%1")
-  return escaped:gsub("%*", ".*")
-end
-
 ---@param key string|nil
 ---@param source string|nil
 ---@return "none"|"partial"|"full"
@@ -56,7 +49,6 @@ function M.determine_masked_value(value, settings)
     return value
   end
 
-  -- Extract quotes if present
   local first_char = value:sub(1, 1)
   local last_char = value:sub(-1)
   local has_quotes = (first_char == '"' or first_char == "'") and first_char == last_char
@@ -102,7 +94,6 @@ function M.extract_value(value_part)
 
   local value = vim.trim(value_part)
 
-  -- Only treat it as quoted if it starts AND ends with the same quote character
   local first_char = value:sub(1, 1)
   local last_char = value:sub(-1)
 

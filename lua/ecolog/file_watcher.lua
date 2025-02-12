@@ -65,7 +65,6 @@ function M.setup_watcher(config, state, refresh_callback)
       group = state.current_watcher_group,
       pattern = watch_patterns,
       callback = function(ev)
-        local utils = require("ecolog.utils")
         local matches = utils.filter_env_files({ ev.file }, config.env_file_pattern)
         if #matches > 0 then
           state.cached_env_files = nil
@@ -98,4 +97,3 @@ function M.setup_watcher(config, state, refresh_callback)
 end
 
 return M
-

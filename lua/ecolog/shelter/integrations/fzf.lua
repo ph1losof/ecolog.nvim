@@ -44,8 +44,6 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
 
     if key and value then
       local masked_value = get_masked_value(value, key, filename)
-      local quote_char = value:match("^([\"'])")
-      local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
 
       if masked_value and #masked_value > 0 then
         table.insert(chunk_extmarks, {

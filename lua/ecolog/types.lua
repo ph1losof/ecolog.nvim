@@ -83,7 +83,6 @@ local TYPE_DEFINITIONS = {
         return false
       end
 
-      -- Check for user:pass@host format
       local auth_host = url:match("^[%w%+]+://([^/]+)")
       if not auth_host then
         return false
@@ -99,7 +98,6 @@ local TYPE_DEFINITIONS = {
         return false
       end
 
-      -- Check port if present (required for most database URLs)
       local host_part, port = host:match("([^:]+):(%d+)")
       if host_part then
         if not port then
@@ -110,7 +108,6 @@ local TYPE_DEFINITIONS = {
           return false
         end
       else
-        -- Port is required for most database URLs except mongodb+srv
         if protocol:lower() ~= "mongodb+srv" then
           return false
         end

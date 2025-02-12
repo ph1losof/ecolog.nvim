@@ -11,13 +11,6 @@ M.PATTERNS = {
   env_var = "^[%w_]+$",
 }
 
-local COMPILED_PATTERNS = {
-  env_file = vim.regex(M.PATTERNS.env_file_combined),
-  key_value = vim.regex("^([^=]+)=(.+)$"),
-  quoted = vim.regex("^(['\"])(.*)['\"]$"),
-  comment = vim.regex("#.*$"),
-}
-
 local DEFAULT_ENV_PATTERNS = {
   "^.+/%.env$",
   "^.+/%.env%.[^.]+$",
@@ -176,7 +169,6 @@ function M.sort_env_files(files, opts)
   return files
 end
 
--- Line parsing utilities
 function M.extract_line_parts(line)
   if line:match("^%s*#") or line:match("^%s*$") then
     return nil
@@ -240,7 +232,6 @@ function M.parse_env_line(line)
   return key, value, eq_pos
 end
 
--- Word and variable extraction utilities
 function M.find_word_boundaries(line, col)
   if #line == 0 then
     return nil, nil
@@ -312,7 +303,6 @@ function M.extract_env_var(line, col, pattern)
   return before_cursor:match(pattern)
 end
 
--- File finding and example generation utilities
 function M.find_env_files(opts)
   opts = opts or {}
   local path = opts.path or vim.fn.getcwd()
@@ -374,7 +364,6 @@ end
 
 M.generate_example_file = generate_example_file
 
--- UI utilities
 function M.create_minimal_win_opts(width, height)
   local screen_width = vim.o.columns
   local screen_height = vim.o.lines
@@ -416,7 +405,6 @@ function M.minimal_restore()
   end
 end
 
--- Module utilities
 local _cached_modules = {}
 function M.require_on_demand(name)
   if not _cached_modules[name] then

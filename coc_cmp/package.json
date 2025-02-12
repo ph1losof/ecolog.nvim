@@ -1,6 +1,6 @@
 {
   "name": "coc-ecolog",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Environment variable completion for coc.nvim, powered by ecolog.nvim",
   "author": {
     "name": "philosofonusus",

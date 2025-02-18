@@ -86,12 +86,17 @@ function M.setup(opts, _, providers, shelter)
   _shelter = shelter
   _providers = providers
 
-  vim.api.nvim_create_autocmd("FileType", {
-    pattern = "*",
-    callback = function()
-      vim.bo.omnifunc = "v:lua.require'ecolog.integrations.cmp.omnifunc'.complete"
-    end,
-  })
+  if opts == true or (type(opts) == "table" and opts.auto_setup ~= false) then
+    if not vim.opt.completeopt:get()[1]:match("preview") then
+      vim.opt.completeopt:append("preview")
+    end
+    vim.api.nvim_create_autocmd("FileType", {
+      pattern = "*",
+      callback = function()
+        vim.bo.omnifunc = "v:lua.require'ecolog.integrations.cmp.omnifunc'.complete"
+      end,
+    })
+  end
 end
 
 function M.complete(findstart, base)

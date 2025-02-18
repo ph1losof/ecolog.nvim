@@ -49,6 +49,10 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
   - [Omnifunc Integration](#omnifunc-integration)
+    - [Setup](#setup)
+    - [Usage](#usage)
+    - [Shelter Mode Integration](#shelter-mode-integration)
+    - [Manual Setup](#manual-setup)
   - [LSP Integration](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
@@ -164,13 +168,13 @@ To use the latest features and improvements, you can use the beta branch:
 
 Setup auto-completion with `nvim-cmp`:
 
-```lua
+````lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
     -- your other sources...
   },
-```
+})
 
 If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
@@ -268,7 +272,7 @@ TIMESTAMP=$(date +%Y%m%d)
 
 # Nested interpolation
 DATABASE_URL="postgres://${DB_USER:-postgres}:${DB_PASS}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME}"
-```
+````
 
 ### Configuration Options
 
@@ -746,14 +750,12 @@ end
 
 Add `ecolog` to your nvim-cmp sources:
 
-```lua
+````lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
     -- your other sources...
   },
-```
-
 })
 
 Nvim-cmp integration is enabled by default. To disable it:
@@ -764,7 +766,9 @@ require('ecolog').setup({
     nvim_cmp = false,
   },
 })
-```
+````
+
+See [Currently Supported Languages](#currently-supported) for available completion triggers and [Custom Providers](#-custom-providers) for adding support for additional languages.
 
 ### Blink-cmp Integration
 
@@ -798,6 +802,8 @@ require('ecolog').setup({
 }
 ```
 
+See [Currently Supported Languages](#currently-supported) for available completion triggers and [Custom Providers](#-custom-providers) for adding support for additional languages.
+
 ### Omnifunc Integration
 
 Ecolog provides a built-in omnifunc integration that enables environment variable completion using Vim's native completion system (`<C-x><C-o>`). This is particularly useful if you prefer not to use nvim-cmp or blink-cmp, or want a lightweight completion option.
@@ -809,19 +815,37 @@ The omnifunc integration is disabled by default. To enable it:
 ```lua
 require('ecolog').setup({
   integrations = {
-    omnifunc = true,  -- Enable omnifunc integration (default: false)
+    omnifunc = true,  -- Enable omnifunc integration with automatic setup (default)
+    -- Or with configuration options:
+    omnifunc = {
+      auto_setup = false,  -- Disable automatic setup, allowing manual configuration
+    },
   },
 })
 ```
 
-When enabled, Ecolog will automatically set itself as the omnifunc provider for all filetypes.
+When enabled with `auto_setup = true` (the default), Ecolog will automatically set itself as the omnifunc provider for filetypes that don't already have one configured.
 
 #### Usage
 
 1. In insert mode, type a language-specific environment variable trigger (e.g., `process.env.` for JavaScript)
 2. Press `<C-x><C-o>` to trigger omni completion
 3. Navigate through completions using `<C-n>` and `<C-p>`
-4. Press `<Enter>` to select a completion
+4. The preview window will automatically appear at the top of your screen showing:
+   - Variable type
+   - Current value
+   - Source file
+   - Any associated comments
+5. To close the preview window after completion:
+   - It will close automatically when you leave insert mode
+   - Or press `<C-w><C-z>` to close it manually
+6. Press `<Enter>` to select a completion
+
+The preview window will show information in this format:
+
+```
+VARIABLE_NAME [type] = value # comment (if any)
+```
 
 #### Shelter Mode Integration
 
@@ -838,6 +862,25 @@ require('ecolog').setup({
 ```
 
 Variable values will be masked in the completion menu according to your shelter mode configuration. Note that this setting affects all completion interfaces (nvim-cmp, blink-cmp, and omnifunc) since they share the same completion infrastructure.
+
+#### Manual Setup
+
+If you prefer to have full control over where and when the omnifunc is set, you can disable automatic setup with `auto_setup = false` and configure it manually:
+
+```lua
+-- In your configuration, for specific filetypes:
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "javascript", "typescript", "python" },  -- Add your desired filetypes
+  callback = function()
+    vim.bo.omnifunc = "v:lua.require'ecolog.integrations.cmp.omnifunc'.complete"
+  end,
+})
+
+-- Or for a specific buffer:
+vim.bo.omnifunc = "v:lua.require'ecolog.integrations.cmp.omnifunc'.complete"
+```
+
+This gives you full control over when and where Ecolog's environment variable completion is available. The automatic setup only applies to filetypes without existing omnifunc settings, ensuring it doesn't override your existing configurations.
 
 ### LSP Integration (Experimental)
 

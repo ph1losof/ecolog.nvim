@@ -24,6 +24,7 @@ local schedule = vim.schedule
 ---@field lspsaga boolean Enable LSPSaga integration
 ---@field nvim_cmp boolean|table Enable nvim-cmp integration
 ---@field blink_cmp boolean|table Enable blink-cmp integration
+---@field omnifunc boolean Enable omnifunc integration
 ---@field fzf boolean|table Enable fzf integration
 ---@field statusline boolean|table Enable statusline integration
 ---@field snacks boolean|table Enable snacks integration
@@ -67,6 +68,7 @@ local DEFAULT_CONFIG = {
     lspsaga = false,
     nvim_cmp = true,
     blink_cmp = false,
+    omnifunc = false,
     fzf = false,
     statusline = false,
     snacks = false,
@@ -252,6 +254,11 @@ local function setup_integrations(config)
   if config.integrations.blink_cmp then
     local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
     blink_cmp.setup(config.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+  end
+
+  if config.integrations.omnifunc then
+    local omnifunc = require("ecolog.integrations.cmp.omnifunc")
+    omnifunc.setup(config.integrations.omnifunc, state.env_vars, providers, shelter)
   end
 
   if config.integrations.fzf then

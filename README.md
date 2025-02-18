@@ -48,6 +48,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
+  - [Omnifunc Integration](#omnifunc-integration)
   - [LSP Integration](#lsp-integration-experimental)
   - [LSP Saga Integration](#lsp-saga-integration)
   - [Telescope Integration](#telescope-integration)
@@ -796,6 +797,47 @@ require('ecolog').setup({
   },
 }
 ```
+
+### Omnifunc Integration
+
+Ecolog provides a built-in omnifunc integration that enables environment variable completion using Vim's native completion system (`<C-x><C-o>`). This is particularly useful if you prefer not to use nvim-cmp or blink-cmp, or want a lightweight completion option.
+
+#### Setup
+
+The omnifunc integration is disabled by default. To enable it:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    omnifunc = true,  -- Enable omnifunc integration (default: false)
+  },
+})
+```
+
+When enabled, Ecolog will automatically set itself as the omnifunc provider for all filetypes.
+
+#### Usage
+
+1. In insert mode, type a language-specific environment variable trigger (e.g., `process.env.` for JavaScript)
+2. Press `<C-x><C-o>` to trigger omni completion
+3. Navigate through completions using `<C-n>` and `<C-p>`
+4. Press `<Enter>` to select a completion
+
+#### Shelter Mode Integration
+
+The omnifunc integration respects shelter mode settings. When shelter mode is enabled for cmp:
+
+```lua
+require('ecolog').setup({
+  shelter = {
+    modules = {
+      cmp = true,  -- Enable shelter mode for all completion interfaces including omnifunc
+    }
+  }
+})
+```
+
+Variable values will be masked in the completion menu according to your shelter mode configuration. Note that this setting affects all completion interfaces (nvim-cmp, blink-cmp, and omnifunc) since they share the same completion infrastructure.
 
 ### LSP Integration (Experimental)
 
@@ -1729,8 +1771,8 @@ AUTH_TOKEN=eyJhbG.eyJzd.iOiJ  # Will be detected as jwt type
                cmp = true,       -- Mask values in completion
                peek = true,      -- Mask values in peek view
                files = true,     -- Mask values in files
-               telescope = false -- Mask values in telescope
-               telescope_previewer = false -- Mask values in telescope preview buffers
+               telescope = false, -- Mask values in telescope
+               telescope_previewer = false, -- Mask values in telescope preview buffers
            }
        },
        path = vim.fn.getcwd(), -- Path to search for .env files
@@ -1880,7 +1922,7 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | Mask sensitive values on startup | ✅ Full support, never leak environment variables                                       | ❌ Doesn't support masking on startup, flashes values |
 | Mask on leave                    | ✅ Supports                                                                             | ✅ Supports                                           |
 | Completion disable               | ✅ Supports both blink-cmp and nvim-cmp, configurable                                   | 🟡 Only nvim-cmp and can't disable                    |
-| Custom mask and highlights       | �� Supports                                                                             | ✅ Supports                                           |
+| Custom mask and highlights       | ✅ Supports                                                                             | ✅ Supports                                           |
 | Performance                      | ✅ Better performance, especially in previewer buffers due to LRU caching               | 🟡 Minimal implementation but also good               |
 | Supports custom integrations     | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc. | 🟡 Only works in file buffers and telescope previewer |
 | Static mask length               | ❌ Chose not to support it due to neovim limitations                                    | 🟡 Supports but have caveats                          |

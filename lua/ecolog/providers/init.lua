@@ -10,7 +10,7 @@ M.providers = setmetatable({}, {
 local _provider_cache = {}
 local _provider_loading = {}
 
-local _provider_filetype_map = {
+M.filetype_map = {
   typescript = { "typescript", "typescriptreact" },
   javascript = { "javascript", "javascriptreact" },
   python = { "python" },
@@ -26,7 +26,7 @@ local _provider_filetype_map = {
 }
 
 local _filetype_provider_map = {}
-for provider, filetypes in pairs(_provider_filetype_map) do
+for provider, filetypes in pairs(M.filetype_map) do
   for _, ft in ipairs(filetypes) do
     _filetype_provider_map[ft] = provider
   end

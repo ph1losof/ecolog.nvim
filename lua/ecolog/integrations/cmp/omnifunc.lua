@@ -90,11 +90,31 @@ function M.setup(opts, _, providers, shelter)
     if not vim.opt.completeopt:get()[1]:match("preview") then
       vim.opt.completeopt:append("preview")
     end
+    
+    local supported_filetypes = {}
+    for _, filetypes in pairs(_providers.filetype_map) do
+      vim.list_extend(supported_filetypes, filetypes)
+    end
+    
+    local group = vim.api.nvim_create_augroup("EcologOmnifunc", { clear = true })
+    
     vim.api.nvim_create_autocmd("FileType", {
-      pattern = "*",
+      group = group,
+      pattern = supported_filetypes,
       callback = function()
-        vim.bo.omnifunc = "v:lua.require'ecolog.integrations.cmp.omnifunc'.complete"
+        if vim.bo.omnifunc == "" then
+          vim.bo.omnifunc = "v:lua.require'ecolog.integrations.cmp.omnifunc'.complete"
+        end
       end,
+    })
+    
+    local function close_preview()
+      vim.cmd('pclose')
+    end
+    
+    vim.api.nvim_create_autocmd({"InsertLeave", "CompleteDone"}, {
+      group = group,
+      callback = close_preview,
     })
   end
 end

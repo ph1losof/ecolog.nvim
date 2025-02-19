@@ -266,7 +266,7 @@ function M.shelter_buffer()
   local skip_comments = state.get_buffer_state().skip_comments
 
   local temp_ns = api.nvim_create_namespace("")
-  
+
   pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
 
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
@@ -372,7 +372,7 @@ function M.setup_file_shelter()
     or {}
   local buffer_state = {
     skip_comments = type(shelter_config) == "table" and shelter_config.skip_comments == true,
-    disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp == true,
+    disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp ~= false or false,
     revealed_lines = {},
   }
   state.set_buffer_state(buffer_state)
@@ -417,22 +417,25 @@ function M.setup_file_shelter()
     end,
   })
 
-  api.nvim_create_autocmd({ "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextYankPost", "TextChangedP" }, {
-    pattern = watch_patterns,
-    callback = function(ev)
-      local filename = vim.fn.fnamemodify(ev.file, ":t")
-      if shelter_utils.match_env_file(filename, config) then
-        if state.is_enabled("files") then
-          vim.schedule(function()
-            vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
-          end)
-        else
-          M.unshelter_buffer()
+  api.nvim_create_autocmd(
+    { "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextYankPost", "TextChangedP" },
+    {
+      pattern = watch_patterns,
+      callback = function(ev)
+        local filename = vim.fn.fnamemodify(ev.file, ":t")
+        if shelter_utils.match_env_file(filename, config) then
+          if state.is_enabled("files") then
+            vim.schedule(function()
+              vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
+            end)
+          else
+            M.unshelter_buffer()
+          end
         end
-      end
-    end,
-    group = group,
-  })
+      end,
+      group = group,
+    }
+  )
 
   api.nvim_create_autocmd("BufLeave", {
     pattern = watch_patterns,

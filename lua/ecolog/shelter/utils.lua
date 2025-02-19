@@ -17,15 +17,10 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
   sources = sources or conf.sources
   default_mode = default_mode or conf.default_mode
 
-  vim.notify(string.format("Checking masking for key='%s', source='%s'", key or "", source or ""), vim.log.levels.DEBUG)
-  vim.notify(string.format("Using patterns: %s", vim.inspect(patterns)), vim.log.levels.DEBUG)
-  vim.notify(string.format("Using sources: %s", vim.inspect(sources)), vim.log.levels.DEBUG)
-
   if key and patterns then
     for pattern, mode in pairs(patterns) do
       local lua_pattern = utils.convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
-        vim.notify(string.format("Pattern match: '%s' matches key '%s' with mode '%s'", pattern, key, mode), vim.log.levels.DEBUG)
         return mode
       end
     end
@@ -38,16 +33,13 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
       -- TODO: This has to be refactored not to match the hardcoded source pattern for vault/asm
       if source ~= "vault" and source ~= "asm" then
         source_to_match = vim.fn.fnamemodify(source, ":t")
-        vim.notify(string.format("Transformed source from '%s' to '%s'", source, source_to_match), vim.log.levels.DEBUG)
       end
       if source_to_match:match("^" .. lua_pattern .. "$") then
-        vim.notify(string.format("Source match: '%s' matches source '%s' with mode '%s'", pattern, source_to_match, mode), vim.log.levels.DEBUG)
         return mode
       end
     end
   end
 
-  vim.notify(string.format("No pattern or source match found, using default mode: '%s'", default_mode or "partial"), vim.log.levels.DEBUG)
   return default_mode or "partial"
 end
 

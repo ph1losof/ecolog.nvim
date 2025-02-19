@@ -363,7 +363,7 @@ function M.setup_file_shelter()
     or {}
   local buffer_state = {
     skip_comments = type(shelter_config) == "table" and shelter_config.skip_comments == true,
-    disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp == true,
+    disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp ~= false or false,
     revealed_lines = {},
   }
   state.set_buffer_state(buffer_state)

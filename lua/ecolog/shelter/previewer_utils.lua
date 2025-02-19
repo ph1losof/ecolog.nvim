@@ -15,6 +15,7 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
 
   end_idx = math.min(end_idx, #lines)
   local chunk_extmarks = {}
+  local config = state.get_config()
 
   for i = start_idx, end_idx do
     local line = lines[i]
@@ -26,9 +27,12 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
       local value, quote_char = shelter_utils.extract_value(value_part)
 
       local masked_value = shelter_utils.determine_masked_value(value, {
-        partial_mode = state.get_config().partial_mode,
+        partial_mode = config.partial_mode,
         key = key,
         source = filename,
+        patterns = config.patterns,
+        sources = config.sources,
+        default_mode = config.default_mode,
       })
 
       if masked_value and #masked_value > 0 then
@@ -36,11 +40,14 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
           masked_value = quote_char .. masked_value .. quote_char
         end
 
+        local is_masked = masked_value ~= (quote_char and (quote_char .. value .. quote_char) or value)
+        local highlight_group = is_masked and config.highlight_group or "String"
+
         table.insert(chunk_extmarks, {
           i - 1,
           eq_pos,
           {
-            virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
+            virt_text = { { masked_value, highlight_group } },
             virt_text_pos = "overlay",
             hl_mode = "combine",
           },
@@ -66,14 +73,14 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
   end
 end
 
-function M.process_buffer(bufnr)
+function M.process_buffer(bufnr, source_filename)
   if not bufnr or not api.nvim_buf_is_valid(bufnr) then
     return
   end
 
   local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
-  local filename = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
+  local filename = source_filename or vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
 
   pcall(api.nvim_buf_clear_namespace, bufnr, namespace, 0, -1)
 
@@ -96,7 +103,7 @@ function M.mask_preview_buffer(bufnr, filename, integration_name)
     return
   end
 
-  M.process_buffer(bufnr)
+  M.process_buffer(bufnr, filename)
 end
 
 return M

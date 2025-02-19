@@ -240,6 +240,11 @@ function M.shelter_buffer()
     return
   end
 
+  if vim.b[bufnr].sheltering then
+    return
+  end
+  vim.b[bufnr].sheltering = true
+
   active_buffers[bufnr] = vim.loop.now()
 
   if vim.loop.now() % CLEANUP_INTERVAL == 0 then
@@ -260,12 +265,17 @@ function M.shelter_buffer()
   local config_highlight_group = state.get_config().highlight_group
   local skip_comments = state.get_buffer_state().skip_comments
 
+  local temp_ns = api.nvim_create_namespace("")
+  
+  pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
+
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
     local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
     local ok, lines = pcall(api.nvim_buf_get_lines, bufnr, chunk_start, chunk_end + 1, false)
 
     if not ok then
       vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
+      vim.b[bufnr].sheltering = nil
       return
     end
 
@@ -327,9 +337,6 @@ function M.shelter_buffer()
   end
 
   if #extmarks > 0 then
-    local temp_ns = api.nvim_create_namespace("")
-    pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
-
     local BATCH_SIZE = 100
     for i = 1, #extmarks, BATCH_SIZE do
       local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
@@ -348,6 +355,8 @@ function M.shelter_buffer()
     end
     pcall(api.nvim_buf_clear_namespace, bufnr, temp_ns, 0, -1)
   end
+
+  vim.b[bufnr].sheltering = nil
 end
 
 function M.setup_file_shelter()
@@ -408,13 +417,15 @@ function M.setup_file_shelter()
     end,
   })
 
-  api.nvim_create_autocmd({ "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
+  api.nvim_create_autocmd({ "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextYankPost", "TextChangedP" }, {
     pattern = watch_patterns,
     callback = function(ev)
       local filename = vim.fn.fnamemodify(ev.file, ":t")
       if shelter_utils.match_env_file(filename, config) then
         if state.is_enabled("files") then
-          vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
+          vim.schedule(function()
+            vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
+          end)
         else
           M.unshelter_buffer()
         end

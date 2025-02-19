@@ -23,11 +23,12 @@ local VALUE_PATTERN = "^%s*(.-)%s*$"
 
 local line_cache = lru_cache.new(1000)
 local active_buffers = setmetatable({}, { __mode = "k" })
+local string_buffer = table.new and table.new(1000, 0) or {}
 
 ---@param text string
 ---@param start_pos number?
 ---@return table?, number?
-local function find_next_key_value(text, start_pos)
+M.find_next_key_value = function(text, start_pos)
   vim.validate({
     text = { text, "string" },
     start_pos = { start_pos, "number", true },
@@ -38,6 +39,29 @@ local function find_next_key_value(text, start_pos)
   local eq_pos = string_find(text, "=", start_pos)
   if not eq_pos then
     return nil
+  end
+
+  local quote_check_pos = 1
+  while quote_check_pos < eq_pos do
+    local quote_char = text:sub(quote_check_pos, quote_check_pos):match("[\"']")
+    if quote_char then
+      local pos = quote_check_pos + 1
+      while pos <= #text do
+        if text:sub(pos, pos) == quote_char and text:sub(pos - 1, pos - 1) ~= "\\" then
+          if pos < eq_pos then
+            quote_check_pos = pos + 1
+            break
+          else
+            return M.find_next_key_value(text, pos + 1)
+          end
+        end
+        pos = pos + 1
+      end
+      if pos > #text then
+        return M.find_next_key_value(text, eq_pos + 1)
+      end
+    end
+    quote_check_pos = quote_check_pos + 1
   end
 
   local key_start = eq_pos
@@ -51,7 +75,7 @@ local function find_next_key_value(text, start_pos)
 
   local key = string_match(string_sub(text, key_start, eq_pos - 1), KEY_PATTERN)
   if not key then
-    return find_next_key_value(text, eq_pos + 1)
+    return M.find_next_key_value(text, eq_pos + 1)
   end
 
   local pos = eq_pos + 1
@@ -74,7 +98,7 @@ local function find_next_key_value(text, start_pos)
       value = text:sub(eq_pos + 2, end_quote_pos - 1)
       pos = end_quote_pos + 1
     else
-      return find_next_key_value(text, eq_pos + 1)
+      return M.find_next_key_value(text, eq_pos + 1)
     end
   else
     while pos <= #text do
@@ -88,7 +112,7 @@ local function find_next_key_value(text, start_pos)
   end
 
   if not value or #value == 0 then
-    return find_next_key_value(text, eq_pos + 1)
+    return M.find_next_key_value(text, eq_pos + 1)
   end
 
   return {
@@ -111,7 +135,7 @@ local function process_line(line)
   local comment_start = string_find(line, "#")
 
   if not is_comment_line then
-    local kv, pos = find_next_key_value(line)
+    local kv, pos = M.find_next_key_value(line)
     if kv then
       if not comment_start or kv.eq_pos < comment_start then
         table_insert(results, {
@@ -130,7 +154,7 @@ local function process_line(line)
     local pos = 1
 
     while pos <= #comment_text do
-      local kv, next_pos = find_next_key_value(comment_text, pos)
+      local kv, next_pos = M.find_next_key_value(comment_text, pos)
       if not kv then
         break
       end
@@ -148,6 +172,19 @@ local function process_line(line)
   end
 
   return results
+end
+
+local function fast_concat(...)
+  local n = select("#", ...)
+  for i = 1, n do
+    local value = select(i, ...)
+    string_buffer[i] = value ~= nil and tostring(value) or ""
+  end
+  local result = table.concat(string_buffer, "", 1, n)
+  for i = 1, n do
+    string_buffer[i] = nil
+  end
+  return result
 end
 
 ---@param line string
@@ -422,6 +459,53 @@ function M.setup_file_shelter()
     end,
     group = group,
   })
+
+  local original_paste = vim.paste
+  vim.paste = (function()
+    return function(lines, phase)
+      local bufnr = api.nvim_get_current_buf()
+      local filename = vim.fn.fnamemodify(api.nvim_buf_get_name(bufnr), ":t")
+
+      if not shelter_utils.match_env_file(filename, config) or not state.is_enabled("files") then
+        return original_paste(lines, phase)
+      end
+
+      if type(lines) == "string" then
+        lines = vim.split(lines, "\n", { plain = true })
+      end
+
+      if not lines or #lines == 0 then
+        return true
+      end
+
+      local cursor = api.nvim_win_get_cursor(0)
+      local row, col = cursor[1], cursor[2]
+      local current_line = api.nvim_get_current_line()
+      local pre = current_line:sub(1, col)
+      local post = current_line:sub(col + 1)
+
+      local new_lines = {}
+      if #lines == 1 then
+        new_lines[1] = fast_concat(pre or "", lines[1] or "", post or "")
+      else
+        new_lines[1] = fast_concat(pre or "", lines[1] or "")
+        for i = 2, #lines - 1 do
+          new_lines[i] = lines[i] or ""
+        end
+        if #lines > 1 then
+          new_lines[#lines] = fast_concat(lines[#lines] or "", post or "")
+        end
+      end
+
+      pcall(api.nvim_buf_set_lines, bufnr, row - 1, row, false, new_lines)
+
+      local new_row = row + #new_lines - 1
+      local new_col = #new_lines == 1 and col + (lines[1] and #lines[1] or 0) or (lines[#lines] and #lines[#lines] or 0)
+      pcall(api.nvim_win_set_cursor, 0, { new_row, new_col })
+
+      return true
+    end
+  end)()
 
   api.nvim_create_autocmd("BufLeave", {
     pattern = watch_patterns,

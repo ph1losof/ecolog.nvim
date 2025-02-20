@@ -168,13 +168,14 @@ To use the latest features and improvements, you can use the beta branch:
 
 Setup auto-completion with `nvim-cmp`:
 
-````lua
+```lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
     -- your other sources...
   },
 })
+```
 
 If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 
@@ -272,7 +273,7 @@ TIMESTAMP=$(date +%Y%m%d)
 
 # Nested interpolation
 DATABASE_URL="postgres://${DB_USER:-postgres}:${DB_PASS}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME}"
-````
+```
 
 ### Configuration Options
 

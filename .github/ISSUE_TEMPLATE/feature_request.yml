@@ -1,16 +1,15 @@
 name: 🚀 Feature Request
-description: Submit a proposal/request for new Avante feature.
-title: 'feature: '
-labels: ['new-feature', 'enhancement']
+description: Submit a proposal/request for new ecolog.nvim feature.
+title: "Feature: "
+labels: ["new-feature", "enhancement"]
 body:
-
-- type: textarea
-  id: feature-request
-  validations:
-  required: true
-  attributes:
-  label: Feature request
-  description: |
-  A clear and concise description of the feature request.
-  placeholder: |
-  I would like it if...
+  - type: textarea
+    id: feature-request
+    validations:
+      required: true
+    attributes:
+      label: Feature request
+      description: |
+        A clear and concise description of the feature request.
+      placeholder: |
+        I would like it if...

@@ -5,21 +5,20 @@ local utils = require("ecolog.utils")
 local string_sub = string.sub
 local string_rep = string.rep
 
----@param pattern string
----@return string
-local function convert_to_lua_pattern(pattern)
-  local escaped = pattern:gsub("[%.%[%]%(%)%+%-%^%$%%]", "%%%1")
-  return escaped:gsub("%*", ".*")
-end
-
 ---@param key string|nil
 ---@param source string|nil
+---@param patterns table|nil
+---@param sources table|nil
+---@param default_mode string|nil
 ---@return "none"|"partial"|"full"
-function M.determine_masking_mode(key, source)
+function M.determine_masking_mode(key, source, patterns, sources, default_mode)
   local conf = config()
+  patterns = patterns or conf.patterns
+  sources = sources or conf.sources
+  default_mode = default_mode or conf.default_mode
 
-  if key and conf.patterns then
-    for pattern, mode in pairs(conf.patterns) do
+  if key and patterns then
+    for pattern, mode in pairs(patterns) do
       local lua_pattern = utils.convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
         return mode
@@ -27,8 +26,8 @@ function M.determine_masking_mode(key, source)
     end
   end
 
-  if source and conf.sources then
-    for pattern, mode in pairs(conf.sources) do
+  if source and sources then
+    for pattern, mode in pairs(sources) do
       local lua_pattern = utils.convert_to_lua_pattern(pattern)
       local source_to_match = source
       -- TODO: This has to be refactored not to match the hardcoded source pattern for vault/asm
@@ -41,7 +40,7 @@ function M.determine_masking_mode(key, source)
     end
   end
 
-  return conf.default_mode or "partial"
+  return default_mode or "partial"
 end
 
 ---@param value string
@@ -51,12 +50,15 @@ function M.determine_masked_value(value, settings)
     return ""
   end
 
-  local mode = M.determine_masking_mode(settings.key, settings.source)
+  local patterns = settings.patterns or config().patterns
+  local sources = settings.sources or config().sources
+  local default_mode = settings.default_mode or config().default_mode
+
+  local mode = M.determine_masking_mode(settings.key, settings.source, patterns, sources, default_mode)
   if mode == "none" then
     return value
   end
 
-  -- Extract quotes if present
   local first_char = value:sub(1, 1)
   local last_char = value:sub(-1)
   local has_quotes = (first_char == '"' or first_char == "'") and first_char == last_char
@@ -102,7 +104,6 @@ function M.extract_value(value_part)
 
   local value = vim.trim(value_part)
 
-  -- Only treat it as quoted if it starts AND ends with the same quote character
   local first_char = value:sub(1, 1)
   local last_char = value:sub(-1)
 

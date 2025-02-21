@@ -113,7 +113,6 @@ local function check_memory_usage()
   end
 end
 
----Force garbage collection and clear caches
 function M.force_garbage_collection()
   _state_cache = setmetatable({}, { __mode = "k" })
   _buffer_cache = setmetatable({}, { __mode = "k" })

@@ -699,7 +699,6 @@ function VaultSecretsManager:_get_config_options()
     end
   end
 
-  -- Add apps selection option
   options.apps = {
     name = "Vault Applications",
     current = self.config and self.config.apps and #self.config.apps > 0 and table.concat(
@@ -717,7 +716,7 @@ function VaultSecretsManager:_get_config_options()
           callback({})
           return
         end
-        -- Filter out any empty strings from the apps list
+
         local filtered_apps = vim.tbl_filter(function(app)
           return type(app) == "string" and app ~= ""
         end, apps or {})
@@ -750,7 +749,6 @@ function VaultSecretsManager:_handle_config_change(option, value)
       self.state.loaded_secrets = {}
       self.state.initialized = false
 
-      -- Clear apps from config
       self.config.apps = nil
 
       local current_env = ecolog.get_env_vars() or {}
@@ -770,7 +768,6 @@ function VaultSecretsManager:_handle_config_change(option, value)
       self.state.loaded_secrets = {}
       self.state.initialized = false
 
-      -- Clear apps from config
       self.config.apps = nil
 
       local current_env = ecolog.get_env_vars() or {}
@@ -803,7 +800,6 @@ function VaultSecretsManager:_handle_config_change(option, value)
 
       self.state = self:create_initial_state()
 
-      -- Clear apps from config
       self.config.apps = nil
 
       ecolog.refresh_env_vars()

@@ -33,21 +33,18 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
         patterns = config.patterns,
         sources = config.sources,
         default_mode = config.default_mode,
+        quote_char = quote_char,
       })
 
       if masked_value and #masked_value > 0 then
-        if quote_char then
-          masked_value = quote_char .. masked_value .. quote_char
-        end
-
-        local is_masked = masked_value ~= (quote_char and (quote_char .. value .. quote_char) or value)
-        local highlight_group = is_masked and config.highlight_group or "String"
+        local original_value = quote_char and (quote_char .. value .. quote_char) or value
+        local is_masked = masked_value ~= original_value
 
         table.insert(chunk_extmarks, {
           i - 1,
           eq_pos,
           {
-            virt_text = { { masked_value, highlight_group } },
+            virt_text = { { masked_value, is_masked and config.highlight_group or "String" } },
             virt_text_pos = "overlay",
             hl_mode = "combine",
           },

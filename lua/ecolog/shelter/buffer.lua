@@ -253,6 +253,10 @@ function M.unshelter_buffer()
     return
   end
 
+  local winid = api.nvim_get_current_win()
+  api.nvim_win_set_option(winid, "conceallevel", 0)
+  api.nvim_win_set_option(winid, "concealcursor", "")
+
   api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
   state.reset_revealed_lines()
   active_buffers[bufnr] = nil
@@ -278,6 +282,10 @@ function M.shelter_buffer()
     vim.notify("Invalid buffer", vim.log.levels.WARN)
     return
   end
+
+  local winid = api.nvim_get_current_win()
+  api.nvim_win_set_option(winid, "conceallevel", 2)
+  api.nvim_win_set_option(winid, "concealcursor", "nvc")
 
   active_buffers[bufnr] = vim.loop.now()
 
@@ -332,12 +340,17 @@ function M.shelter_buffer()
 
         if item.value and #item.value > 0 then
           local is_revealed = state.is_line_revealed(line_num)
+
+          local value_to_mask = item.value
           local raw_value = item.quote_char and (item.quote_char .. item.value .. item.quote_char) or item.value
+
           local masked_value = is_revealed and raw_value
-            or shelter_utils.determine_masked_value(raw_value, {
+            or shelter_utils.determine_masked_value(value_to_mask, {
               partial_mode = config_partial_mode,
               key = item.key,
               source = bufname,
+              no_padding = true,
+              quote_char = item.quote_char,
             })
 
           if masked_value and #masked_value > 0 then
@@ -352,11 +365,27 @@ function M.shelter_buffer()
                 hl_mode = "combine",
                 priority = item.is_comment and 10000 or 9999,
                 strict = true,
+                end_col = item.eq_pos + #raw_value,
+                conceal = "",
+                hl_group = "Conceal",
+              },
+            }
+
+            local conceal_mark = {
+              line_num - 1,
+              item.eq_pos,
+              {
+                end_col = item.eq_pos + #raw_value,
+                conceal = "",
+                priority = (item.is_comment and 10000 or 9999) - 1,
+                strict = true,
               },
             }
 
             table_insert(extmarks, extmark)
+            table_insert(extmarks, conceal_mark)
             cache_line(line, line_num, bufname, extmark)
+            cache_line(line, line_num, bufname, conceal_mark)
           end
         end
         ::continue_item::
@@ -366,7 +395,6 @@ function M.shelter_buffer()
   end
 
   if #extmarks > 0 then
-    local temp_ns = api.nvim_create_namespace("")
     pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
 
     local BATCH_SIZE = 100
@@ -374,18 +402,9 @@ function M.shelter_buffer()
       local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
       for j = i, batch_end do
         local mark = extmarks[j]
-        pcall(api.nvim_buf_set_extmark, bufnr, temp_ns, mark[1], mark[2], mark[3])
-      end
-    end
-
-    for i = 1, #extmarks, BATCH_SIZE do
-      local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
-      for j = i, batch_end do
-        local mark = extmarks[j]
         pcall(api.nvim_buf_set_extmark, bufnr, NAMESPACE, mark[1], mark[2], mark[3])
       end
     end
-    pcall(api.nvim_buf_clear_namespace, bufnr, temp_ns, 0, -1)
   end
 end
 

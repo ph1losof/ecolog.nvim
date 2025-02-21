@@ -56,17 +56,92 @@ function M.determine_masked_value(value, settings)
 
   local mode = M.determine_masking_mode(settings.key, settings.source, patterns, sources, default_mode)
   if mode == "none" then
+    if settings.quote_char then
+      return settings.quote_char .. value .. settings.quote_char
+    end
     return value
   end
 
-  local first_char = value:sub(1, 1)
-  local last_char = value:sub(-1)
-  local has_quotes = (first_char == '"' or first_char == "'") and first_char == last_char
-  local inner_value = has_quotes and value:sub(2, -2) or value
+  local mask_length = config().mask_length
+  if mask_length and mask_length > 0 then
+    local masked = string_rep(config().mask_char, mask_length)
+    if mode == "partial" and config().partial_mode then
+      local partial_mode = type(config().partial_mode) == "table" and config().partial_mode
+        or {
+          show_start = 3,
+          show_end = 3,
+          min_mask = 3,
+        }
+      local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
+      local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
+
+      if #value <= (show_start + show_end) then
+        masked = string_rep(config().mask_char, #value)
+        if settings.quote_char then
+          masked = settings.quote_char .. masked .. settings.quote_char
+        end
+        return masked
+      end
+
+      local total_length = show_start + mask_length + show_end
+      local full_value_length = #value
+      if settings.quote_char then
+        full_value_length = full_value_length + 2
+      end
+
+      if #value <= mask_length then
+        masked = string_rep(config().mask_char, #value)
+        if settings.quote_char then
+          masked = settings.quote_char .. masked .. settings.quote_char
+        end
+        return masked
+      end
+
+      masked = string_sub(value, 1, show_start) .. masked .. string_sub(value, -show_end)
+
+      if total_length < full_value_length and not settings.no_padding then
+        if settings.quote_char then
+          masked = settings.quote_char
+            .. masked
+            .. settings.quote_char
+            .. string_rep(" ", full_value_length - total_length - 2)
+        else
+          masked = masked .. string_rep(" ", full_value_length - total_length)
+        end
+      else
+        if settings.quote_char then
+          masked = settings.quote_char .. masked .. settings.quote_char
+        end
+      end
+    else
+      local full_value_length = #value
+      if settings.quote_char then
+        full_value_length = full_value_length + 2
+      end
+      if #masked < full_value_length and not settings.no_padding then
+        if settings.quote_char then
+          masked = settings.quote_char
+            .. masked
+            .. settings.quote_char
+            .. string_rep(" ", full_value_length - #masked - 2)
+        else
+          masked = masked .. string_rep(" ", full_value_length - #masked)
+        end
+      else
+        if settings.quote_char then
+          masked = settings.quote_char .. masked .. settings.quote_char
+        end
+      end
+    end
+    return masked
+  end
 
   if mode == "full" or not config().partial_mode then
-    local masked = string_rep(config().mask_char, #inner_value)
-    return has_quotes and (first_char .. masked .. first_char) or masked
+    local masked = string_rep(config().mask_char, #value)
+    if settings.quote_char then
+      return settings.quote_char .. masked .. settings.quote_char
+    end
+    return masked
   end
 
   local partial_mode = config().partial_mode
@@ -82,17 +157,23 @@ function M.determine_masked_value(value, settings)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
 
-  if #inner_value <= (show_start + show_end) or #inner_value < (show_start + show_end + min_mask) then
-    local masked = string_rep(config().mask_char, #inner_value)
-    return has_quotes and (first_char .. masked .. first_char) or masked
+  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
+    local masked = string_rep(config().mask_char, #value)
+    if settings.quote_char then
+      return settings.quote_char .. masked .. settings.quote_char
+    end
+    return masked
   end
 
-  local mask_length = math.max(min_mask, #inner_value - show_start - show_end)
-  local masked = string_sub(inner_value, 1, show_start)
+  local mask_length = math.max(min_mask, #value - show_start - show_end)
+  local masked = string_sub(value, 1, show_start)
     .. string_rep(config().mask_char, mask_length)
-    .. string_sub(inner_value, -show_end)
+    .. string_sub(value, -show_end)
 
-  return has_quotes and (first_char .. masked .. first_char) or masked
+  if settings.quote_char then
+    return settings.quote_char .. masked .. settings.quote_char
+  end
+  return masked
 end
 
 ---@param value string

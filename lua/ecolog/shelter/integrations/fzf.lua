@@ -11,46 +11,38 @@ local namespace = api.nvim_create_namespace("ecolog_shelter")
 
 local processed_buffers = lru_cache.new(100)
 
-local function get_masked_value(value, key, filename)
-  if not value then
-    return ""
-  end
-
-  local quote_char = value:match("^([\"'])")
-  local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
-
-  if not actual_value then
-    return value
-  end
-
-  local masked = shelter_utils.determine_masked_value(actual_value, {
-    partial_mode = state.get_config().partial_mode,
-    key = key,
-    source = filename,
-  })
-
-  if quote_char then
-    return quote_char .. masked .. quote_char
-  end
-  return masked
-end
-
 local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename)
   local chunk_extmarks = {}
+  local config = state.get_config()
 
   for i = start_idx, math.min(end_idx, #lines) do
     local line = lines[i]
-    local key, value, eq_pos = utils.parse_env_line(line)
+    local eq_pos = line:find("=")
 
-    if key and value then
-      local masked_value = get_masked_value(value, key, filename)
+    if eq_pos then
+      local key = vim.trim(line:sub(1, eq_pos - 1))
+      local value_part = line:sub(eq_pos + 1)
+      local value, quote_char = shelter_utils.extract_value(value_part)
+
+      local masked_value = shelter_utils.determine_masked_value(value, {
+        partial_mode = config.partial_mode,
+        key = key,
+        source = filename,
+        patterns = config.patterns,
+        sources = config.sources,
+        default_mode = config.default_mode,
+        quote_char = quote_char,
+      })
 
       if masked_value and #masked_value > 0 then
+        local original_value = quote_char and (quote_char .. value .. quote_char) or value
+        local is_masked = masked_value ~= original_value
+        
         table.insert(chunk_extmarks, {
           i - 1,
           eq_pos,
           {
-            virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
+            virt_text = { { masked_value, is_masked and config.highlight_group or "String" } },
             virt_text_pos = "overlay",
             hl_mode = "combine",
           },

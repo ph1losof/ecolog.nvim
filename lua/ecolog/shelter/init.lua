@@ -33,6 +33,7 @@ function M.setup(opts)
 
     state.get_config().mask_char = opts.config.mask_char or "*"
     state.get_config().highlight_group = opts.config.highlight_group or "Comment"
+    state.get_config().mask_length = type(opts.config.mask_length) == "number" and opts.config.mask_length or nil
 
     if opts.config.patterns then
       state.get_config().patterns = opts.config.patterns

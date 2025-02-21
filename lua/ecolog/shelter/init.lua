@@ -104,16 +104,30 @@ function M.setup(opts)
     buffer.shelter_buffer()
 
     local bufnr = api.nvim_get_current_buf()
-    api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "InsertEnter", "BufLeave" }, {
+    api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
       buffer = bufnr,
       callback = function(ev)
-        if
-          ev.event == "BufLeave"
-          or (ev.event:match("Cursor") and not state.is_line_revealed(api.nvim_win_get_cursor(0)[1]))
-        then
+        if ev.event == "BufLeave" then
+          local bufname = api.nvim_buf_get_name(bufnr)
+          buffer.clear_line_cache(current_line, bufname)
           state.reset_revealed_lines()
           buffer.shelter_buffer()
+          api.nvim_del_autocmd(ev.id)
           return true
+        end
+
+        if ev.event:match("Cursor") then
+          local new_line = api.nvim_win_get_cursor(0)[1]
+
+          if new_line ~= current_line then
+            local bufname = api.nvim_buf_get_name(bufnr)
+            buffer.clear_line_cache(current_line, bufname)
+            buffer.clear_line_cache(new_line, bufname)
+            state.reset_revealed_lines()
+            buffer.shelter_buffer()
+            api.nvim_del_autocmd(ev.id)
+            return true
+          end
         end
       end,
       desc = "Hide revealed env values on cursor move",

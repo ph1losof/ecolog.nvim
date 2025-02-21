@@ -25,6 +25,8 @@ local line_cache = lru_cache.new(1000)
 local active_buffers = setmetatable({}, { __mode = "k" })
 local string_buffer = table.new and table.new(1000, 0) or {}
 
+M.NAMESPACE = NAMESPACE
+
 ---@param text string
 ---@param start_pos number?
 ---@return table?, number?
@@ -534,6 +536,21 @@ function M.setup_file_shelter()
     end,
     group = group,
   })
+end
+
+function M.clear_line_cache(line_num, bufname)
+  vim.validate({
+    line_num = { line_num, "number" },
+    bufname = { bufname, "string" },
+  })
+
+  local ok, line = pcall(api.nvim_buf_get_lines, 0, line_num - 1, line_num, false)
+  if not ok or not line or #line == 0 then
+    return
+  end
+
+  local cache_key = string.format("%s:%d:%s", bufname, line_num, line[1])
+  line_cache:remove(cache_key)
 end
 
 return M

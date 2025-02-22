@@ -371,21 +371,8 @@ function M.shelter_buffer()
               },
             }
 
-            local conceal_mark = {
-              line_num - 1,
-              item.eq_pos,
-              {
-                end_col = item.eq_pos + #raw_value,
-                conceal = "",
-                priority = (item.is_comment and 10000 or 9999) - 1,
-                strict = true,
-              },
-            }
-
             table_insert(extmarks, extmark)
-            table_insert(extmarks, conceal_mark)
             cache_line(line, line_num, bufname, extmark)
-            cache_line(line, line_num, bufname, conceal_mark)
           end
         end
         ::continue_item::

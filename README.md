@@ -96,7 +96,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### Plugin Setup
 
-> 💡 **Quick Start**: If you don't want to configure everything manually, check out the [author's personal setup](#️-author-setup) section.
+> 💡 **Quick Start**: If you want to quickly start with ecolog.nvim, check out the [author's personal setup](#️-author-setup) section..
+> Still,
 
 ```lua
 {
@@ -754,7 +755,7 @@ end
 
 Add `ecolog` to your nvim-cmp sources:
 
-````lua
+```lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
@@ -770,7 +771,7 @@ require('ecolog').setup({
     nvim_cmp = false,
   },
 })
-````
+```
 
 See [Currently Supported Languages](#currently-supported) for available completion triggers and [Custom Providers](#-custom-providers) for adding support for additional languages.
 
@@ -1930,6 +1931,8 @@ The plugin seamlessly integrates with your current colorscheme:
 ## 🛠️ Author Setup
 
 It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
+
+> **Note**: Additional setup is required for [nvim-cmp](#nvim-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
 {

@@ -4,6 +4,10 @@ local config = require("ecolog.shelter.state").get_config
 local utils = require("ecolog.utils")
 local string_sub = string.sub
 local string_rep = string.rep
+local lru_cache = require("ecolog.shelter.lru_cache")
+
+local mode_cache = lru_cache.new(1000)
+local value_cache = lru_cache.new(1000)
 
 ---@param key string|nil
 ---@param source string|nil
@@ -12,35 +16,68 @@ local string_rep = string.rep
 ---@param default_mode string|nil
 ---@return "none"|"partial"|"full"
 function M.determine_masking_mode(key, source, patterns, sources, default_mode)
+  local cache_key = string.format("%s:%s:%s:%s:%s", 
+    key or "", 
+    source or "", 
+    vim.inspect(patterns or {}),
+    vim.inspect(sources or {}),
+    default_mode or ""
+  )
+  
+  local cached = mode_cache:get(cache_key)
+  if cached then
+    return cached
+  end
+
   local conf = config()
   patterns = patterns or conf.patterns
   sources = sources or conf.sources
   default_mode = default_mode or conf.default_mode
 
+  local result
   if key and patterns then
     for pattern, mode in pairs(patterns) do
       local lua_pattern = utils.convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
-        return mode
+        result = mode
+        break
       end
     end
   end
 
-  if source and sources then
+  if not result and source and sources then
+    local source_to_match = source
+    if source ~= "vault" and source ~= "asm" then
+      source_to_match = vim.fn.fnamemodify(source, ":t")
+    end
     for pattern, mode in pairs(sources) do
       local lua_pattern = utils.convert_to_lua_pattern(pattern)
-      local source_to_match = source
-      -- TODO: This has to be refactored not to match the hardcoded source pattern for vault/asm
-      if source ~= "vault" and source ~= "asm" then
-        source_to_match = vim.fn.fnamemodify(source, ":t")
-      end
       if source_to_match:match("^" .. lua_pattern .. "$") then
-        return mode
+        result = mode
+        break
       end
     end
   end
 
-  return default_mode or "partial"
+  result = result or default_mode or "partial"
+  mode_cache:put(cache_key, result)
+  return result
+end
+
+---Generate a cache key for masked values
+---@param value string
+---@param settings table
+---@return string
+local function get_value_cache_key(value, settings)
+  return string.format("%s:%s:%s:%s:%s:%s:%s",
+    value,
+    settings.key or "",
+    settings.source or "",
+    vim.inspect(settings.patterns or {}),
+    vim.inspect(settings.sources or {}),
+    settings.default_mode or "",
+    vim.inspect(settings.partial_mode or {})
+  )
 end
 
 ---@param value string
@@ -50,130 +87,122 @@ function M.determine_masked_value(value, settings)
     return ""
   end
 
-  local patterns = settings.patterns or config().patterns
-  local sources = settings.sources or config().sources
-  local default_mode = settings.default_mode or config().default_mode
+  local cache_key = get_value_cache_key(value, settings)
+  local cached = value_cache:get(cache_key)
+  if cached then
+    if settings.quote_char then
+      return settings.quote_char .. cached .. settings.quote_char
+    end
+    return cached
+  end
 
-  local mode = M.determine_masking_mode(settings.key, settings.source, patterns, sources, default_mode)
+  local conf = config()
+  local mode = M.determine_masking_mode(
+    settings.key,
+    settings.source,
+    settings.patterns,
+    settings.sources,
+    settings.default_mode
+  )
+
   if mode == "none" then
+    value_cache:put(cache_key, value)
     if settings.quote_char then
       return settings.quote_char .. value .. settings.quote_char
     end
     return value
   end
 
-  local mask_length = config().mask_length
+  local mask_length = conf.mask_length
   if mask_length and mask_length > 0 then
-    local masked = string_rep(config().mask_char, mask_length)
-    if mode == "partial" and config().partial_mode then
-      local partial_mode = type(config().partial_mode) == "table" and config().partial_mode
-        or {
-          show_start = 3,
-          show_end = 3,
-          min_mask = 3,
-        }
+    local masked = string_rep(conf.mask_char, mask_length)
+    if mode == "partial" and conf.partial_mode then
+      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode or {
+        show_start = 3,
+        show_end = 3,
+        min_mask = 3,
+      }
       local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
       local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
 
       if #value <= (show_start + show_end) then
-        masked = string_rep(config().mask_char, #value)
+        local result = string_rep(conf.mask_char, #value)
+        value_cache:put(cache_key, result)
         if settings.quote_char then
-          masked = settings.quote_char .. masked .. settings.quote_char
+          return settings.quote_char .. result .. settings.quote_char
         end
-        return masked
+        return result
       end
 
       local total_length = show_start + mask_length + show_end
-      local full_value_length = #value
-      if settings.quote_char then
-        full_value_length = full_value_length + 2
-      end
+      local full_value_length = settings.quote_char and (#value + 2) or #value
 
       if #value <= mask_length then
-        masked = string_rep(config().mask_char, #value)
+        local result = string_rep(conf.mask_char, #value)
+        value_cache:put(cache_key, result)
         if settings.quote_char then
-          masked = settings.quote_char .. masked .. settings.quote_char
+          return settings.quote_char .. result .. settings.quote_char
         end
-        return masked
+        return result
       end
 
-      masked = string_sub(value, 1, show_start) .. masked .. string_sub(value, -show_end)
-
+      local result = string_sub(value, 1, show_start) .. masked .. string_sub(value, -show_end)
       if total_length < full_value_length and not settings.no_padding then
-        if settings.quote_char then
-          masked = settings.quote_char
-            .. masked
-            .. settings.quote_char
-            .. string_rep(" ", full_value_length - total_length - 2)
-        else
-          masked = masked .. string_rep(" ", full_value_length - total_length)
-        end
-      else
-        if settings.quote_char then
-          masked = settings.quote_char .. masked .. settings.quote_char
-        end
+        result = result .. string_rep(" ", full_value_length - total_length)
       end
-    else
-      local full_value_length = #value
+      value_cache:put(cache_key, result)
       if settings.quote_char then
-        full_value_length = full_value_length + 2
+        return settings.quote_char .. result .. settings.quote_char
       end
-      if #masked < full_value_length and not settings.no_padding then
-        if settings.quote_char then
-          masked = settings.quote_char
-            .. masked
-            .. settings.quote_char
-            .. string_rep(" ", full_value_length - #masked - 2)
-        else
-          masked = masked .. string_rep(" ", full_value_length - #masked)
-        end
-      else
-        if settings.quote_char then
-          masked = settings.quote_char .. masked .. settings.quote_char
-        end
-      end
+      return result
     end
-    return masked
-  end
 
-  if mode == "full" or not config().partial_mode then
-    local masked = string_rep(config().mask_char, #value)
+    local result = string_rep(conf.mask_char, #value)
+    value_cache:put(cache_key, result)
     if settings.quote_char then
-      return settings.quote_char .. masked .. settings.quote_char
+      return settings.quote_char .. result .. settings.quote_char
     end
-    return masked
+    return result
   end
 
-  local partial_mode = config().partial_mode
-  if type(partial_mode) ~= "table" then
-    partial_mode = {
-      show_start = 3,
-      show_end = 3,
-      min_mask = 3,
-    }
+  if mode == "full" or not conf.partial_mode then
+    local result = string_rep(conf.mask_char, #value)
+    value_cache:put(cache_key, result)
+    if settings.quote_char then
+      return settings.quote_char .. result .. settings.quote_char
+    end
+    return result
   end
+
+  local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode or {
+    show_start = 3,
+    show_end = 3,
+    min_mask = 3,
+  }
 
   local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
 
   if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    local masked = string_rep(config().mask_char, #value)
+    local result = string_rep(conf.mask_char, #value)
+    value_cache:put(cache_key, result)
     if settings.quote_char then
-      return settings.quote_char .. masked .. settings.quote_char
+      return settings.quote_char .. result .. settings.quote_char
     end
-    return masked
+    return result
   end
 
-  local mask_length = math.max(min_mask, #value - show_start - show_end)
-  local masked = string_sub(value, 1, show_start)
-    .. string_rep(config().mask_char, mask_length)
+  local mask_len = math.max(min_mask, #value - show_start - show_end)
+  local result = string_sub(value, 1, show_start)
+    .. string_rep(conf.mask_char, mask_len)
     .. string_sub(value, -show_end)
 
+  value_cache:put(cache_key, result)
   if settings.quote_char then
-    return settings.quote_char .. masked .. settings.quote_char
+    return settings.quote_char .. result .. settings.quote_char
   end
-  return masked
+  return result
 end
 
 ---@param value string

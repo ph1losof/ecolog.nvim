@@ -30,6 +30,7 @@ local MEMORY_THRESHOLD = 50 * 1024 * 1024
 ---@field default_mode string
 ---@field shelter_on_leave boolean
 ---@field highlight_group string
+---@field mask_length number|nil
 
 ---@class BufferState
 ---@field revealed_lines table<number, boolean>
@@ -53,6 +54,7 @@ local state = {
     default_mode = "full",
     shelter_on_leave = false,
     highlight_group = "Comment",
+    mask_length = nil,
   },
   features = {
     enabled = {},

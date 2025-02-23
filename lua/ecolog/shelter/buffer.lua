@@ -1,4 +1,25 @@
+---@class EcologShelterBuffer
+---@field NAMESPACE number Namespace ID for buffer highlights and virtual text
 local M = {}
+
+---@class KeyValueResult
+---@field key string The key part of the key-value pair
+---@field value string The value part of the key-value pair
+---@field quote_char string? The quote character used (if any)
+---@field eq_pos number Position of the equals sign
+---@field next_pos number Position after the value
+
+---@class ProcessedItem
+---@field key string The key part of the key-value pair
+---@field value string The value part of the key-value pair
+---@field quote_char string? The quote character used (if any)
+---@field eq_pos number Position of the equals sign
+---@field is_comment boolean Whether this item was found in a comment
+
+---@class ExtmarkData
+---@field line_num number The line number
+---@field eq_pos number Position of the equals sign
+---@field extmarks table[] Array of extmark data
 
 local api = vim.api
 local string_find = string.find
@@ -20,6 +41,7 @@ local BUFFER_TIMEOUT = 3600000
 local COMMENT_PATTERN = "^#"
 local KEY_PATTERN = "^%s*(.-)%s*$"
 local VALUE_PATTERN = "^%s*(.-)%s*$"
+local BATCH_SIZE = 100
 
 local line_cache = lru_cache.new(1000)
 local active_buffers = setmetatable({}, { __mode = "k" })
@@ -29,7 +51,7 @@ M.NAMESPACE = NAMESPACE
 
 ---@param text string
 ---@param start_pos number?
----@return table?, number?
+---@return KeyValueResult?
 M.find_next_key_value = function(text, start_pos)
   vim.validate({
     text = { text, "string" },
@@ -37,35 +59,16 @@ M.find_next_key_value = function(text, start_pos)
   })
 
   start_pos = start_pos or 1
+  if start_pos > #text then
+    return nil
+  end
 
   local eq_pos = string_find(text, "=", start_pos)
   if not eq_pos then
     return nil
   end
 
-  local quote_check_pos = 1
-  while quote_check_pos < eq_pos do
-    local quote_char = text:sub(quote_check_pos, quote_check_pos):match("[\"']")
-    if quote_char then
-      local pos = quote_check_pos + 1
-      while pos <= #text do
-        if text:sub(pos, pos) == quote_char and text:sub(pos - 1, pos - 1) ~= "\\" then
-          if pos < eq_pos then
-            quote_check_pos = pos + 1
-            break
-          else
-            return M.find_next_key_value(text, pos + 1)
-          end
-        end
-        pos = pos + 1
-      end
-      if pos > #text then
-        return M.find_next_key_value(text, eq_pos + 1)
-      end
-    end
-    quote_check_pos = quote_check_pos + 1
-  end
-
+  -- Find the key by scanning backwards from equals sign
   local key_start = eq_pos
   while key_start > start_pos do
     local char = text:sub(key_start - 1, key_start - 1)
@@ -76,33 +79,35 @@ M.find_next_key_value = function(text, start_pos)
   end
 
   local key = string_match(string_sub(text, key_start, eq_pos - 1), KEY_PATTERN)
-  if not key then
+  if not key or #key == 0 then
     return M.find_next_key_value(text, eq_pos + 1)
   end
 
+  -- Handle quoted values
   local pos = eq_pos + 1
-  local value = ""
   local quote_char = text:sub(pos, pos)
   local in_quotes = quote_char == '"' or quote_char == "'"
 
+  local value
   if in_quotes then
     pos = pos + 1
-    local end_quote_pos = nil
+    local value_end = nil
     while pos <= #text do
       if text:sub(pos, pos) == quote_char and text:sub(pos - 1, pos - 1) ~= "\\" then
-        end_quote_pos = pos
+        value_end = pos
         break
       end
       pos = pos + 1
     end
 
-    if end_quote_pos then
-      value = text:sub(eq_pos + 2, end_quote_pos - 1)
-      pos = end_quote_pos + 1
+    if value_end then
+      value = text:sub(eq_pos + 2, value_end - 1)
+      pos = value_end + 1
     else
       return M.find_next_key_value(text, eq_pos + 1)
     end
   else
+    -- Handle unquoted values
     while pos <= #text do
       local char = text:sub(pos, pos)
       if char:match("[%s#]") then
@@ -123,31 +128,28 @@ M.find_next_key_value = function(text, start_pos)
     quote_char = in_quotes and quote_char or nil,
     eq_pos = eq_pos,
     next_pos = pos,
-  },
-    pos
+  }
 end
 
 ---@param line string
----@return table
-local function process_line(line)
+---@return ProcessedItem[]
+function M.process_line(line)
   vim.validate({ line = { line, "string" } })
 
   local results = {}
-  local is_comment_line = string_find(line, COMMENT_PATTERN)
   local comment_start = string_find(line, "#")
+  local is_comment_line = comment_start == 1
 
   if not is_comment_line then
-    local kv, pos = M.find_next_key_value(line)
-    if kv then
-      if not comment_start or kv.eq_pos < comment_start then
-        table_insert(results, {
-          key = kv.key,
-          value = kv.value,
-          quote_char = kv.quote_char,
-          eq_pos = kv.eq_pos,
-          is_comment = false,
-        })
-      end
+    local kv = M.find_next_key_value(line)
+    if kv and (not comment_start or kv.eq_pos < comment_start) then
+      table_insert(results, {
+        key = kv.key,
+        value = kv.value,
+        quote_char = kv.quote_char,
+        eq_pos = kv.eq_pos,
+        is_comment = false,
+      })
     end
   end
 
@@ -155,8 +157,8 @@ local function process_line(line)
     local comment_text = string_sub(line, comment_start + 1)
     local pos = 1
 
-    while pos <= #comment_text do
-      local kv, next_pos = M.find_next_key_value(comment_text, pos)
+    while true do
+      local kv = M.find_next_key_value(comment_text, pos)
       if not kv then
         break
       end
@@ -169,30 +171,17 @@ local function process_line(line)
         is_comment = true,
       })
 
-      pos = next_pos
+      pos = kv.next_pos
     end
   end
 
   return results
 end
 
-local function fast_concat(...)
-  local n = select("#", ...)
-  for i = 1, n do
-    local value = select(i, ...)
-    string_buffer[i] = value ~= nil and tostring(value) or ""
-  end
-  local result = table.concat(string_buffer, "", 1, n)
-  for i = 1, n do
-    string_buffer[i] = nil
-  end
-  return result
-end
-
 ---@param line string
 ---@param line_num number
 ---@param bufname string
----@return table?
+---@return ExtmarkData?
 local function get_cached_line(line, line_num, bufname)
   vim.validate({
     line = { line, "string" },
@@ -200,7 +189,7 @@ local function get_cached_line(line, line_num, bufname)
     bufname = { bufname, "string" },
   })
 
-  local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
+  local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line))
   return line_cache:get(cache_key)
 end
 
@@ -216,7 +205,7 @@ local function cache_line(line, line_num, bufname, extmark)
     extmark = { extmark, "table" },
   })
 
-  local cache_key = string.format("%s:%d:%s", bufname, line_num, line)
+  local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line))
   local existing = line_cache:get(cache_key)
   if existing then
     if not existing.extmarks then
@@ -246,12 +235,31 @@ local function is_buffer_valid(bufnr)
   return type(bufnr) == "number" and api.nvim_buf_is_valid(bufnr)
 end
 
+---@param ... string
+---@return string
+local function fast_concat(...)
+  local n = select("#", ...)
+  for i = 1, n do
+    local value = select(i, ...)
+    string_buffer[i] = value ~= nil and tostring(value) or ""
+  end
+  local result = table.concat(string_buffer, "", 1, n)
+  for i = 1, n do
+    string_buffer[i] = nil
+  end
+  return result
+end
+
 function M.unshelter_buffer()
   local bufnr = api.nvim_get_current_buf()
   if not is_buffer_valid(bufnr) then
     vim.notify("Invalid buffer", vim.log.levels.WARN)
     return
   end
+
+  local winid = api.nvim_get_current_win()
+  api.nvim_win_set_option(winid, "conceallevel", 0)
+  api.nvim_win_set_option(winid, "concealcursor", "")
 
   api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
   state.reset_revealed_lines()
@@ -261,6 +269,92 @@ function M.unshelter_buffer()
     vim.b.completion = true
     if shelter_utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = true })
+    end
+  end
+end
+
+---@param bufnr number
+---@param winid number
+local function setup_buffer_options(bufnr, winid)
+  api.nvim_win_set_option(winid, "conceallevel", 2)
+  api.nvim_win_set_option(winid, "concealcursor", "nvic")
+  active_buffers[bufnr] = vim.loop.now()
+
+  if vim.loop.now() % CLEANUP_INTERVAL == 0 then
+    cleanup_invalid_buffers()
+  end
+
+  if state.get_buffer_state().disable_cmp then
+    vim.b.completion = false
+    if shelter_utils.has_cmp() then
+      require("cmp").setup.buffer({ enabled = false })
+    end
+  end
+end
+
+---@param value string
+---@param item ProcessedItem
+---@param config table
+---@param bufname string
+---@param line_num number
+---@return table?
+function M.create_extmark(value, item, config, bufname, line_num)
+  local is_revealed = state.is_line_revealed(line_num)
+  local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
+
+  local masked_value = is_revealed and raw_value
+    or shelter_utils.determine_masked_value(value, {
+      partial_mode = config.partial_mode,
+      key = item.key,
+      source = bufname,
+      quote_char = item.quote_char,
+    })
+
+  if not masked_value or #masked_value == 0 then
+    return nil
+  end
+
+  local mask_length = state.get_config().mask_length
+
+  local extmark_opts = {
+    virt_text = {
+      { masked_value, (is_revealed or masked_value == raw_value) and "String" or config.highlight_group },
+    },
+    virt_text_pos = "overlay",
+    hl_mode = "combine",
+    priority = item.is_comment and 10000 or 9999,
+    strict = true,
+  }
+
+  if mask_length then
+    extmark_opts.conceal = ""
+    extmark_opts.hl_mode = "replace"
+    extmark_opts.end_col = item.eq_pos + #raw_value
+    extmark_opts.virt_text_pos = "inline"
+    extmark_opts.hl_group = "Conceal"
+  end
+
+  return {
+    line_num - 1,
+    item.eq_pos,
+    extmark_opts,
+  }
+end
+
+---@param bufnr number
+---@param extmarks table[]
+local function apply_extmarks(bufnr, extmarks)
+  if #extmarks == 0 then
+    return
+  end
+
+  pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
+
+  for i = 1, #extmarks, BATCH_SIZE do
+    local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
+    for j = i, batch_end do
+      local mark = extmarks[j]
+      pcall(api.nvim_buf_set_extmark, bufnr, NAMESPACE, mark[1], mark[2], mark[3])
     end
   end
 end
@@ -279,18 +373,8 @@ function M.shelter_buffer()
     return
   end
 
-  active_buffers[bufnr] = vim.loop.now()
-
-  if vim.loop.now() % CLEANUP_INTERVAL == 0 then
-    cleanup_invalid_buffers()
-  end
-
-  if state.get_buffer_state().disable_cmp then
-    vim.b.completion = false
-    if shelter_utils.has_cmp() then
-      require("cmp").setup.buffer({ enabled = false })
-    end
-  end
+  local winid = api.nvim_get_current_win()
+  setup_buffer_options(bufnr, winid)
 
   local bufname = api.nvim_buf_get_name(bufnr)
   local line_count = api.nvim_buf_line_count(bufnr)
@@ -324,37 +408,19 @@ function M.shelter_buffer()
         goto continue
       end
 
-      local processed_items = process_line(line)
+      local processed_items = M.process_line(line)
       for _, item in ipairs(processed_items) do
         if skip_comments and item.is_comment then
           goto continue_item
         end
 
         if item.value and #item.value > 0 then
-          local is_revealed = state.is_line_revealed(line_num)
-          local raw_value = item.quote_char and (item.quote_char .. item.value .. item.quote_char) or item.value
-          local masked_value = is_revealed and raw_value
-            or shelter_utils.determine_masked_value(raw_value, {
-              partial_mode = config_partial_mode,
-              key = item.key,
-              source = bufname,
-            })
+          local extmark = M.create_extmark(item.value, item, {
+            partial_mode = config_partial_mode,
+            highlight_group = config_highlight_group,
+          }, bufname, line_num)
 
-          if masked_value and #masked_value > 0 then
-            local extmark = {
-              line_num - 1,
-              item.eq_pos,
-              {
-                virt_text = {
-                  { masked_value, (is_revealed or masked_value == raw_value) and "String" or config_highlight_group },
-                },
-                virt_text_pos = "overlay",
-                hl_mode = "combine",
-                priority = item.is_comment and 10000 or 9999,
-                strict = true,
-              },
-            }
-
+          if extmark then
             table_insert(extmarks, extmark)
             cache_line(line, line_num, bufname, extmark)
           end
@@ -365,64 +431,48 @@ function M.shelter_buffer()
     end
   end
 
-  if #extmarks > 0 then
-    local temp_ns = api.nvim_create_namespace("")
-    pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
-
-    local BATCH_SIZE = 100
-    for i = 1, #extmarks, BATCH_SIZE do
-      local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
-      for j = i, batch_end do
-        local mark = extmarks[j]
-        pcall(api.nvim_buf_set_extmark, bufnr, temp_ns, mark[1], mark[2], mark[3])
-      end
-    end
-
-    for i = 1, #extmarks, BATCH_SIZE do
-      local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
-      for j = i, batch_end do
-        local mark = extmarks[j]
-        pcall(api.nvim_buf_set_extmark, bufnr, NAMESPACE, mark[1], mark[2], mark[3])
-      end
-    end
-    pcall(api.nvim_buf_clear_namespace, bufnr, temp_ns, 0, -1)
-  end
+  apply_extmarks(bufnr, extmarks)
 end
 
-function M.setup_file_shelter()
-  local group = api.nvim_create_augroup("ecolog_shelter", { clear = true })
-
-  local config = require("ecolog").get_config and require("ecolog").get_config() or {}
-  local watch_patterns = main_utils.get_watch_patterns(config)
-
+---@param config table
+---@return table
+local function setup_buffer_state(config)
   local shelter_config = type(config.shelter) == "table"
       and type(config.shelter.modules) == "table"
       and type(config.shelter.modules.files) == "table"
       and config.shelter.modules.files
     or {}
+
   local buffer_state = {
     skip_comments = type(shelter_config) == "table" and shelter_config.skip_comments == true,
     disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp ~= false or false,
     revealed_lines = {},
   }
   state.set_buffer_state(buffer_state)
+  return buffer_state
+end
 
+---@param config table
+---@param group number
+local function setup_buffer_autocmds(config, group)
+  local watch_patterns = main_utils.get_watch_patterns(config)
   if #watch_patterns == 0 then
     watch_patterns = { ".env*" }
   end
 
+  -- BufReadCmd handler
   api.nvim_create_autocmd("BufReadCmd", {
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      local filename = vim.fn.fnamemodify(ev.file, ":t")
+      local filename = fn.fnamemodify(ev.file, ":t")
       if not shelter_utils.match_env_file(filename, config) then
         return
       end
 
       local bufnr = ev.buf
       local ok, err = pcall(function()
-        vim.cmd("keepalt edit " .. vim.fn.fnameescape(ev.file))
+        vim.cmd("keepalt edit " .. fn.fnameescape(ev.file))
 
         local ft = vim.filetype.match({ filename = filename })
         if ft then
@@ -447,10 +497,12 @@ function M.setup_file_shelter()
     end,
   })
 
+  -- Buffer modification handlers
   api.nvim_create_autocmd({ "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = watch_patterns,
+    group = group,
     callback = function(ev)
-      local filename = vim.fn.fnamemodify(ev.file, ":t")
+      local filename = fn.fnamemodify(ev.file, ":t")
       if shelter_utils.match_env_file(filename, config) then
         if state.is_enabled("files") then
           vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
@@ -459,14 +511,45 @@ function M.setup_file_shelter()
         end
       end
     end,
-    group = group,
   })
 
+  -- Buffer leave handler
+  api.nvim_create_autocmd("BufLeave", {
+    pattern = watch_patterns,
+    group = group,
+    callback = function(ev)
+      local filename = fn.fnamemodify(ev.file, ":t")
+      if shelter_utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
+        state.set_feature_state("files", true)
+
+        if state.get_state().features.initial.telescope_previewer then
+          state.set_feature_state("telescope_previewer", true)
+          require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
+        end
+
+        if state.get_state().features.initial.fzf_previewer then
+          state.set_feature_state("fzf_previewer", true)
+          require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
+        end
+
+        if state.get_state().features.initial.snacks_previewer then
+          state.set_feature_state("snacks_previewer", true)
+          require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
+        end
+
+        M.shelter_buffer()
+      end
+    end,
+  })
+end
+
+---@param config table
+local function setup_paste_override(config)
   local original_paste = vim.paste
   vim.paste = (function()
     return function(lines, phase)
       local bufnr = api.nvim_get_current_buf()
-      local filename = vim.fn.fnamemodify(api.nvim_buf_get_name(bufnr), ":t")
+      local filename = fn.fnamemodify(api.nvim_buf_get_name(bufnr), ":t")
 
       if not shelter_utils.match_env_file(filename, config) or not state.is_enabled("files") then
         return original_paste(lines, phase)
@@ -508,36 +591,20 @@ function M.setup_file_shelter()
       return true
     end
   end)()
-
-  api.nvim_create_autocmd("BufLeave", {
-    pattern = watch_patterns,
-    callback = function(ev)
-      local filename = vim.fn.fnamemodify(ev.file, ":t")
-      if shelter_utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
-        state.set_feature_state("files", true)
-
-        if state.get_state().features.initial.telescope_previewer then
-          state.set_feature_state("telescope_previewer", true)
-          require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
-        end
-
-        if state.get_state().features.initial.fzf_previewer then
-          state.set_feature_state("fzf_previewer", true)
-          require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
-        end
-
-        if state.get_state().features.initial.snacks_previewer then
-          state.set_feature_state("snacks_previewer", true)
-          require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
-        end
-
-        M.shelter_buffer()
-      end
-    end,
-    group = group,
-  })
 end
 
+function M.setup_file_shelter()
+  local group = api.nvim_create_augroup("ecolog_shelter", { clear = true })
+  local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+
+  setup_buffer_state(config)
+  setup_buffer_autocmds(config, group)
+  setup_paste_override(config)
+end
+
+---@param line_num number The line number to clear from cache
+---@param bufname string The buffer name
+---@return boolean success Whether the cache was successfully cleared
 function M.clear_line_cache(line_num, bufname)
   vim.validate({
     line_num = { line_num, "number" },
@@ -546,11 +613,12 @@ function M.clear_line_cache(line_num, bufname)
 
   local ok, line = pcall(api.nvim_buf_get_lines, 0, line_num - 1, line_num, false)
   if not ok or not line or #line == 0 then
-    return
+    return false
   end
 
-  local cache_key = string.format("%s:%d:%s", bufname, line_num, line[1])
+  local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line[1]))
   line_cache:remove(cache_key)
+  return true
 end
 
 return M

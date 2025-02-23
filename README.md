@@ -96,6 +96,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### Plugin Setup
 
+> 💡 **Quick Start**: If you don't want to configure everything manually, check out the [author's personal setup](#️-author-setup) section.
+
 ```lua
 {
   'philosofonusus/ecolog.nvim',
@@ -1930,9 +1932,10 @@ The plugin seamlessly integrates with your current colorscheme:
 It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
 
 ```lua
- {
-   'philosofonusus/ecolog.nvim',
+{
+    'philosofonusus/ecolog.nvim',
     keys = {
+      { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },

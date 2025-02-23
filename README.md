@@ -130,6 +130,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
                 min_mask = 3,      -- Minimum masked characters
             },
             mask_char = "*",   -- Character used for masking
+            mask_length = nil, -- Optional: fixed length for masked portion (defaults to value length)
         },
         modules = {
             cmp = true,       -- Enabled to mask values in completion
@@ -751,7 +752,7 @@ end
 
 Add `ecolog` to your nvim-cmp sources:
 
-````lua
+```lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
@@ -767,7 +768,7 @@ require('ecolog').setup({
     nvim_cmp = false,
   },
 })
-````
+```
 
 See [Currently Supported Languages](#currently-supported) for available completion triggers and [Custom Providers](#-custom-providers) for adding support for additional languages.
 
@@ -1443,6 +1444,7 @@ require('ecolog').setup({
                 min_mask = 3,      -- Minimum masked characters
             },
             mask_char = "*",   -- Character used for masking
+            mask_length = nil, -- Optional: fixed length for masked portion (defaults to value length)
         },
         modules = {
             cmp = false,       -- Mask values in completion
@@ -1533,6 +1535,38 @@ Three modes of operation:
    }
    -- Example: "my-secret-key" -> "my-s***ey"
    ```
+
+#### Masking Length Control
+
+You can control the length of masked portions using the `mask_length` option:
+
+1. **Full Masking Mode**:
+   ```lua
+   shelter = {
+       configuration = {
+           partial_mode = false,
+           mask_length = 5  -- All masked values will be 5 characters long
+       }
+   }
+   -- Examples:
+   -- "my-secret-key" -> "*****"    -- Long value becomes 5 chars
+   -- "short" -> "*****"            -- Short value padded to 5 chars
+   -- "very-long-secret" -> "*****" -- Long value truncated to 5 chars
+   ```
+
+2. **Partial Masking Mode**:
+   ```lua
+   shelter = {
+       configuration = {
+           partial_mode = true,
+           mask_length = 5  -- Masked portion will be 5 characters
+       }
+   }
+   -- Example: "my-secret-key" -> "my-*****-key"
+   -- Example: "short-key" -> "sho*****key"
+   ```
+
+When `mask_length` is not set (nil), the masked portion will match the length of the original value.
 
 ### 🎮 Commands
 

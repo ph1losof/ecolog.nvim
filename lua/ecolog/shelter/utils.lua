@@ -123,9 +123,6 @@ function M.determine_masked_value(value, settings)
       result = string_rep(conf.mask_char, #value)
     else
       result = string_rep(conf.mask_char, mask_length)
-      if not settings.no_padding and mask_length < #value then
-        result = result .. string_rep(" ", #value - mask_length)
-      end
     end
     value_cache:put(cache_key, result)
     if settings.quote_char then
@@ -151,9 +148,6 @@ function M.determine_masked_value(value, settings)
       result = string_rep(conf.mask_char, #value)
     else
       result = string_rep(conf.mask_char, mask_length)
-      if not settings.no_padding and mask_length < #value then
-        result = result .. string_rep(" ", #value - mask_length)
-      end
     end
     value_cache:put(cache_key, result)
     if settings.quote_char then
@@ -171,10 +165,6 @@ function M.determine_masked_value(value, settings)
   local result = string_sub(value, 1, show_start)
     .. string_rep(conf.mask_char, effective_mask_length)
     .. string_sub(value, -show_end)
-
-  if not settings.no_padding and effective_mask_length < available_mask_space then
-    result = result .. string_rep(" ", available_mask_space - effective_mask_length)
-  end
 
   value_cache:put(cache_key, result)
   if settings.quote_char then

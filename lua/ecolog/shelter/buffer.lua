@@ -307,7 +307,6 @@ function M.create_extmark(value, item, config, bufname, line_num)
       partial_mode = config.partial_mode,
       key = item.key,
       source = bufname,
-      no_padding = true,
       quote_char = item.quote_char,
     })
 

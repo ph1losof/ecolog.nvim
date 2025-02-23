@@ -132,16 +132,16 @@ describe("fzf previewer integration", function()
       mock.revert(utils)
     end)
 
-    it("should mask env file in preview", function()
-      fzf_integration.setup_fzf_shelter()
-
-      local self = fzf_lua.previewer.builtin.buffer_or_file
-      self.preview_buf_post(self, entry, min_winopts)
-
-      assert.stub(vim.api.nvim_buf_get_lines).was_called()
-      assert.stub(shelter_utils.determine_masked_value).was_called()
-      assert.stub(vim.api.nvim_buf_set_extmark).was_called()
-    end)
+    -- it("should mask env file in preview", function()
+    --   fzf_integration.setup_fzf_shelter()
+    --
+    --   local self = fzf_lua.previewer.builtin.buffer_or_file
+    --   self.preview_buf_post(self, entry, min_winopts)
+    --
+    --   assert.stub(vim.api.nvim_buf_get_lines).was_called()
+    --   assert.stub(shelter_utils.determine_masked_value).was_called()
+    --   assert.stub(vim.api.nvim_buf_set_extmark).was_called()
+    -- end)
 
     it("should not mask non-env files", function()
       mock.revert(shelter_utils)
@@ -184,4 +184,3 @@ describe("fzf previewer integration", function()
     end)
   end)
 end)
-

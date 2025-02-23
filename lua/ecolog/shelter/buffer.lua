@@ -314,21 +314,30 @@ function M.create_extmark(value, item, config, bufname, line_num)
     return nil
   end
 
+  local mask_length = state.get_config().mask_length
+
+  local extmark_opts = {
+    virt_text = {
+      { masked_value, (is_revealed or masked_value == raw_value) and "String" or config.highlight_group },
+    },
+    virt_text_pos = "overlay",
+    hl_mode = "combine",
+    priority = item.is_comment and 10000 or 9999,
+    strict = true,
+  }
+
+  if mask_length then
+    extmark_opts.conceal = ""
+    extmark_opts.hl_mode = "replace"
+    extmark_opts.end_col = item.eq_pos + #raw_value
+    extmark_opts.virt_text_pos = "inline"
+    extmark_opts.hl_group = "Conceal"
+  end
+
   return {
     line_num - 1,
     item.eq_pos,
-    {
-      virt_text = {
-        { masked_value, (is_revealed or masked_value == raw_value) and "String" or config.highlight_group },
-      },
-      virt_text_pos = "inline",
-      hl_mode = "replace",
-      priority = item.is_comment and 10000 or 9999,
-      strict = true,
-      end_col = item.eq_pos + #raw_value,
-      conceal = "",
-      hl_group = "Conceal",
-    },
+    extmark_opts,
   }
 end
 

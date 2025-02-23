@@ -16,14 +16,15 @@ local value_cache = lru_cache.new(1000)
 ---@param default_mode string|nil
 ---@return "none"|"partial"|"full"
 function M.determine_masking_mode(key, source, patterns, sources, default_mode)
-  local cache_key = string.format("%s:%s:%s:%s:%s", 
-    key or "", 
-    source or "", 
+  local cache_key = string.format(
+    "%s:%s:%s:%s:%s",
+    key or "",
+    source or "",
     vim.inspect(patterns or {}),
     vim.inspect(sources or {}),
     default_mode or ""
   )
-  
+
   local cached = mode_cache:get(cache_key)
   if cached then
     return cached
@@ -69,7 +70,8 @@ end
 ---@param settings table
 ---@return string
 local function get_value_cache_key(value, settings)
-  return string.format("%s:%s:%s:%s:%s:%s:%s",
+  return string.format(
+    "%s:%s:%s:%s:%s:%s:%s",
     value,
     settings.key or "",
     settings.source or "",
@@ -97,13 +99,8 @@ function M.determine_masked_value(value, settings)
   end
 
   local conf = config()
-  local mode = M.determine_masking_mode(
-    settings.key,
-    settings.source,
-    settings.patterns,
-    settings.sources,
-    settings.default_mode
-  )
+  local mode =
+    M.determine_masking_mode(settings.key, settings.source, settings.patterns, settings.sources, settings.default_mode)
 
   if mode == "none" then
     value_cache:put(cache_key, value)
@@ -117,11 +114,12 @@ function M.determine_masked_value(value, settings)
   if mask_length and mask_length > 0 then
     local masked = string_rep(conf.mask_char, mask_length)
     if mode == "partial" and conf.partial_mode then
-      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode or {
-        show_start = 3,
-        show_end = 3,
-        min_mask = 3,
-      }
+      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+        or {
+          show_start = 3,
+          show_end = 3,
+          min_mask = 3,
+        }
       local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
       local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
 
@@ -157,7 +155,15 @@ function M.determine_masked_value(value, settings)
       return result
     end
 
-    local result = string_rep(conf.mask_char, #value)
+    local result
+    if #value <= mask_length then
+      result = string_rep(conf.mask_char, #value)
+    else
+      result = string_rep(conf.mask_char, mask_length)
+      if not settings.no_padding then
+        result = result .. string_rep(" ", #value - mask_length)
+      end
+    end
     value_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
@@ -174,11 +180,12 @@ function M.determine_masked_value(value, settings)
     return result
   end
 
-  local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode or {
-    show_start = 3,
-    show_end = 3,
-    min_mask = 3,
-  }
+  local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+    or {
+      show_start = 3,
+      show_end = 3,
+      min_mask = 3,
+    }
 
   local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
@@ -205,11 +212,11 @@ function M.determine_masked_value(value, settings)
   return result
 end
 
----@param value string
----@return string, string|nil
+---@param value_part string
+---@return string, string|nil, string|nil value, quote_char, rest
 function M.extract_value(value_part)
   if not value_part then
-    return "", nil
+    return "", nil, nil
   end
 
   local value = vim.trim(value_part)
@@ -218,10 +225,24 @@ function M.extract_value(value_part)
   local last_char = value:sub(-1)
 
   if (first_char == '"' or first_char == "'") and first_char == last_char then
-    return value:sub(2, -2), first_char
+    local pos = 2
+    while pos <= #value do
+      if value:sub(pos, pos) == first_char and value:sub(pos - 1, pos - 1) ~= "\\" then
+        local quoted_value = value:sub(2, pos - 1)
+        local rest = pos < #value and value:sub(pos + 1) or nil
+        return quoted_value, first_char, rest
+      end
+      pos = pos + 1
+    end
+    return value:sub(2, -2), first_char, nil
   end
 
-  return value, nil
+  local space_pos = value:find("%s")
+  local comment_pos = value:find("#")
+  local end_pos = space_pos or comment_pos or #value + 1
+  local rest = end_pos <= #value and value:sub(end_pos) or nil
+
+  return value:sub(1, end_pos - 1), nil, rest
 end
 
 ---@param filename string

@@ -1,6 +1,5 @@
 local M = {}
 
--- Constants and Patterns
 M.PATTERNS = {
   env_file_combined = "^.+/%.env[^.]*$",
   env_line = "^[^#](.+)$",

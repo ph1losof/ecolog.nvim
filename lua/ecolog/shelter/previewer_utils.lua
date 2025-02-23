@@ -3,12 +3,21 @@ local M = {}
 local api = vim.api
 local state = require("ecolog.shelter.state")
 local shelter_utils = require("ecolog.shelter.utils")
+local buffer_utils = require("ecolog.shelter.buffer")
 local LRUCache = require("ecolog.shelter.lru_cache")
 
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 local processed_buffers = LRUCache.new(100)
 
-local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename)
+---Process a chunk of lines and create extmarks for them
+---@param bufnr number Buffer number
+---@param lines string[] Lines to process
+---@param start_idx number Start index
+---@param end_idx number End index
+---@param content_hash string Content hash
+---@param filename string Filename
+---@param on_complete? function Optional callback when processing is complete
+local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename, on_complete)
   if not api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -16,39 +25,18 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
   end_idx = math.min(end_idx, #lines)
   local chunk_extmarks = {}
   local config = state.get_config()
+  local skip_comments = state.get_buffer_state().skip_comments
 
   for i = start_idx, end_idx do
     local line = lines[i]
-    local eq_pos = line:find("=")
+    local processed_items = buffer_utils.process_line(line)
 
-    if eq_pos then
-      local key = vim.trim(line:sub(1, eq_pos - 1))
-      local value_part = line:sub(eq_pos + 1)
-      local value, quote_char = shelter_utils.extract_value(value_part)
-
-      local masked_value = shelter_utils.determine_masked_value(value, {
-        partial_mode = config.partial_mode,
-        key = key,
-        source = filename,
-        patterns = config.patterns,
-        sources = config.sources,
-        default_mode = config.default_mode,
-        quote_char = quote_char,
-      })
-
-      if masked_value and #masked_value > 0 then
-        local original_value = quote_char and (quote_char .. value .. quote_char) or value
-        local is_masked = masked_value ~= original_value
-
-        table.insert(chunk_extmarks, {
-          i - 1,
-          eq_pos,
-          {
-            virt_text = { { masked_value, is_masked and config.highlight_group or "String" } },
-            virt_text_pos = "overlay",
-            hl_mode = "combine",
-          },
-        })
+    for _, item in ipairs(processed_items) do
+      if not (skip_comments and item.is_comment) then
+        local extmark = buffer_utils.create_extmark(item.value, item, config, filename, i)
+        if extmark then
+          table.insert(chunk_extmarks, extmark)
+        end
       end
     end
   end
@@ -63,26 +51,66 @@ local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_ha
 
   if end_idx < #lines then
     vim.schedule(function()
-      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename)
+      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename, on_complete)
     end)
   else
-    processed_buffers:put(bufnr, content_hash)
+    if on_complete then
+      on_complete(content_hash)
+    else
+      processed_buffers:put(bufnr, content_hash)
+    end
   end
 end
 
-function M.process_buffer(bufnr, source_filename)
+---Check if a buffer needs processing based on its content hash
+---@param bufnr number Buffer number
+---@param content_hash string Content hash
+---@param cache table? Optional cache table to use instead of global cache
+---@return boolean needs_processing
+function M.needs_processing(bufnr, content_hash, cache)
+  local cache_to_use = cache or processed_buffers
+  local cached = cache_to_use:get(bufnr)
+
+  if type(cached) == "table" then
+    return not cached.hash or cached.hash ~= content_hash
+  end
+
+  return not cached or cached ~= content_hash
+end
+
+---Setup preview buffer options for proper concealment
+---@param bufnr number
+function M.setup_preview_buffer(bufnr)
+  pcall(api.nvim_buf_set_option, bufnr, "conceallevel", 2)
+
+  for _, winid in ipairs(api.nvim_list_wins()) do
+    if api.nvim_win_get_buf(winid) == bufnr then
+      pcall(api.nvim_win_set_option, winid, "conceallevel", 2)
+      pcall(api.nvim_win_set_option, winid, "concealcursor", "nvic")
+      break
+    end
+  end
+end
+
+---Process a buffer and apply masking
+---@param bufnr number Buffer number
+---@param source_filename string? Source filename
+---@param cache table? Optional cache table to use instead of global cache
+---@param on_complete? function Optional callback when processing is complete
+function M.process_buffer(bufnr, source_filename, cache, on_complete)
   if not bufnr or not api.nvim_buf_is_valid(bufnr) then
     return
   end
 
   local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
   local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
-  local filename = source_filename or vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
+  local filename = source_filename or vim.fn.fnamemodify(api.nvim_buf_get_name(bufnr), ":t")
 
   pcall(api.nvim_buf_clear_namespace, bufnr, namespace, 0, -1)
-
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
-  process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
+
+  M.setup_preview_buffer(bufnr)
+  process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename, on_complete)
 end
 
 ---@param bufnr number

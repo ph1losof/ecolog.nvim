@@ -133,7 +133,7 @@ end
 
 ---@param line string
 ---@return ProcessedItem[]
-local function process_line(line)
+function M.process_line(line)
   vim.validate({ line = { line, "string" } })
 
   local results = {}
@@ -298,7 +298,7 @@ end
 ---@param bufname string
 ---@param line_num number
 ---@return table?
-local function create_extmark(value, item, config, bufname, line_num)
+function M.create_extmark(value, item, config, bufname, line_num)
   local is_revealed = state.is_line_revealed(line_num)
   local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
 
@@ -400,14 +400,14 @@ function M.shelter_buffer()
         goto continue
       end
 
-      local processed_items = process_line(line)
+      local processed_items = M.process_line(line)
       for _, item in ipairs(processed_items) do
         if skip_comments and item.is_comment then
           goto continue_item
         end
 
         if item.value and #item.value > 0 then
-          local extmark = create_extmark(item.value, item, {
+          local extmark = M.create_extmark(item.value, item, {
             partial_mode = config_partial_mode,
             highlight_group = config_highlight_group,
           }, bufname, line_num)

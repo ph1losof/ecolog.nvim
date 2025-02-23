@@ -111,68 +111,22 @@ function M.determine_masked_value(value, settings)
   end
 
   local mask_length = conf.mask_length
-  if mask_length and mask_length > 0 then
-    local masked = string_rep(conf.mask_char, mask_length)
-    if mode == "partial" and conf.partial_mode then
-      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
-        or {
-          show_start = 3,
-          show_end = 3,
-          min_mask = 3,
-        }
-      local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
-      local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
+  if not mask_length then
+    local global_config = require("ecolog").get_config()
+    mask_length = global_config and global_config.mask_length
+  end
+  mask_length = mask_length or #value
 
-      if #value <= (show_start + show_end) then
-        local result = string_rep(conf.mask_char, #value)
-        value_cache:put(cache_key, result)
-        if settings.quote_char then
-          return settings.quote_char .. result .. settings.quote_char
-        end
-        return result
-      end
-
-      local total_length = show_start + mask_length + show_end
-      local full_value_length = settings.quote_char and (#value + 2) or #value
-
-      if #value <= mask_length then
-        local result = string_rep(conf.mask_char, #value)
-        value_cache:put(cache_key, result)
-        if settings.quote_char then
-          return settings.quote_char .. result .. settings.quote_char
-        end
-        return result
-      end
-
-      local result = string_sub(value, 1, show_start) .. masked .. string_sub(value, -show_end)
-      if total_length < full_value_length and not settings.no_padding then
-        result = result .. string_rep(" ", full_value_length - total_length)
-      end
-      value_cache:put(cache_key, result)
-      if settings.quote_char then
-        return settings.quote_char .. result .. settings.quote_char
-      end
-      return result
-    end
-
+  if mode == "full" or not conf.partial_mode then
     local result
-    if #value <= mask_length then
+    if not mask_length then
       result = string_rep(conf.mask_char, #value)
     else
       result = string_rep(conf.mask_char, mask_length)
-      if not settings.no_padding then
+      if not settings.no_padding and mask_length < #value then
         result = result .. string_rep(" ", #value - mask_length)
       end
     end
-    value_cache:put(cache_key, result)
-    if settings.quote_char then
-      return settings.quote_char .. result .. settings.quote_char
-    end
-    return result
-  end
-
-  if mode == "full" or not conf.partial_mode then
-    local result = string_rep(conf.mask_char, #value)
     value_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
@@ -192,7 +146,15 @@ function M.determine_masked_value(value, settings)
   local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
 
   if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    local result = string_rep(conf.mask_char, #value)
+    local result
+    if not mask_length then
+      result = string_rep(conf.mask_char, #value)
+    else
+      result = string_rep(conf.mask_char, mask_length)
+      if not settings.no_padding and mask_length < #value then
+        result = result .. string_rep(" ", #value - mask_length)
+      end
+    end
     value_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
@@ -200,10 +162,19 @@ function M.determine_masked_value(value, settings)
     return result
   end
 
-  local mask_len = math.max(min_mask, #value - show_start - show_end)
+  local available_mask_space = #value - show_start - show_end
+  local effective_mask_length = math.max(
+    math.min(mask_length or available_mask_space, available_mask_space),
+    min_mask
+  )
+
   local result = string_sub(value, 1, show_start)
-    .. string_rep(conf.mask_char, mask_len)
+    .. string_rep(conf.mask_char, effective_mask_length)
     .. string_sub(value, -show_end)
+
+  if not settings.no_padding and effective_mask_length < available_mask_space then
+    result = result .. string_rep(" ", available_mask_space - effective_mask_length)
+  end
 
   value_cache:put(cache_key, result)
   if settings.quote_char then

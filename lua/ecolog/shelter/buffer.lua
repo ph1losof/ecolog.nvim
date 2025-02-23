@@ -285,7 +285,7 @@ function M.shelter_buffer()
 
   local winid = api.nvim_get_current_win()
   api.nvim_win_set_option(winid, "conceallevel", 2)
-  api.nvim_win_set_option(winid, "concealcursor", "nvc")
+  api.nvim_win_set_option(winid, "concealcursor", "nvic")
 
   active_buffers[bufnr] = vim.loop.now()
 
@@ -361,8 +361,8 @@ function M.shelter_buffer()
                 virt_text = {
                   { masked_value, (is_revealed or masked_value == raw_value) and "String" or config_highlight_group },
                 },
-                virt_text_pos = "overlay",
-                hl_mode = "combine",
+                virt_text_pos = "inline",
+                hl_mode = "replace",
                 priority = item.is_comment and 10000 or 9999,
                 strict = true,
                 end_col = item.eq_pos + #raw_value,

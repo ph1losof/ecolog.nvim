@@ -752,7 +752,7 @@ end
 
 Add `ecolog` to your nvim-cmp sources:
 
-```lua
+````lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
@@ -768,7 +768,7 @@ require('ecolog').setup({
     nvim_cmp = false,
   },
 })
-```
+````
 
 See [Currently Supported Languages](#currently-supported) for available completion triggers and [Custom Providers](#-custom-providers) for adding support for additional languages.
 
@@ -1541,6 +1541,7 @@ Three modes of operation:
 You can control the length of masked portions using the `mask_length` option:
 
 1. **Full Masking Mode**:
+
    ```lua
    shelter = {
        configuration = {
@@ -2004,7 +2005,7 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | Performance                  | ✅ Better performance, especially in previewer buffers due to LRU caching, opening files is ~20ms faster then normal neovim(from my experience) | 🟡 Significantly slower. However, minimal implementation and also good                     |
 | Line of code                 | 🟡 ~1500+ LOC actively used on average, the rest is lazy loaded                                                                                 | ✅ Only ~300 LOC                                                                           |
 | Supports custom integrations | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc.                                                         | 🟡 Only works in file buffers and telescope previewer                                      |
-| Static mask length           | ❌ Chose not to support it due to neovim limitations                                                                                            | 🟡 Supports but have caveats                                                               |
+| Static mask length           | 🟡 Supports                                                                                                                                     | 🟡 Supports but doesn't show comments and if one line has multiple matches                 |
 | Filetype support             | 🟡 Supports only `sh` and `.env` files                                                                                                          | ✅ Can work in any filetype                                                                |
 
 ### Environment Management (vs [telescope-env.nvim](https://github.com/LinArcX/telescope-env.nvim))

@@ -636,7 +636,7 @@ This affects all features that extract variables from code (peek, goto definitio
 
 ## 💡 Custom Environment File Patterns
 
-Ecolog supports custom patterns for matching environment files. This allows you to define your own naming conventions beyond the default `.env*` pattern.
+Ecolog supports custom patterns for matching environment files. This allows you to define your own naming conventions and directory structures beyond the default `.env*` pattern.
 
 #### Basic Usage
 
@@ -644,7 +644,7 @@ Set a single custom pattern:
 
 ```lua
 require('ecolog').setup({
-  env_file_pattern = "^config/.+%.env$" -- Matches any .env file in the config directory
+  env_file_patterns = { "config/env.*" } -- Matches env.any_here file in the config directory
 })
 ```
 
@@ -652,37 +652,56 @@ Use multiple patterns:
 
 ```lua
 require('ecolog').setup({
-  env_file_pattern = {
-    "^config/.+%.env$",     -- Matches .env files in config directory
-    "^environments/.+%.env$" -- Matches .env files in environments directory
+  env_file_patterns = {
+    "config/.env",      -- Matches .env file in config directory
+    "config/.env.*",    -- Matches any .env.* file in config directory
+    "environments/*"    -- Matches any file in environments directory
   }
 })
 ```
 
 #### Pattern Format
 
-- Patterns use Lua pattern matching syntax
+- Patterns use glob/wildcard syntax (e.g., `*` matches any characters)
 - Patterns are relative to the project root (`path` option)
-- Default patterns (`.env*`) are always included as fallback
+- Default patterns (`.env`, `.envrc`, `.env.*`) are used if no custom patterns are specified
+- When custom patterns are specified, ONLY those patterns are used (defaults are not included)
+
+#### Pattern Matching Rules
+
+1. **Directory Structure**: Patterns can include directories (e.g., `config/.env`, `environments/.env.*`)
+2. **File Extensions**: Use `.*` to match any extension (e.g., `.env.*` matches `.env.development`, `.env.test`)
+3. **Wildcards**: Use `*` to match any characters (e.g., `config/*` matches any file in the config directory)
 
 #### Examples
 
 ```lua
-env_file_pattern = {
-  "^%.env%.%w+$",          -- Matches .env.development, .env.production, etc.
-  "^config/env%.%w+$",     -- Matches config/env.development, config/env.production, etc.
-  "^%.env%.local%.%w+$",   -- Matches .env.local.development, .env.local.production, etc.
-  "^environments/.+%.env$"  -- Matches any file ending in .env in the environments directory
+-- Match specific environments in config directory
+env_file_patterns = {
+  "config/.env.development",
+  "config/.env.production"
+}
+
+-- Match all env files in multiple directories
+env_file_patterns = {
+  "config/env/*",
+  "environments/*",
+  ".env*"
+}
+
+-- Match specific naming convention
+env_file_patterns = {
+  "env.*.config",
+  "env.*.local"
 }
 ```
 
-#### Features
+#### Default Behavior
 
-- Multiple pattern support
-- Directory-specific matching
-- Flexible naming conventions
-- Fallback to default patterns
-- Real-time file monitoring for custom patterns
+If no custom patterns are specified, Ecolog uses these default patterns:
+- `.env` - Main environment file
+- `.envrc` - Shell environment file
+- `.env.*` - Environment-specific files (e.g., `.env.development`, `.env.test`)
 
 ## 🔄 Custom Sort Function
 
@@ -755,13 +774,14 @@ end
 
 Add `ecolog` to your nvim-cmp sources:
 
-````lua
+```lua
 require('cmp').setup({
   sources = {
     { name = 'ecolog' },
     -- your other sources...
   },
 })
+```
 
 Nvim-cmp integration is enabled by default. To disable it:
 
@@ -771,7 +791,7 @@ require('ecolog').setup({
     nvim_cmp = false,
   },
 })
-````
+```
 
 See [Currently Supported Languages](#currently-supported) for available completion triggers and [Custom Providers](#-custom-providers) for adding support for additional languages.
 

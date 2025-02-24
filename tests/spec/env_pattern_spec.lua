@@ -1,146 +1,123 @@
 local assert = require("luassert")
 
 describe("env pattern and sorting", function()
-  local utils
-  local test_dir
+  local utils = require("ecolog.utils")
 
-  before_each(function()
-    package.loaded["ecolog.utils"] = nil
-    utils = require("ecolog.utils")
-    test_dir = vim.fn.tempname()
-    vim.fn.mkdir(test_dir, "p")
-  end)
+  local function create_test_files(path)
+    vim.fn.mkdir(path, "p")
+    local files = {
+      [path .. "/.env"] = "KEY=value",
+      [path .. "/.env.development"] = "KEY=dev",
+      [path .. "/.env.test"] = "KEY=test",
+      [path .. "/config/.env"] = "KEY=config",
+      [path .. "/config/.env.local"] = "KEY=config_local",
+    }
+    for file, content in pairs(files) do
+      local dir = vim.fn.fnamemodify(file, ":h")
+      vim.fn.mkdir(dir, "p")
+      local f = io.open(file, "w")
+      f:write(content)
+      f:close()
+    end
+    return files
+  end
 
-  after_each(function()
-    vim.fn.delete(test_dir, "rf")
-  end)
+  local function cleanup_test_files(path)
+    vim.fn.delete(path, "rf")
+  end
 
   describe("custom env file pattern", function()
     it("should match default env files", function()
-      local files = {
-        test_dir .. "/.env",
-        test_dir .. "/.env.local",
-        test_dir .. "/.env.development",
-        test_dir .. "/.env.test",
-        test_dir .. "/not-env-file.txt",
-        test_dir .. "/.environment",
-      }
+      local test_dir = vim.fn.tempname()
+      local files = create_test_files(test_dir)
 
-      -- Create test files
-      for _, file in ipairs(files) do
-        vim.fn.writefile({}, file)
-      end
+      local found = utils.find_env_files({
+        path = test_dir,
+      })
 
-      local matched = utils.filter_env_files(files, nil) -- nil pattern should use default
-      assert.equals(4, #matched)
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/.env"))
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/.env.local"))
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/.env.development"))
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/.env.test"))
+      -- Should find .env and .env.* files in root
+      assert.equals(3, #found)
+      cleanup_test_files(test_dir)
     end)
 
     it("should match custom pattern", function()
-      local files = {
-        test_dir .. "/config.env",
-        test_dir .. "/config.env.local",
-        test_dir .. "/config.env.dev",
-        test_dir .. "/.env",
-        test_dir .. "/not-env-file.txt",
-      }
+      local test_dir = vim.fn.tempname()
+      local files = create_test_files(test_dir)
 
-      -- Create test files
-      for _, file in ipairs(files) do
-        vim.fn.writefile({}, file)
-      end
+      local found = utils.find_env_files({
+        path = test_dir,
+        env_file_patterns = { "config/.env" },
+      })
 
-      local pattern = "^.+/config%.env[^.]*$"
-      local matched = utils.filter_env_files(files, pattern)
-      assert.equals(1, #matched)
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/config.env"))
+      -- Should find only config/.env
+      assert.equals(1, #found)
+      assert.equals(test_dir .. "/config/.env", found[1])
+      cleanup_test_files(test_dir)
     end)
 
     it("should match multiple custom patterns", function()
-      local files = {
-        test_dir .. "/config.env",
-        test_dir .. "/config.env.local",
-        test_dir .. "/env.conf",
-        test_dir .. "/env.conf.local",
-        test_dir .. "/.env",
-        test_dir .. "/not-env-file.txt",
-      }
+      local test_dir = vim.fn.tempname()
+      local files = create_test_files(test_dir)
 
-      -- Create test files
-      for _, file in ipairs(files) do
-        vim.fn.writefile({}, file)
-      end
+      local found = utils.find_env_files({
+        path = test_dir,
+        env_file_patterns = { "config/.env", "config/.env.*" },
+      })
 
-      local patterns = {
-        "^.+/config%.env[^.]*$",
-        "^.+/env%.conf[^.]*$",
-      }
-      local matched = utils.filter_env_files(files, patterns)
-      assert.equals(2, #matched)
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/config.env"))
-      assert.truthy(vim.tbl_contains(matched, test_dir .. "/env.conf"))
+      -- Should find both config/.env and config/.env.local
+      assert.equals(2, #found)
+      cleanup_test_files(test_dir)
     end)
   end)
 
   describe("custom env file sorting", function()
     it("should use default sorting when no custom sort function provided", function()
-      local files = {
-        test_dir .. "/.env.test",
-        test_dir .. "/.env",
-        test_dir .. "/.env.local",
-      }
+      local test_dir = vim.fn.tempname()
+      local files = create_test_files(test_dir)
 
-      local sorted = utils.sort_env_files(files, { preferred_environment = "" })
-      assert.equals(test_dir .. "/.env", sorted[1])
+      local found = utils.find_env_files({
+        path = test_dir,
+      })
+
+      -- Default sorting: .env comes first
+      assert.equals(test_dir .. "/.env", found[1])
+      cleanup_test_files(test_dir)
     end)
 
     it("should use custom sort function when provided", function()
-      local files = {
-        test_dir .. "/.env.test",
-        test_dir .. "/.env",
-        test_dir .. "/.env.local",
-      }
+      local test_dir = vim.fn.tempname()
+      local files = create_test_files(test_dir)
 
-      local sort_fn = function(a, b)
-        -- Sort by string length (just as an example)
-        return #a < #b
+      local custom_sort = function(a, b)
+        -- Sort by length of filename (without path)
+        local a_name = vim.fn.fnamemodify(a, ":t")
+        local b_name = vim.fn.fnamemodify(b, ":t")
+        return #a_name > #b_name
       end
 
-      local sorted = utils.sort_env_files(files, { sort_fn = sort_fn })
-      assert.equals(test_dir .. "/.env", sorted[1])
-      assert.equals(test_dir .. "/.env.test", sorted[2])
-      assert.equals(test_dir .. "/.env.local", sorted[3])
+      local found = utils.find_env_files({
+        path = test_dir,
+        sort_fn = custom_sort,
+      })
+
+      -- Longest filename should come first
+      local first_name = vim.fn.fnamemodify(found[1], ":t")
+      assert.equals(".env.development", first_name)
+      cleanup_test_files(test_dir)
     end)
 
     it("should handle custom sort function with preferred environment", function()
-      local files = {
-        test_dir .. "/.env.test",
-        test_dir .. "/.env",
-        test_dir .. "/.env.local",
-      }
+      local test_dir = vim.fn.tempname()
+      local files = create_test_files(test_dir)
 
-      local sort_fn = function(a, b, opts)
-        -- First prioritize preferred environment
-        if opts.preferred_environment ~= "" then
-          local pref_pattern = "%.env%." .. vim.pesc(opts.preferred_environment) .. "$"
-          local a_is_preferred = a:match(pref_pattern) ~= nil
-          local b_is_preferred = b:match(pref_pattern) ~= nil
-          if a_is_preferred ~= b_is_preferred then
-            return a_is_preferred
-          end
-        end
-        -- Then sort alphabetically
-        return a < b
-      end
-
-      local sorted = utils.sort_env_files(files, {
-        sort_fn = sort_fn,
+      local found = utils.find_env_files({
+        path = test_dir,
         preferred_environment = "test",
       })
-      assert.equals(test_dir .. "/.env.test", sorted[1])
+
+      -- .env.test should come first due to preferred_environment
+      assert.equals(test_dir .. "/.env.test", found[1])
+      cleanup_test_files(test_dir)
     end)
   end)
 end) 

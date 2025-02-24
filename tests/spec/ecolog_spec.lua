@@ -518,28 +518,37 @@ describe("ecolog", function()
     end)
 
     it("should select initial env file with custom patterns", function()
-      -- Create test env files
-      vim.fn.writefile({ "TEST=value" }, test_dir .. "/config.env")
+      local test_dir = vim.fn.tempname()
+      vim.fn.mkdir(test_dir .. "/config", "p")
+      
+      -- Create test files
+      local files = {
+        [test_dir .. "/config/.env"] = "TEST=config",
+        [test_dir .. "/config/.env.local"] = "TEST=config_local",
+        [test_dir .. "/.env"] = "TEST=root",
+      }
+      
+      for file, content in pairs(files) do
+        local f = io.open(file, "w")
+        f:write(content)
+        f:close()
+      end
 
+      -- Setup with custom pattern
       ecolog.setup({
         path = test_dir,
-        env_file_pattern = "^.+/config%.env$",
-        shelter = {
-          configuration = {},
-          modules = {},
-        },
-        integrations = {
-          nvim_cmp = false,
-          blink_cmp = false,
-          lsp = false,
-          lspsaga = false,
-          fzf = false,
-        },
-        types = true,
+        env_file_patterns = { "config/.env" },
       })
 
+      -- Wait for async operations
+      vim.wait(100)
+
+      -- Get environment variables
       local env_vars = ecolog.get_env_vars()
-      assert.equals("value", env_vars.TEST.value)
+      assert.equals("config", env_vars.TEST.raw_value)
+
+      -- Cleanup
+      vim.fn.delete(test_dir, "rf")
     end)
 
     it("should respect preferred environment with custom patterns", function()
@@ -569,29 +578,37 @@ describe("ecolog", function()
     end)
 
     it("should handle multiple custom patterns", function()
-      -- Create test env files
-      vim.fn.writefile({ "TEST=value" }, test_dir .. "/config.env")
-      vim.fn.writefile({ "TEST=dev" }, test_dir .. "/.env.development")
+      local test_dir = vim.fn.tempname()
+      vim.fn.mkdir(test_dir .. "/config", "p")
+      
+      -- Create test files
+      local files = {
+        [test_dir .. "/config/.env"] = "TEST=config",
+        [test_dir .. "/config/.env.local"] = "TEST=config_local",
+        [test_dir .. "/.env"] = "TEST=root",
+      }
+      
+      for file, content in pairs(files) do
+        local f = io.open(file, "w")
+        f:write(content)
+        f:close()
+      end
 
+      -- Setup with multiple custom patterns
       ecolog.setup({
         path = test_dir,
-        env_file_pattern = { "^.+/config%.env$", "^.+/%.env%.development$" },
-        shelter = {
-          configuration = {},
-          modules = {},
-        },
-        integrations = {
-          nvim_cmp = false,
-          blink_cmp = false,
-          lsp = false,
-          lspsaga = false,
-          fzf = false,
-        },
-        types = true,
+        env_file_patterns = { "config/.env", "config/.env.*" },
       })
 
+      -- Wait for async operations
+      vim.wait(100)
+
+      -- Get environment variables
       local env_vars = ecolog.get_env_vars()
-      assert.equals("value", env_vars.TEST.value)
+      assert.equals("config", env_vars.TEST.raw_value)
+
+      -- Cleanup
+      vim.fn.delete(test_dir, "rf")
     end)
   end)
 end)

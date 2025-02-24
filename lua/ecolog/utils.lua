@@ -1,5 +1,13 @@
 local M = {}
 
+---@class Patterns
+---@field env_file_combined string Pattern for matching .env files
+---@field env_line string Pattern for matching non-comment lines
+---@field key_value string Pattern for matching key-value pairs
+---@field quoted string Pattern for matching quoted values
+---@field trim string Pattern for trimming whitespace
+---@field word string Pattern for matching word characters
+---@field env_var string Pattern for matching environment variable names
 M.PATTERNS = {
   env_file_combined = "^.+/%.env[^.]*$",
   env_line = "^[^#](.+)$",
@@ -10,10 +18,11 @@ M.PATTERNS = {
   env_var = "^[%w_]+$",
 }
 
+-- Default patterns for .env files
 local DEFAULT_ENV_PATTERNS = {
-  "^.+/%.env$",
-  "^.+/%.env%.[^.]+$",
-  "^.+/%.envrc$",
+  ".env",
+  ".envrc",
+  ".env.*",
 }
 
 -- Pattern conversion utilities
@@ -25,19 +34,11 @@ function M.convert_to_lua_pattern(pattern)
   return escaped:gsub("%*", ".*")
 end
 
----Convert a Lua pattern to a glob pattern for file watching
----@param pattern string The Lua pattern to convert
----@return string The converted glob pattern
-function M.convert_pattern_to_glob(pattern)
-  local glob = pattern:gsub("^%^", ""):gsub("%$$", "")
-  glob = glob:gsub("%%.", "")
-  glob = glob:gsub("%.%+", "*")
-  return glob
-end
+--[[ File Pattern Matching ]]
 
--- File filtering and pattern matching utilities
+---Filter a list of files based on glob patterns
 ---@param files string[]|nil The files to filter
----@param patterns string|string[]|nil The patterns to match against
+---@param patterns string[]|nil The glob patterns to match against
 ---@return string[] Filtered files
 function M.filter_env_files(files, patterns)
   if not files then
@@ -48,12 +49,8 @@ function M.filter_env_files(files, patterns)
     return f ~= nil
   end, files)
 
-  if not patterns then
+  if not patterns or type(patterns) ~= "table" then
     patterns = DEFAULT_ENV_PATTERNS
-  elseif type(patterns) == "string" then
-    patterns = { patterns }
-  elseif type(patterns) ~= "table" then
-    return files
   end
 
   if #patterns == 0 then
@@ -64,8 +61,9 @@ function M.filter_env_files(files, patterns)
     if not file then
       return false
     end
+    local filename = vim.fn.fnamemodify(file, ":t")
     for _, pattern in ipairs(patterns) do
-      if type(pattern) == "string" and file:match(pattern) then
+      if type(pattern) == "string" and vim.fn.match(filename, vim.fn.glob2regpat(pattern)) >= 0 then
         return true
       end
     end
@@ -82,9 +80,14 @@ function M.match_env_file(filename, config)
     return false
   end
 
-  local patterns = config.env_file_pattern or { "%.env.*" }
+  local patterns = config.env_file_patterns
+  if not patterns or type(patterns) ~= "table" then
+    patterns = DEFAULT_ENV_PATTERNS
+  end
+
+  local basename = vim.fn.fnamemodify(filename, ":t")
   for _, pattern in ipairs(patterns) do
-    if filename:match(pattern) then
+    if type(pattern) == "string" and vim.fn.match(basename, vim.fn.glob2regpat(pattern)) >= 0 then
       return true
     end
   end
@@ -93,28 +96,22 @@ function M.match_env_file(filename, config)
 end
 
 ---Generate watch patterns for file watching based on config
----@param config table The config containing path and env_file_pattern
+---@param config table The config containing path and env_file_patterns
 ---@param opts? {use_absolute_path?: boolean} Optional settings
 ---@return string[] List of watch patterns
 function M.get_watch_patterns(config, opts)
   opts = opts or {}
-  if not config.env_file_pattern then
+  if not config.env_file_patterns or type(config.env_file_patterns) ~= "table" then
     return opts.use_absolute_path and config.path and { config.path .. "/.env*" } or { ".env*" }
   end
 
-  local patterns = type(config.env_file_pattern) == "string" and { config.env_file_pattern }
-    or config.env_file_pattern
-    or {}
-
   local watch_patterns = {}
-  for _, pattern in ipairs(patterns) do
+  for _, pattern in ipairs(config.env_file_patterns) do
     if type(pattern) == "string" then
-      local glob_pattern = M.convert_pattern_to_glob(pattern)
-      local final_pattern = glob_pattern:gsub("^%.%+/", "")
       if opts.use_absolute_path and config.path then
-        table.insert(watch_patterns, config.path .. "/" .. final_pattern)
+        table.insert(watch_patterns, config.path .. "/" .. pattern)
       else
-        table.insert(watch_patterns, final_pattern)
+        table.insert(watch_patterns, pattern)
       end
     end
   end
@@ -126,6 +123,58 @@ function M.get_watch_patterns(config, opts)
   return watch_patterns
 end
 
+--[[ File Finding and Sorting ]]
+
+---Find environment files based on provided options
+---@param opts? {path?: string, env_file_patterns?: string[], preferred_environment?: string, sort_fn?: function}
+---@return string[] List of found environment files
+function M.find_env_files(opts)
+  opts = opts or {}
+  local path = opts.path or vim.fn.getcwd()
+
+  local files = {}
+  if not opts.env_file_patterns then
+    -- Use default patterns
+    local env_files = {}
+    for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
+      local found = vim.fn.glob(path .. "/" .. pattern, false, true)
+      if type(found) == "string" then
+        found = { found }
+      end
+      vim.list_extend(env_files, found)
+    end
+
+    files = env_files
+  else
+    -- Use custom patterns only
+    if type(opts.env_file_patterns) ~= "table" then
+      vim.notify("env_file_patterns must be a table of glob patterns", vim.log.levels.WARN)
+      return {}
+    end
+
+    -- Gather files using each glob pattern
+    local all_files = {}
+    for _, pattern in ipairs(opts.env_file_patterns) do
+      if type(pattern) == "string" then
+        local found = vim.fn.glob(path .. "/" .. pattern, false, true)
+        if type(found) == "string" then
+          found = { found }
+        end
+        vim.list_extend(all_files, found)
+      end
+    end
+
+    files = all_files
+  end
+
+  return M.sort_env_files(files, opts)
+end
+
+---Default sorting function for environment files
+---@param a string First file path
+---@param b string Second file path
+---@param opts table Options containing preferred_environment
+---@return boolean Whether a should come before b
 local function default_sort_fn(a, b, opts)
   if not a or not b then
     return false
@@ -149,6 +198,10 @@ local function default_sort_fn(a, b, opts)
   return a < b
 end
 
+---Sort environment files based on preferences
+---@param files string[]|nil Files to sort
+---@param opts? {preferred_environment?: string, sort_fn?: function}
+---@return string[] Sorted files
 function M.sort_env_files(files, opts)
   if not files or #files == 0 then
     return {}
@@ -168,6 +221,14 @@ function M.sort_env_files(files, opts)
   return files
 end
 
+--[[ Environment File Parsing ]]
+
+---Extract parts from an environment file line
+---@param line string The line to parse
+---@return string|nil key The environment variable key
+---@return string|nil value The environment variable value
+---@return string|nil comment Any inline comment
+---@return string|nil quote_char The quote character used (if any)
 function M.extract_line_parts(line)
   if line:match("^%s*#") or line:match("^%s*$") then
     return nil
@@ -215,6 +276,11 @@ function M.extract_line_parts(line)
   return key, value, nil, nil
 end
 
+---Parse a line from an environment file
+---@param line string The line to parse
+---@return string|nil key The environment variable key
+---@return string|nil value The environment variable value
+---@return number|nil eq_pos The position of the equals sign
 function M.parse_env_line(line)
   if not line or line:match("^%s*#") or line:match("^%s*$") then
     return nil, nil, nil
@@ -231,6 +297,13 @@ function M.parse_env_line(line)
   return key, value, eq_pos
 end
 
+--[[ Text Processing ]]
+
+---Find word boundaries in a line of text
+---@param line string The line to search
+---@param col number The column position
+---@return number|nil start The start position of the word
+---@return number|nil end_ The end position of the word
 function M.find_word_boundaries(line, col)
   if #line == 0 then
     return nil, nil
@@ -277,10 +350,17 @@ function M.find_word_boundaries(line, col)
   return word_start + 1, word_end
 end
 
+---Extract variable name from a line
+---@param line string The line to extract from
+---@return string|nil name The extracted variable name
 function M.extract_var_name(line)
   return line:match("^(.-)%s*=")
 end
 
+---Extract quoted value from a string
+---@param value string The string to extract from
+---@return string|nil quote_char The quote character used
+---@return string|nil extracted_value The extracted value
 function M.extract_quoted_value(value)
   if not value then
     return nil, nil
@@ -294,6 +374,11 @@ function M.extract_quoted_value(value)
   return quote_char, string.match(value, "^" .. quote_char .. "(.-)" .. quote_char)
 end
 
+---Extract environment variable from a line at a position
+---@param line string The line to extract from
+---@param col number The column position
+---@param pattern string The pattern to match
+---@return string|nil var The extracted variable
 function M.extract_env_var(line, col, pattern)
   if not line or not col then
     return nil
@@ -302,44 +387,11 @@ function M.extract_env_var(line, col, pattern)
   return before_cursor:match(pattern)
 end
 
-local function append(dest, src)
-  if type(src) == "table" then
-    for _, v in ipairs(src) do
-      table.insert(dest, v)
-    end
-  elseif type(src) == "string" then
-    table.insert(dest, src)
-  else
-    error("Unsupported type: " .. type(src))
-  end
-end
-
-function M.find_env_files(opts)
-  opts = opts or {}
-  local path = opts.path or vim.fn.getcwd()
-
-  local files = {}
-  if not opts.env_file_pattern then
-    local env_files = vim.fn.glob(path .. "/.env*", false, true)
-
-    if type(env_files) == "string" then
-      env_files = { env_files }
-    end
-
-    files = M.filter_env_files(env_files, DEFAULT_ENV_PATTERNS)
-  else
-    local all_files = vim.fn.glob(path .. "/*", false, true)
-    if type(all_files) == "string" then
-      all_files = { all_files }
-    end
-    append(all_files, vim.fn.glob(path .. "/.[^.]*", false, true))
-    files = M.filter_env_files(all_files, opts.env_file_pattern)
-  end
-
-  return M.sort_env_files(files, opts)
-end
-
-local function generate_example_file(env_file)
+--[[ File Generation ]]
+---Generate an example environment file
+---@param env_file string Path to the source .env file
+---@return boolean success Whether the file was generated successfully
+function M.generate_example_file(env_file)
   local f = io.open(env_file, "r")
   if not f then
     vim.notify("Could not open .env file", vim.log.levels.ERROR)
@@ -374,8 +426,12 @@ local function generate_example_file(env_file)
   return true
 end
 
-M.generate_example_file = generate_example_file
+--[[ UI Utilities ]]
 
+---Create options for a minimal floating window
+---@param width number Window width
+---@param height number Window height
+---@return table opts Window options
 function M.create_minimal_win_opts(width, height)
   local screen_width = vim.o.columns
   local screen_height = vim.o.lines
@@ -392,6 +448,8 @@ function M.create_minimal_win_opts(width, height)
   }
 end
 
+---Create a function to restore minimal window options
+---@return function restore Function to restore window options
 function M.minimal_restore()
   local minimal_opts = {
     ["number"] = vim.opt.number,
@@ -417,7 +475,13 @@ function M.minimal_restore()
   end
 end
 
+--[[ Module Management ]]
+
 local _cached_modules = {}
+
+---Require a module on demand with caching
+---@param name string Module name
+---@return table module The required module
 function M.require_on_demand(name)
   if not _cached_modules[name] then
     _cached_modules[name] = require(name)
@@ -425,6 +489,9 @@ function M.require_on_demand(name)
   return _cached_modules[name]
 end
 
+---Get a module with lazy loading
+---@param name string Module name
+---@return table module The module proxy
 function M.get_module(name)
   return setmetatable({}, {
     __index = function(_, key)
@@ -433,7 +500,11 @@ function M.get_module(name)
   })
 end
 
----@return string Variable name or empty string if not found
+--[[ Variable Extraction ]]
+
+---Get the variable word under the cursor
+---@param providers? table[] List of providers
+---@return string var_name Variable name or empty string if not found
 function M.get_var_word_under_cursor(providers)
   local line = vim.api.nvim_get_current_line()
   local col = vim.api.nvim_win_get_cursor(0)[2]

@@ -13,7 +13,7 @@ local schedule = vim.schedule
 ---@field custom_types table Custom type definitions
 ---@field preferred_environment string Preferred environment name
 ---@field load_shell LoadShellConfig Shell variables loading configuration
----@field env_file_pattern string|string[] Custom pattern(s) for matching env files
+---@field env_file_patterns string[] Custom glob patterns for matching env files (e.g., ".env.*", "config/.env*")
 ---@field sort_fn? function Custom function for sorting env files
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
@@ -91,7 +91,7 @@ local DEFAULT_CONFIG = {
     filter = nil,
     transform = nil,
   },
-  env_file_pattern = nil,
+  env_file_patterns = nil,
   sort_fn = nil,
   interpolation = {
     enabled = false,
@@ -293,7 +293,7 @@ local function create_commands(config)
         select.select_env_file({
           path = config.path,
           active_file = state.selected_env_file,
-          env_file_pattern = config.env_file_pattern,
+          env_file_patterns = config.env_file_patterns,
           sort_fn = config.sort_fn,
           preferred_environment = config.preferred_environment,
         }, function(file)
@@ -539,6 +539,30 @@ local function create_commands(config)
   end
 end
 
+---@param config EcologConfig
+local function validate_config(config)
+  -- Handle deprecated env_file_pattern if it exists
+  if config.env_file_pattern ~= nil then
+    notify("env_file_pattern is deprecated, please use env_file_patterns instead with glob patterns (e.g., '.env.*', 'config/.env*')", vim.log.levels.WARN)
+    if type(config.env_file_pattern) == "table" and #config.env_file_pattern > 0 then
+      config.env_file_patterns = config.env_file_pattern
+    end
+    config.env_file_pattern = nil
+  end
+
+  if type(config.provider_patterns) == "boolean" then
+    config.provider_patterns = {
+      extract = config.provider_patterns,
+      cmp = config.provider_patterns,
+    }
+  elseif type(config.provider_patterns) == "table" then
+    config.provider_patterns = vim.tbl_deep_extend("force", {
+      extract = true,
+      cmp = true,
+    }, config.provider_patterns)
+  end
+end
+
 function M.setup(opts)
   if _setup_done then
     return
@@ -546,6 +570,7 @@ function M.setup(opts)
   _setup_done = true
 
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  validate_config(config)
 
   if type(config.interpolation) == "boolean" then
     config.interpolation = {
@@ -565,18 +590,6 @@ function M.setup(opts)
   end
 
   state.selected_env_file = nil
-
-  if type(config.provider_patterns) == "boolean" then
-    config.provider_patterns = {
-      extract = config.provider_patterns,
-      cmp = config.provider_patterns,
-    }
-  elseif type(config.provider_patterns) == "table" then
-    config.provider_patterns = vim.tbl_deep_extend("force", {
-      extract = true,
-      cmp = true,
-    }, config.provider_patterns)
-  end
 
   state.last_opts = config
 
@@ -609,7 +622,7 @@ function M.setup(opts)
   local initial_env_files = utils.find_env_files({
     path = config.path,
     preferred_environment = config.preferred_environment,
-    env_file_pattern = config.env_file_pattern,
+    env_file_patterns = config.env_file_patterns,
     sort_fn = config.sort_fn,
   })
 

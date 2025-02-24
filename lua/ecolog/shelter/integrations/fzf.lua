@@ -5,79 +5,10 @@ local api = vim.api
 local state = require("ecolog.shelter.state")
 local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
+local previewer_utils = require("ecolog.shelter.previewer_utils")
 local lru_cache = require("ecolog.shelter.lru_cache")
 
-local namespace = api.nvim_create_namespace("ecolog_shelter")
-
 local processed_buffers = lru_cache.new(100)
-
-local function get_masked_value(value, key, filename)
-  if not value then
-    return ""
-  end
-
-  local quote_char = value:match("^([\"'])")
-  local actual_value = quote_char and value:match("^" .. quote_char .. "(.-)" .. quote_char) or value
-
-  if not actual_value then
-    return value
-  end
-
-  local masked = shelter_utils.determine_masked_value(actual_value, {
-    partial_mode = state.get_config().partial_mode,
-    key = key,
-    source = filename,
-  })
-
-  if quote_char then
-    return quote_char .. masked .. quote_char
-  end
-  return masked
-end
-
-local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename)
-  local chunk_extmarks = {}
-
-  for i = start_idx, math.min(end_idx, #lines) do
-    local line = lines[i]
-    local key, value, eq_pos = utils.parse_env_line(line)
-
-    if key and value then
-      local masked_value = get_masked_value(value, key, filename)
-
-      if masked_value and #masked_value > 0 then
-        table.insert(chunk_extmarks, {
-          i - 1,
-          eq_pos,
-          {
-            virt_text = { { masked_value, masked_value == value and "String" or state.get_config().highlight_group } },
-            virt_text_pos = "overlay",
-            hl_mode = "combine",
-          },
-        })
-      end
-    end
-  end
-
-  if #chunk_extmarks > 0 then
-    vim.schedule(function()
-      for _, mark in ipairs(chunk_extmarks) do
-        pcall(vim.api.nvim_buf_set_extmark, bufnr, namespace, mark[1], mark[2], mark[3])
-      end
-    end)
-  end
-
-  if end_idx < #lines then
-    vim.schedule(function()
-      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename)
-    end)
-  else
-    processed_buffers:put(bufnr, {
-      hash = content_hash,
-      timestamp = vim.loop.now(),
-    })
-  end
-end
 
 function M.setup_fzf_shelter()
   if not state.is_enabled("fzf_previewer") then
@@ -100,7 +31,7 @@ function M.setup_fzf_shelter()
     end
 
     local bufnr = self.preview_bufnr
-    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    if not bufnr or not api.nvim_buf_is_valid(bufnr) then
       return
     end
 
@@ -116,15 +47,21 @@ function M.setup_fzf_shelter()
       return
     end
 
-    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    previewer_utils.setup_preview_buffer(bufnr)
+
+    local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
     local content_hash = vim.fn.sha256(table.concat(lines, "\n"))
 
-    local cached = processed_buffers:get(bufnr)
-    if cached and cached.hash == content_hash then
+    if not previewer_utils.needs_processing(bufnr, content_hash, processed_buffers) then
       return
     end
 
-    process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename)
+    previewer_utils.process_buffer(bufnr, filename, processed_buffers, function(hash)
+      processed_buffers:put(bufnr, {
+        hash = hash,
+        timestamp = vim.loop.now(),
+      })
+    end)
   end
 end
 

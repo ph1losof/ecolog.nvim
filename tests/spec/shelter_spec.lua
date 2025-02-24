@@ -27,29 +27,34 @@ describe("shelter", function()
       local pattern_mode = key and shelter.matches_shelter_pattern(key)
       local source_mode = not pattern_mode and source and shelter.matches_shelter_source(source)
 
+      -- Helper function to get mask length
+      local function get_mask_length(len)
+        return shelter._config.mask_length or len
+      end
+
       if pattern_mode then
         if pattern_mode == "none" then
           return value
         elseif pattern_mode == "full" then
-          return string.rep(shelter._config.mask_char, #value)
+          return string.rep(shelter._config.mask_char, get_mask_length(#value))
         end
       elseif source_mode then
         if source_mode == "none" then
           return value
         elseif source_mode == "full" then
-          return string.rep(shelter._config.mask_char, #value)
+          return string.rep(shelter._config.mask_char, get_mask_length(#value))
         end
       else
         if shelter._config.default_mode == "none" then
           return value
         elseif shelter._config.default_mode == "full" then
-          return string.rep(shelter._config.mask_char, #value)
+          return string.rep(shelter._config.mask_char, get_mask_length(#value))
         end
       end
 
       local partial_mode = opts.partial_mode or shelter._config.partial_mode
       if not partial_mode then
-        return string.rep(shelter._config.mask_char, #value)
+        return string.rep(shelter._config.mask_char, get_mask_length(#value))
       end
 
       local settings = type(partial_mode) == "table" and partial_mode
@@ -64,9 +69,17 @@ describe("shelter", function()
       local min_mask = settings.min_mask
 
       if #value <= (show_start + show_end) then
-        return string.rep(shelter._config.mask_char, #value)
+        return string.rep(shelter._config.mask_char, get_mask_length(#value))
       end
 
+      -- When mask_length is set, we need to ensure we show the correct number of end characters
+      if shelter._config.mask_length then
+        return string.sub(value, 1, show_start)
+          .. string.rep(shelter._config.mask_char, shelter._config.mask_length)
+          .. string.sub(value, -show_end)
+      end
+
+      -- Default behavior when mask_length is not set
       local mask_length = math.max(min_mask, #value - show_start - show_end)
       return string.sub(value, 1, show_start)
         .. string.rep(shelter._config.mask_char, mask_length)
@@ -212,6 +225,114 @@ describe("shelter", function()
         .. string.rep(shelter._config.mask_char, #value - 4)
         .. string.sub(value, -2)
       assert.equals(expected, masked)
+    end)
+
+    it("should respect fixed mask length in full masking mode", function()
+      shelter.setup({
+        config = {
+          partial_mode = false,
+          mask_char = "*",
+          mask_length = 5,
+          default_mode = "full",
+        },
+      })
+      
+      -- Test with longer value
+      local long_value = "very_long_secret"
+      local masked_long = shelter.mask_value(long_value)
+      assert.equals("*****", masked_long)
+      
+      -- Test with shorter value
+      local short_value = "key"
+      local masked_short = shelter.mask_value(short_value)
+      assert.equals("*****", masked_short)
+    end)
+
+    it("should respect fixed mask length in partial masking mode", function()
+      shelter.setup({
+        config = {
+          partial_mode = {
+            show_start = 2,
+            show_end = 3,
+            min_mask = 3,
+          },
+          mask_char = "*",
+          mask_length = 5,
+          default_mode = "partial",
+        },
+      })
+      
+      -- Test with longer value
+      local value = "secret_value_123"
+      local masked = shelter.mask_value(value, {
+        partial_mode = {
+          show_start = 2,
+          show_end = 3,
+          min_mask = 3,
+        },
+      })
+      assert.equals("se*****123", masked)
+      
+      -- Test with medium value
+      local medium_value = "api_key"
+      local masked_medium = shelter.mask_value(medium_value, {
+        partial_mode = {
+          show_start = 2,
+          show_end = 3,
+          min_mask = 3,
+        },
+      })
+      assert.equals("ap*****key", masked_medium)
+    end)
+
+    it("should handle mask_length with pattern-based rules", function()
+      shelter.setup({
+        config = {
+          partial_mode = false,
+          mask_char = "*",
+          mask_length = 5,
+          patterns = {
+            ["API_*"] = "full",
+            ["TEST_*"] = "none",
+          },
+          default_mode = "full",
+        },
+      })
+      
+      -- Test pattern that should be fully masked
+      local api_value = "API_SECRET_KEY"
+      local masked_api = shelter.mask_value(api_value, { key = "API_SECRET_KEY" })
+      assert.equals("*****", masked_api)
+      
+      -- Test pattern that should not be masked
+      local test_value = "TEST_VALUE"
+      local masked_test = shelter.mask_value(test_value, { key = "TEST_VALUE" })
+      assert.equals("TEST_VALUE", masked_test)
+    end)
+
+    it("should handle mask_length with source-based rules", function()
+      shelter.setup({
+        config = {
+          partial_mode = false,
+          mask_char = "*",
+          mask_length = 5,
+          sources = {
+            [".env.prod"] = "full",
+            [".env.test"] = "none",
+          },
+          default_mode = "full",
+        },
+      })
+      
+      -- Test source that should be fully masked
+      local prod_value = "production_secret"
+      local masked_prod = shelter.mask_value(prod_value, { source = ".env.prod" })
+      assert.equals("*****", masked_prod)
+      
+      -- Test source that should not be masked
+      local test_value = "test_value"
+      local masked_test = shelter.mask_value(test_value, { source = ".env.test" })
+      assert.equals("test_value", masked_test)
     end)
   end)
 

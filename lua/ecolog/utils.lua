@@ -1,6 +1,5 @@
 local M = {}
 
--- Constants and Patterns
 M.PATTERNS = {
   env_file_combined = "^.+/%.env[^.]*$",
   env_line = "^[^#](.+)$",
@@ -127,7 +126,6 @@ function M.get_watch_patterns(config, opts)
   return watch_patterns
 end
 
--- File sorting utilities
 local function default_sort_fn(a, b, opts)
   if not a or not b then
     return false

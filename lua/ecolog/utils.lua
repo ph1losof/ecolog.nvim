@@ -13,6 +13,7 @@ M.PATTERNS = {
 local DEFAULT_ENV_PATTERNS = {
   "^.+/%.env$",
   "^.+/%.env%.[^.]+$",
+  "^.+/%.envrc$",
 }
 
 -- Pattern conversion utilities
@@ -81,7 +82,7 @@ function M.match_env_file(filename, config)
     return false
   end
 
-  local patterns = config.env_file_patterns or { "%.env.*" }
+  local patterns = config.env_file_pattern or { "%.env.*" }
   for _, pattern in ipairs(patterns) do
     if filename:match(pattern) then
       return true
@@ -301,6 +302,18 @@ function M.extract_env_var(line, col, pattern)
   return before_cursor:match(pattern)
 end
 
+local function append(dest, src)
+  if type(src) == "table" then
+    for _, v in ipairs(src) do
+      table.insert(dest, v)
+    end
+  elseif type(src) == "string" then
+    table.insert(dest, src)
+  else
+    error("Unsupported type: " .. type(src))
+  end
+end
+
 function M.find_env_files(opts)
   opts = opts or {}
   local path = opts.path or vim.fn.getcwd()
@@ -319,6 +332,7 @@ function M.find_env_files(opts)
     if type(all_files) == "string" then
       all_files = { all_files }
     end
+    append(all_files, vim.fn.glob(path .. "/.[^.]*", false, true))
     files = M.filter_env_files(all_files, opts.env_file_pattern)
   end
 

@@ -18,6 +18,7 @@ local schedule = vim.schedule
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
 ---@field interpolation boolean|InterpolationConfig Enable/disable and configure environment variable interpolation
+---@field providers? table|table[] Custom provider(s) for environment variable detection and completion
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
@@ -571,6 +572,15 @@ function M.setup(opts)
 
   local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
   validate_config(config)
+
+  if config.providers then
+    local providers = require("ecolog.providers")
+    if vim.tbl_islist(config.providers) then
+      providers.register_many(config.providers)
+    else
+      providers.register(config.providers)
+    end
+  end
 
   if type(config.interpolation) == "boolean" then
     config.interpolation = {

@@ -34,6 +34,34 @@ function M.convert_to_lua_pattern(pattern)
   return escaped:gsub("%*", ".*")
 end
 
+-- Path handling utilities
+---Normalize a path to absolute form without trailing slash
+---@param path string The path to normalize
+---@return string The normalized path
+local function normalize_path(path)
+  if not path then
+    return vim.fn.getcwd()
+  end
+  return vim.fn.fnamemodify(path, ":p:h")
+end
+
+---Make a pattern relative by removing leading slashes
+---@param pattern string The pattern to process
+---@return string The relative pattern
+local function make_pattern_relative(pattern)
+  return pattern:gsub("^/+", "")
+end
+
+---Combine base path with a pattern safely
+---@param base string The base path
+---@param pattern string The pattern to append
+---@return string The combined path
+local function combine_path_pattern(base, pattern)
+  base = normalize_path(base)
+  pattern = make_pattern_relative(pattern)
+  return base .. "/" .. pattern
+end
+
 --[[ File Pattern Matching ]]
 
 ---Filter a list of files based on glob patterns
@@ -85,11 +113,43 @@ function M.match_env_file(filename, config)
     patterns = DEFAULT_ENV_PATTERNS
   end
 
-  local basename = vim.fn.fnamemodify(filename, ":t")
+  filename = vim.fn.fnamemodify(filename, ":p")
+  local path = normalize_path(config.path)
+
   for _, pattern in ipairs(patterns) do
-    if type(pattern) == "string" and vim.fn.match(basename, vim.fn.glob2regpat(pattern)) >= 0 then
-      return true
+    if type(pattern) ~= "string" then
+      goto continue
     end
+
+    pattern = make_pattern_relative(pattern)
+    local is_path_pattern = pattern:find("/")
+
+    if is_path_pattern then
+      local full_pattern = combine_path_pattern(path, pattern)
+
+      if pattern:find("[*?%[%]]") then
+        local glob_result = vim.fn.glob(full_pattern, false, true)
+        if glob_result and #glob_result > 0 then
+          full_pattern = glob_result[1]
+        end
+      end
+      
+      if filename == full_pattern then
+        return true
+      end
+
+      local glob_pattern = vim.fn.glob2regpat(full_pattern)
+      if vim.fn.match(filename, glob_pattern) >= 0 then
+        return true
+      end
+    else
+      local basename = vim.fn.fnamemodify(filename, ":t")
+      if vim.fn.match(basename, vim.fn.glob2regpat(pattern)) >= 0 then
+        return true
+      end
+    end
+
+    ::continue::
   end
 
   return false
@@ -97,27 +157,28 @@ end
 
 ---Generate watch patterns for file watching based on config
 ---@param config table The config containing path and env_file_patterns
----@param opts? {use_absolute_path?: boolean} Optional settings
 ---@return string[] List of watch patterns
-function M.get_watch_patterns(config, opts)
-  opts = opts or {}
-  if not config.env_file_patterns or type(config.env_file_patterns) ~= "table" then
-    return opts.use_absolute_path and config.path and { config.path .. "/.env*" } or { ".env*" }
+function M.get_watch_patterns(config)
+  local path = normalize_path(config.path)
+  local patterns = config.env_file_patterns
+
+  if not patterns or type(patterns) ~= "table" then
+    local watch_patterns = {}
+    for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
+      table.insert(watch_patterns, combine_path_pattern(path, pattern))
+    end
+    return watch_patterns
   end
 
   local watch_patterns = {}
-  for _, pattern in ipairs(config.env_file_patterns) do
+  for _, pattern in ipairs(patterns) do
     if type(pattern) == "string" then
-      if opts.use_absolute_path and config.path then
-        table.insert(watch_patterns, config.path .. "/" .. pattern)
-      else
-        table.insert(watch_patterns, pattern)
-      end
+      table.insert(watch_patterns, combine_path_pattern(path, pattern))
     end
   end
 
   if #watch_patterns == 0 then
-    return opts.use_absolute_path and config.path and { config.path .. "/.env*" } or { ".env*" }
+    return { path .. "/.env*" }
   end
 
   return watch_patterns

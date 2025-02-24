@@ -361,9 +361,9 @@ end
 
 function M.shelter_buffer()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
-  local filename = fn.fnamemodify(fn.bufname(), ":t")
+  local bufname = fn.bufname()
 
-  if not shelter_utils.match_env_file(filename, config) then
+  if not shelter_utils.match_env_file(bufname, config) then
     return
   end
 
@@ -376,7 +376,6 @@ function M.shelter_buffer()
   local winid = api.nvim_get_current_win()
   setup_buffer_options(bufnr, winid)
 
-  local bufname = api.nvim_buf_get_name(bufnr)
   local line_count = api.nvim_buf_line_count(bufnr)
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
@@ -465,8 +464,7 @@ local function setup_buffer_autocmds(config, group)
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      local filename = fn.fnamemodify(ev.file, ":t")
-      if not shelter_utils.match_env_file(filename, config) then
+      if not shelter_utils.match_env_file(ev.file, config) then
         return
       end
 
@@ -474,7 +472,7 @@ local function setup_buffer_autocmds(config, group)
       local ok, err = pcall(function()
         vim.cmd("keepalt edit " .. fn.fnameescape(ev.file))
 
-        local ft = vim.filetype.match({ filename = filename })
+        local ft = vim.filetype.match({ filename = ev.file })
         if ft then
           vim.bo[bufnr].filetype = ft
         else
@@ -502,8 +500,7 @@ local function setup_buffer_autocmds(config, group)
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      local filename = fn.fnamemodify(ev.file, ":t")
-      if shelter_utils.match_env_file(filename, config) then
+      if shelter_utils.match_env_file(ev.file, config) then
         if state.is_enabled("files") then
           vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
         else
@@ -518,8 +515,7 @@ local function setup_buffer_autocmds(config, group)
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      local filename = fn.fnamemodify(ev.file, ":t")
-      if shelter_utils.match_env_file(filename, config) and state.get_config().shelter_on_leave then
+      if shelter_utils.match_env_file(ev.file, config) and state.get_config().shelter_on_leave then
         state.set_feature_state("files", true)
 
         if state.get_state().features.initial.telescope_previewer then

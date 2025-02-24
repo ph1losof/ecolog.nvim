@@ -25,6 +25,14 @@ local DEFAULT_ENV_PATTERNS = {
   ".env.*",
 }
 
+-- Pattern types and handling
+local PATTERN_TYPES = {
+  EXACT = "exact", -- No special characters
+  GLOB = "glob", -- Standard glob (*, ?, [], {})
+  EXTENDED_GLOB = "ext", -- Extended glob (@, *, +, ?, !)
+  REGEX = "regex", -- Regular expressions
+}
+
 -- Pattern conversion utilities
 ---Convert a glob/wildcard pattern to a Lua pattern
 ---@param pattern string The pattern to convert
@@ -35,13 +43,42 @@ function M.convert_to_lua_pattern(pattern)
 end
 
 -- Path handling utilities
----Normalize a path to absolute form without trailing slash
----@param path string The path to normalize
----@return string The normalized path
-local function normalize_path(path)
-  if not path then
-    return vim.fn.getcwd()
+---Get the project root based on configuration
+---@param config table The configuration containing path and project_root settings
+---@return string root_path The resolved project root path
+local function get_project_root(config)
+  if config.project_root then
+    if type(config.project_root) == "string" then
+      return vim.fn.fnamemodify(config.project_root, ":p:h")
+    elseif type(config.project_root) == "function" then
+      local root = config.project_root()
+      if type(root) == "string" then
+        return vim.fn.fnamemodify(root, ":p:h")
+      end
+    end
   end
+
+  if config.path then
+    return vim.fn.fnamemodify(config.path, ":p:h")
+  end
+
+  return vim.fn.getcwd()
+end
+
+---Normalize a path to absolute form without trailing slash
+---@param path string|nil The path to normalize
+---@param config table|nil The configuration containing project_root settings
+---@return string The normalized path
+local function normalize_path(path, config)
+  if not path then
+    return config and get_project_root(config) or vim.fn.getcwd()
+  end
+
+  if not vim.fn.fnamemodify(path, ":p") == path and config then
+    local root = get_project_root(config)
+    return vim.fn.fnamemodify(root .. "/" .. path, ":p:h")
+  end
+
   return vim.fn.fnamemodify(path, ":p:h")
 end
 
@@ -55,9 +92,10 @@ end
 ---Combine base path with a pattern safely
 ---@param base string The base path
 ---@param pattern string The pattern to append
+---@param config table|nil The configuration containing project_root settings
 ---@return string The combined path
-local function combine_path_pattern(base, pattern)
-  base = normalize_path(base)
+local function combine_path_pattern(base, pattern, config)
+  base = normalize_path(base, config)
   pattern = make_pattern_relative(pattern)
   return base .. "/" .. pattern
 end
@@ -99,9 +137,113 @@ function M.filter_env_files(files, patterns)
   end, files)
 end
 
+---Detect pattern type based on its content
+---@param pattern string The pattern to analyze
+---@return string pattern_type The detected pattern type
+local function detect_pattern_type(pattern)
+  if not pattern or type(pattern) ~= "string" then
+    return PATTERN_TYPES.EXACT
+  end
+
+  if pattern:match("^[@*+?!]%(.-%)") then
+    return PATTERN_TYPES.EXTENDED_GLOB
+  end
+
+  if pattern:match("[%^%$%(%)%+%|\\]") or pattern:match("%.%*") then
+    return PATTERN_TYPES.REGEX
+  end
+
+  if pattern:find("[*?%[%]{}]") then
+    return PATTERN_TYPES.GLOB
+  end
+
+  return PATTERN_TYPES.EXACT
+end
+
+---Convert extended glob pattern to Lua pattern
+---@param pattern string The extended glob pattern
+---@return string lua_pattern The converted Lua pattern
+local function convert_extended_glob(pattern)
+  local conversions = {
+    ["@%("] = "(",
+    ["%*%("] = "(",
+    ["%+%("] = "(",
+    ["%?%("] = "(",
+    ["!%("] = "^(?!",
+    ["%)"] = ")",
+  }
+
+  local result = pattern
+  for from, to in pairs(conversions) do
+    result = result:gsub(from, to)
+  end
+
+  result = M.convert_to_lua_pattern(result)
+  return result
+end
+
+---Convert a pattern to Lua pattern based on its type
+---@param pattern string The pattern to convert
+---@return string lua_pattern The converted Lua pattern
+local function convert_to_matching_pattern(pattern)
+  local pattern_type = detect_pattern_type(pattern)
+
+  if pattern_type == PATTERN_TYPES.EXACT then
+    return "^" .. vim.pesc(pattern) .. "$"
+  elseif pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
+    return convert_extended_glob(pattern)
+  elseif pattern_type == PATTERN_TYPES.REGEX then
+    return pattern
+  else
+    return vim.fn.glob2regpat(pattern)
+  end
+end
+
+---Match a file against a pattern
+---@param filename string The filename to check
+---@param pattern string The pattern to match against
+---@param base_path string? The base path for relative patterns
+---@param config table? The configuration containing project_root settings
+---@return boolean matches Whether the file matches the pattern
+local function match_file_pattern(filename, pattern, base_path, config)
+  if not pattern or type(pattern) ~= "string" then
+    return false
+  end
+
+  if pattern:find("/") then
+    pattern = make_pattern_relative(pattern)
+    local full_pattern = combine_path_pattern(base_path or get_project_root(config), pattern, config)
+
+    local pattern_type = detect_pattern_type(pattern)
+
+    if pattern_type == PATTERN_TYPES.GLOB or pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
+      if pattern:find("**") then
+        local lua_pattern = convert_to_matching_pattern(full_pattern)
+        return vim.fn.match(filename, lua_pattern) >= 0
+      end
+
+      local matches = vim.fn.glob(full_pattern, false, true)
+      if matches and #matches > 0 then
+        for _, match in ipairs(matches) do
+          if filename == match then
+            return true
+          end
+        end
+      end
+    end
+
+    local lua_pattern = convert_to_matching_pattern(full_pattern)
+    return vim.fn.match(filename, lua_pattern) >= 0
+  end
+
+  local basename = vim.fn.fnamemodify(filename, ":t")
+  local lua_pattern = convert_to_matching_pattern(pattern)
+  return vim.fn.match(basename, lua_pattern) >= 0
+end
+
 ---Match a filename against env file patterns
 ---@param filename string The filename to check
----@param config table The config containing env_file_patterns
+---@param config table The config containing env_file_patterns and project_root settings
 ---@return boolean Whether the file matches any pattern
 function M.match_env_file(filename, config)
   if not filename then
@@ -114,66 +256,79 @@ function M.match_env_file(filename, config)
   end
 
   filename = vim.fn.fnamemodify(filename, ":p")
-  local path = normalize_path(config.path)
+  local path = normalize_path(config.path, config)
 
   for _, pattern in ipairs(patterns) do
-    if type(pattern) ~= "string" then
-      goto continue
+    if match_file_pattern(filename, pattern, path, config) then
+      return true
     end
-
-    pattern = make_pattern_relative(pattern)
-    local is_path_pattern = pattern:find("/")
-
-    if is_path_pattern then
-      local full_pattern = combine_path_pattern(path, pattern)
-
-      if pattern:find("[*?%[%]]") then
-        local glob_result = vim.fn.glob(full_pattern, false, true)
-        if glob_result and #glob_result > 0 then
-          full_pattern = glob_result[1]
-        end
-      end
-      
-      if filename == full_pattern then
-        return true
-      end
-
-      local glob_pattern = vim.fn.glob2regpat(full_pattern)
-      if vim.fn.match(filename, glob_pattern) >= 0 then
-        return true
-      end
-    else
-      local basename = vim.fn.fnamemodify(filename, ":t")
-      if vim.fn.match(basename, vim.fn.glob2regpat(pattern)) >= 0 then
-        return true
-      end
-    end
-
-    ::continue::
   end
 
   return false
 end
 
+---Process a pattern and return matching files or patterns
+---@param pattern string The pattern to process
+---@param path string The base path
+---@param opts table Configuration options
+---@param collect_fn function Function to collect results (either insert or extend)
+---@return string[] files List of files or patterns
+local function process_pattern(pattern, path, opts, collect_fn)
+  if not type(pattern) == "string" then
+    return {}
+  end
+
+  local results = {}
+  local pattern_type = detect_pattern_type(pattern)
+
+  if pattern_type == PATTERN_TYPES.GLOB or pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
+    if pattern:find("**") or pattern:find("@%(") or pattern:find("%*%(") then
+      local full_pattern = combine_path_pattern(path, make_pattern_relative(pattern), opts)
+      collect_fn(results, { full_pattern })
+    else
+      local full_pattern = combine_path_pattern(path, pattern, opts)
+      local resolved = vim.fn.glob(full_pattern, false, true)
+      if type(resolved) == "string" then
+        resolved = { resolved }
+      end
+      if resolved and #resolved > 0 then
+        collect_fn(results, resolved)
+      else
+        collect_fn(results, { combine_path_pattern(path, make_pattern_relative(pattern), opts) })
+      end
+    end
+  else
+    local full_pattern = combine_path_pattern(path, make_pattern_relative(pattern), opts)
+    collect_fn(results, { full_pattern })
+  end
+
+  return results
+end
+
 ---Generate watch patterns for file watching based on config
----@param config table The config containing path and env_file_patterns
+---@param config table The config containing path, project_root and env_file_patterns
 ---@return string[] List of watch patterns
 function M.get_watch_patterns(config)
-  local path = normalize_path(config.path)
+  local path = normalize_path(config.path, config)
   local patterns = config.env_file_patterns
 
   if not patterns or type(patterns) ~= "table" then
     local watch_patterns = {}
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
-      table.insert(watch_patterns, combine_path_pattern(path, pattern))
+      table.insert(watch_patterns, combine_path_pattern(path, pattern, config))
     end
     return watch_patterns
   end
 
   local watch_patterns = {}
+  local collect_fn = function(results, items)
+    vim.list_extend(results, items)
+  end
+
   for _, pattern in ipairs(patterns) do
     if type(pattern) == "string" then
-      table.insert(watch_patterns, combine_path_pattern(path, pattern))
+      local pattern_results = process_pattern(pattern, path, config, collect_fn)
+      vim.list_extend(watch_patterns, pattern_results)
     end
   end
 
@@ -187,18 +342,17 @@ end
 --[[ File Finding and Sorting ]]
 
 ---Find environment files based on provided options
----@param opts? {path?: string, env_file_patterns?: string[], preferred_environment?: string, sort_fn?: function}
+---@param opts? {path?: string, project_root?: string|function, env_file_patterns?: string[], preferred_environment?: string, sort_fn?: function}
 ---@return string[] List of found environment files
 function M.find_env_files(opts)
   opts = opts or {}
-  local path = opts.path or vim.fn.getcwd()
+  local path = normalize_path(opts.path, opts)
 
   local files = {}
   if not opts.env_file_patterns then
-    -- Use default patterns
     local env_files = {}
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
-      local found = vim.fn.glob(path .. "/" .. pattern, false, true)
+      local found = vim.fn.glob(combine_path_pattern(path, pattern, opts), false, true)
       if type(found) == "string" then
         found = { found }
       end
@@ -207,28 +361,44 @@ function M.find_env_files(opts)
 
     files = env_files
   else
-    -- Use custom patterns only
     if type(opts.env_file_patterns) ~= "table" then
       vim.notify("env_file_patterns must be a table of glob patterns", vim.log.levels.WARN)
       return {}
     end
 
-    -- Gather files using each glob pattern
     local all_files = {}
-    for _, pattern in ipairs(opts.env_file_patterns) do
-      if type(pattern) == "string" then
-        local found = vim.fn.glob(path .. "/" .. pattern, false, true)
+    local collect_fn = function(results, items)
+      for _, item in ipairs(items) do
+        local found = vim.fn.glob(item, false, true)
         if type(found) == "string" then
           found = { found }
         end
-        vim.list_extend(all_files, found)
+        if found and #found > 0 then
+          vim.list_extend(all_files, found)
+        end
+      end
+    end
+
+    for _, pattern in ipairs(opts.env_file_patterns) do
+      if type(pattern) == "string" then
+        process_pattern(pattern, path, opts, collect_fn)
       end
     end
 
     files = all_files
   end
 
-  return M.sort_env_files(files, opts)
+  -- Remove duplicates that might occur from overlapping patterns
+  local unique_files = {}
+  local seen = {}
+  for _, file in ipairs(files) do
+    if not seen[file] then
+      seen[file] = true
+      table.insert(unique_files, file)
+    end
+  end
+
+  return M.sort_env_files(unique_files, opts)
 end
 
 ---Default sorting function for environment files

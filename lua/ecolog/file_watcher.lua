@@ -80,20 +80,6 @@ function M.setup_watcher(config, state, refresh_callback)
       end,
     })
   )
-
-  table.insert(
-    state._file_watchers,
-    api.nvim_create_autocmd({ "FileChangedShellPost" }, {
-      group = state.current_watcher_group,
-      pattern = watch_patterns,
-      callback = function(ev)
-        state.cached_env_files = nil
-        state.file_cache_opts = nil
-        state._env_line_cache = {}
-        refresh_callback(config)
-      end,
-    })
-  )
 end
 
 return M

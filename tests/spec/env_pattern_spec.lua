@@ -97,7 +97,7 @@ describe("env pattern and sorting", function()
 
       local found = utils.find_env_files({
         path = test_dir,
-        sort_fn = custom_sort,
+        sort_file_fn = custom_sort,
       })
 
       -- Longest filename should come first

@@ -88,7 +88,17 @@ local function setup_completion(cmp, opts, providers)
       end
 
       local items = {}
-      for var_name, var_info in pairs(env_vars) do
+     local var_names = {}
+     for var_name in pairs(env_vars) do
+       table.insert(var_names, var_name)
+     end
+     
+     if config.sort_var_fn and type(config.sort_var_fn) == "function" then
+       table.sort(var_names, config.sort_var_fn)
+     end
+     
+     for _, var_name in ipairs(var_names) do
+       local var_info = env_vars[var_name]
         local display_value = _shelter.is_enabled("cmp")
             and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
           or var_info.value
@@ -109,6 +119,8 @@ local function setup_completion(cmp, opts, providers)
           kind_hl_group = "CmpItemKindEcolog",
           menu_hl_group = "CmpItemMenuEcolog",
           abbr_hl_group = "CmpItemAbbrMatchEcolog",
+          sortText = string.format("%05d", _),
+          score = 100
         }
 
         if matched_provider and matched_provider.format_completion then

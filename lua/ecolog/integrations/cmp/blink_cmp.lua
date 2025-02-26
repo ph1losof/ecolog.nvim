@@ -122,7 +122,18 @@ function M:get_completions(ctx, callback)
   end
 
   local items = {}
-  for var_name, var_info in pairs(env_vars) do
+  
+  local var_names = {}
+  for var_name in pairs(env_vars) do
+    table.insert(var_names, var_name)
+  end
+  
+  if config.sort_var_fn and type(config.sort_var_fn) == "function" then
+    table.sort(var_names, config.sort_var_fn)
+  end
+  
+  for _, var_name in ipairs(var_names) do
+    local var_info = env_vars[var_name]
     local display_value = _shelter.is_enabled("cmp")
         and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
       or var_info.value
@@ -142,8 +153,9 @@ function M:get_completions(ctx, callback)
         kind = vim.lsp.protocol.MarkupKind.Markdown,
         value = doc_value,
       },
-      score = 1,
+      score = 100,
       source_name = "ecolog",
+      sortText = string.format("%05d", _)
     }
 
     if matched_provider and matched_provider.format_completion then

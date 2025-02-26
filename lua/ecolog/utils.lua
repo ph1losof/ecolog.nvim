@@ -342,7 +342,7 @@ end
 --[[ File Finding and Sorting ]]
 
 ---Find environment files based on provided options
----@param opts? {path?: string, project_root?: string|function, env_file_patterns?: string[], preferred_environment?: string, sort_fn?: function}
+---@param opts? {path?: string, project_root?: string|function, env_file_patterns?: string[], preferred_environment?: string, sort_file_fn?: function, sort_fn?: function}
 ---@return string[] List of found environment files
 function M.find_env_files(opts)
   opts = opts or {}
@@ -406,7 +406,7 @@ end
 ---@param b string Second file path
 ---@param opts table Options containing preferred_environment
 ---@return boolean Whether a should come before b
-local function default_sort_fn(a, b, opts)
+local function default_sort_file_fn(a, b, opts)
   if not a or not b then
     return false
   end
@@ -431,7 +431,7 @@ end
 
 ---Sort environment files based on preferences
 ---@param files string[]|nil Files to sort
----@param opts? {preferred_environment?: string, sort_fn?: function}
+---@param opts? {preferred_environment?: string, sort_file_fn?: function, sort_fn?: function}
 ---@return string[] Sorted files
 function M.sort_env_files(files, opts)
   if not files or #files == 0 then
@@ -439,14 +439,20 @@ function M.sort_env_files(files, opts)
   end
 
   opts = opts or {}
-  local sort_fn = opts.sort_fn or default_sort_fn
+  local sort_file_fn = opts.sort_file_fn
+  
+  if not sort_file_fn and opts.sort_fn then
+    sort_file_fn = opts.sort_fn
+  end
+  
+  sort_file_fn = sort_file_fn or default_sort_file_fn
 
   files = vim.tbl_filter(function(f)
     return f ~= nil
   end, files)
 
   table.sort(files, function(a, b)
-    return sort_fn(a, b, opts)
+    return sort_file_fn(a, b, opts)
   end)
 
   return files

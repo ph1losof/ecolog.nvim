@@ -14,7 +14,9 @@ local schedule = vim.schedule
 ---@field preferred_environment string Preferred environment name
 ---@field load_shell LoadShellConfig Shell variables loading configuration
 ---@field env_file_patterns string[] Custom glob patterns for matching env files (e.g., ".env.*", "config/.env*")
----@field sort_fn? function Custom function for sorting env files
+---@field sort_file_fn? function Custom function for sorting env files
+---@field sort_fn? function Deprecated: Use sort_file_fn instead
+---@field sort_var_fn? function Custom function for sorting environment variables when returning from get_env_vars
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
 ---@field interpolation boolean|InterpolationConfig Enable/disable and configure environment variable interpolation
@@ -93,7 +95,8 @@ local DEFAULT_CONFIG = {
     transform = nil,
   },
   env_file_patterns = nil,
-  sort_fn = nil,
+  sort_file_fn = nil,
+  sort_var_fn = nil,
   interpolation = {
     enabled = false,
     max_iterations = 10,
@@ -134,6 +137,7 @@ local state = {
   _env_line_cache = setmetatable({}, { __mode = "k" }),
   _secret_managers = {},
   initialized = false,
+  _sorted_env_keys = nil,
 }
 
 local _loaded_modules = {}
@@ -208,6 +212,8 @@ function M.refresh_env_vars(opts)
   end
 end
 
+---Get all environment variables
+---@return table<string, EnvVarInfo> Environment variables with their metadata
 function M.get_env_vars()
   if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
     state.selected_env_file = nil
@@ -219,6 +225,7 @@ function M.get_env_vars()
   if next(state.env_vars) == nil then
     env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
   end
+
   return state.env_vars
 end
 
@@ -295,7 +302,8 @@ local function create_commands(config)
           path = config.path,
           active_file = state.selected_env_file,
           env_file_patterns = config.env_file_patterns,
-          sort_fn = config.sort_fn,
+          sort_file_fn = config.sort_file_fn,
+          sort_var_fn = config.sort_var_fn,
           preferred_environment = config.preferred_environment,
         }, function(file)
           handle_env_file_selection(file, config)
@@ -544,11 +552,20 @@ end
 local function validate_config(config)
   -- Handle deprecated env_file_pattern if it exists
   if config.env_file_pattern ~= nil then
-    notify("env_file_pattern is deprecated, please use env_file_patterns instead with glob patterns (e.g., '.env.*', 'config/.env*')", vim.log.levels.WARN)
+    notify(
+      "env_file_pattern is deprecated, please use env_file_patterns instead with glob patterns (e.g., '.env.*', 'config/.env*')",
+      vim.log.levels.WARN
+    )
     if type(config.env_file_pattern) == "table" and #config.env_file_pattern > 0 then
       config.env_file_patterns = config.env_file_pattern
     end
     config.env_file_pattern = nil
+  end
+
+  -- Handle backward compatibility for sort_fn -> sort_file_fn
+  if config.sort_fn ~= nil and config.sort_file_fn == nil then
+    notify("sort_fn is deprecated, please use sort_file_fn instead", vim.log.levels.WARN)
+    config.sort_file_fn = config.sort_fn
   end
 
   if type(config.provider_patterns) == "boolean" then
@@ -633,7 +650,8 @@ function M.setup(opts)
     path = config.path,
     preferred_environment = config.preferred_environment,
     env_file_patterns = config.env_file_patterns,
-    sort_fn = config.sort_fn,
+    sort_file_fn = config.sort_file_fn,
+    sort_var_fn = config.sort_var_fn,
   })
 
   if #initial_env_files > 0 then

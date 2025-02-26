@@ -136,19 +136,35 @@ end
 local function create_picker_items()
   local ecolog = require("ecolog")
   local env_vars = ecolog.get_env_vars()
+  
   local items = {}
   local longest_name = 0
-
-  for name, var in pairs(env_vars) do
+  
+  local var_names = {}
+  for name in pairs(env_vars) do
+    table.insert(var_names, name)
+  end
+  
+  local config = ecolog.get_config()
+  if config.sort_var_fn and type(config.sort_var_fn) == "function" then
+    table.sort(var_names, config.sort_var_fn)
+  end
+  
+  -- Create items in our explicitly sorted order
+  for idx, name in ipairs(var_names) do
+    local var = env_vars[name]
     local display_value = shelter.mask_value(var.value, "snacks", name, var.source)
     table.insert(items, {
       name = name,
       text = name,
       value = var.value,
       display_value = display_value,
+      source = var.source,
+      original_idx = idx,
     })
     longest_name = math.max(longest_name, #name)
   end
+  
   return items, longest_name
 end
 
@@ -173,6 +189,9 @@ function M.env_picker()
     title = "Environment Variables",
     items = items,
     layout = M.config.layout,
+    sort = { 
+      fields = { "score:desc", "original_idx" }
+    },
     format = function(item)
       local ret = {}
       ret[#ret + 1] = { ("%-" .. longuest .. "s"):format(item.name), "@variable" }
@@ -187,6 +206,7 @@ function M.env_picker()
     },
     confirm = function(picker, item)
       if not item then return end
+      
       if append_at_cursor(item.name) then
         notify_with_title("Appended environment name", vim.log.levels.INFO)
         picker:close()

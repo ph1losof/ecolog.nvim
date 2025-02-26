@@ -128,7 +128,7 @@ describe("select window", function()
 
     local opts = {
       path = test_dir,
-      sort_fn = custom_sort,
+      sort_file_fn = custom_sort,
     }
 
     local selected_file

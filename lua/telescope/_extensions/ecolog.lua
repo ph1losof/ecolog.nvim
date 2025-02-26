@@ -50,12 +50,26 @@ local function env_picker(opts)
   }, opts)
 
   local results = {}
-  for var_name, var_info in pairs(ecolog.get_env_vars()) do
+  local env_vars = ecolog.get_env_vars()
+  local ecolog_config = ecolog.get_config()
+  
+  local var_names = {}
+  for name in pairs(env_vars) do
+    table.insert(var_names, name)
+  end
+  
+  if ecolog_config.sort_var_fn and type(ecolog_config.sort_var_fn) == "function" then
+    table.sort(var_names, ecolog_config.sort_var_fn)
+  end
+  
+  for idx, name in ipairs(var_names) do
+    local var_info = env_vars[name]
     table.insert(results, {
-      name = var_name,
+      name = name,
       value = var_info.value,
       source = var_info.source,
       type = var_info.type,
+      idx = idx,
     })
   end
 
@@ -69,7 +83,7 @@ local function env_picker(opts)
           return {
             value = entry,
             display = string.format("%-30s = %s", entry.name, display_value),
-            ordinal = entry.name,
+            ordinal = string.format("%04d_%s", entry.idx, entry.name),
           }
         end,
       }),

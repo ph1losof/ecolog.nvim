@@ -59,24 +59,37 @@ local function get_env_completion(findstart, base)
   end
 
   local items = {}
-  for var_name, var_info in pairs(env_vars) do
+  
+  local var_names = {}
+  for var_name in pairs(env_vars) do
     if var_name:lower():find(base:lower(), 1, true) == 1 then
-      local display_value = _shelter.is_enabled("cmp")
-          and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
-        or var_info.value
-
-      local info = string.format("%s [%s] = %s", var_name, var_info.type, display_value)
-      if var_info.comment then
-        info = info .. " # " .. var_info.comment
-      end
-
-      table.insert(items, {
-        word = var_name,
-        kind = "v",
-        menu = var_info.source,
-        info = info,
-      })
+      table.insert(var_names, var_name)
     end
+  end
+  
+  if config.sort_var_fn and type(config.sort_var_fn) == "function" then
+    table.sort(var_names, config.sort_var_fn)
+  end
+  
+  for _, var_name in ipairs(var_names) do
+    local var_info = env_vars[var_name]
+    local display_value = _shelter.is_enabled("cmp")
+        and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
+      or var_info.value
+
+    local info = string.format("%s [%s] = %s", var_name, var_info.type, display_value)
+    if var_info.comment then
+      info = info .. " # " .. var_info.comment
+    end
+
+    table.insert(items, {
+      word = var_name,
+      kind = var_info.type,
+      menu = var_info.source,
+      info = info,
+      priority = 100 - _,
+      user_data = { sort_index = string.format("%05d", _) }
+    })
   end
 
   return items

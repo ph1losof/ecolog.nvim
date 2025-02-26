@@ -2095,14 +2095,6 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
 
 While `ecolog.nvim` has many great and unique features, here are some comparisons with other plugins in neovim ecosystem in **_their specific fields_**:
 
-}
-
-```
-
-## 🔄 Comparisons
-
-While `ecolog.nvim` has many great and unique features, here are some comparisons with other plugins in neovim ecosystem in **_their specific fields_**:
-
 ### Environment Variable Completion (vs [cmp-dotenv](https://github.com/jcha0713/cmp-dotenv))
 
 | Feature                    | ecolog.nvim                                                                                    | cmp-dotenv                                                  |

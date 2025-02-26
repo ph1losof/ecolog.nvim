@@ -2043,6 +2043,7 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
     'philosofonusus/ecolog.nvim',
     keys = {
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
+      { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
@@ -2065,14 +2066,21 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
           end,
         },
       },
-      sort_var_fn = function(a, b)
-        return a < b
-      end,
       interpolation = {
         features = {
           commands = false,
         },
       },
+      sort_var_fn = function(a, b)
+        if a.source == 'shell' and b.source ~= 'shell' then
+          return false
+        end
+        if a.source ~= 'shell' and b.source == 'shell' then
+          return true
+        end
+
+        return a.name < b.name
+      end,
       integrations = {
         lspsaga = true,
         nvim_cmp = true,

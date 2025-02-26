@@ -96,8 +96,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### Plugin Setup
 
-> 💡 **Quick Start**: If you want to quickly start with ecolog.nvim, check out the [author's personal setup](#️-author-setup) section..
-> Still,
+> 💡 **Quick Start**: If you want to quickly start with ecolog.nvim, check out the [author's personal setup](#️-author-setup) section.
 
 ```lua
 {
@@ -2020,7 +2019,7 @@ The plugin seamlessly integrates with your current colorscheme:
 
 ## 🛠️ Author Setup
 
-It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
+It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated. However, it usefull to quickly get started especially if you don't want to think much of a setup and reading docs:
 
 > **Note**: Additional setup is required for [nvim-cmp](#nvim-cmp-integration) and [statusline](#statusline-integration) integrations.
 
@@ -2038,6 +2037,27 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't wan
     opts = {
       preferred_environment = 'local',
       types = true,
+      providers = {
+        {
+          pattern = '{{[%w_]+}}?$',
+          filetype = 'http',
+          extract_var = function(line, col)
+            local utils = require 'ecolog.utils'
+            return utils.extract_env_var(line, col, '{{([%w_]+)}}?$')
+          end,
+          get_completion_trigger = function()
+            return '{{'
+          end,
+        },
+      },
+      sort_var_fn = function(a, b)
+        return a < b
+      end,
+      interpolation = {
+        features = {
+          commands = false,
+        },
+      },
       integrations = {
         lspsaga = true,
         nvim_cmp = true,
@@ -2069,6 +2089,14 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't wan
       path = vim.fn.getcwd(),
     },
   }
+```
+
+## 🔄 Comparisons
+
+While `ecolog.nvim` has many great and unique features, here are some comparisons with other plugins in neovim ecosystem in **_their specific fields_**:
+
+}
+
 ```
 
 ## 🔄 Comparisons
@@ -2151,3 +2179,4 @@ MIT License - See [LICENSE](./LICENSE) for details.
 <div align="center">
 Made with ❤️ by <a href="https://github.com/philosofonusus">TENTACLE</a>
 </div>
+```

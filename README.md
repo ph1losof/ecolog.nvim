@@ -41,10 +41,9 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Pattern Format](#pattern-format)
   - [Examples](#examples)
   - [Features](#features-1)
-- [Custom Sort Functions](#-custom-sort-function)
-  - [Basic Usage](#basic-usage-2)
-  - [Examples](#examples-1)
-  - [Features](#features-2)
+- [Custom Sort Functions](#-custom-sort-functions)
+  - [File Sorting](#file-sorting)
+  - [Variable Sorting](#variable-sorting)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
@@ -704,6 +703,11 @@ If no custom patterns are specified, Ecolog uses these default patterns:
 - `.env.*` - Environment-specific files (e.g., `.env.development`, `.env.test`)
 
 ## 🔄 Custom Sort Functions
+
+Ecolog provides two types of sort functions to customize how both environment files and variables are ordered in various interfaces:
+
+1. **File Sorting (`sort_file_fn`)**: Controls how environment files are prioritized and ordered
+2. **Variable Sorting (`sort_var_fn`)**: Controls how environment variables are sorted in completion, pickers, and other interfaces
 
 ### File Sorting (`sort_file_fn`)
 

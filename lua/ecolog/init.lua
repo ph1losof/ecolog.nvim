@@ -137,7 +137,6 @@ local state = {
   _env_line_cache = setmetatable({}, { __mode = "k" }),
   _secret_managers = {},
   initialized = false,
-  _sorted_env_keys = nil,
 }
 
 local _loaded_modules = {}

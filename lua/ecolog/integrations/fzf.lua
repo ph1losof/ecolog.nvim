@@ -157,19 +157,20 @@ local function format_env_vars(env_vars)
   local ecolog = require("ecolog")
   local config = ecolog.get_config()
   
-  local var_names = {}
-  for name in pairs(env_vars) do
-    table.insert(var_names, name)
+  local var_entries = {}
+  for name, info in pairs(env_vars) do
+    table.insert(var_entries, vim.tbl_extend("force", { name = name }, info))
   end
   
   if config.sort_var_fn and type(config.sort_var_fn) == "function" then
-    table.sort(var_names, config.sort_var_fn)
+    table.sort(var_entries, function(a, b)
+      return config.sort_var_fn(a, b)
+    end)
   end
   
-  for _, name in ipairs(var_names) do
-    local var = env_vars[name]
-    local display_value = shelter.mask_value(var.value, "fzf", name, var.source)
-    table.insert(results, string.format("%-30s = %s", name, display_value))
+  for _, entry in ipairs(var_entries) do
+    local display_value = shelter.mask_value(entry.value, "fzf", entry.name, entry.source)
+    table.insert(results, string.format("%-30s = %s", entry.name, display_value))
   end
   
   return results

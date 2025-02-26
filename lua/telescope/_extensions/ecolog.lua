@@ -53,22 +53,23 @@ local function env_picker(opts)
   local env_vars = ecolog.get_env_vars()
   local ecolog_config = ecolog.get_config()
   
-  local var_names = {}
-  for name in pairs(env_vars) do
-    table.insert(var_names, name)
+  local var_entries = {}
+  for name, info in pairs(env_vars) do
+    table.insert(var_entries, vim.tbl_extend("force", { name = name }, info))
   end
   
   if ecolog_config.sort_var_fn and type(ecolog_config.sort_var_fn) == "function" then
-    table.sort(var_names, ecolog_config.sort_var_fn)
+    table.sort(var_entries, function(a, b)
+      return ecolog_config.sort_var_fn(a, b)
+    end)
   end
   
-  for idx, name in ipairs(var_names) do
-    local var_info = env_vars[name]
+  for idx, entry in ipairs(var_entries) do
     table.insert(results, {
-      name = name,
-      value = var_info.value,
-      source = var_info.source,
-      type = var_info.type,
+      name = entry.name,
+      value = entry.value,
+      source = entry.source,
+      type = entry.type,
       idx = idx,
     })
   end

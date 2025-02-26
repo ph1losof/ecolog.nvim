@@ -140,29 +140,30 @@ local function create_picker_items()
   local items = {}
   local longest_name = 0
   
-  local var_names = {}
-  for name in pairs(env_vars) do
-    table.insert(var_names, name)
+  local var_entries = {}
+  for name, info in pairs(env_vars) do
+    table.insert(var_entries, vim.tbl_extend("force", { name = name }, info))
   end
   
   local config = ecolog.get_config()
   if config.sort_var_fn and type(config.sort_var_fn) == "function" then
-    table.sort(var_names, config.sort_var_fn)
+    table.sort(var_entries, function(a, b)
+      return config.sort_var_fn(a, b)
+    end)
   end
   
   -- Create items in our explicitly sorted order
-  for idx, name in ipairs(var_names) do
-    local var = env_vars[name]
-    local display_value = shelter.mask_value(var.value, "snacks", name, var.source)
+  for idx, entry in ipairs(var_entries) do
+    local display_value = shelter.mask_value(entry.value, "snacks", entry.name, entry.source)
     table.insert(items, {
-      name = name,
-      text = name,
-      value = var.value,
+      name = entry.name,
+      text = entry.name,
+      value = entry.value,
       display_value = display_value,
-      source = var.source,
+      source = entry.source,
       original_idx = idx,
     })
-    longest_name = math.max(longest_name, #name)
+    longest_name = math.max(longest_name, #entry.name)
   end
   
   return items, longest_name

@@ -60,32 +60,33 @@ local function get_env_completion(findstart, base)
 
   local items = {}
   
-  local var_names = {}
-  for var_name in pairs(env_vars) do
+  local var_entries = {}
+  for var_name, info in pairs(env_vars) do
     if var_name:lower():find(base:lower(), 1, true) == 1 then
-      table.insert(var_names, var_name)
+      table.insert(var_entries, vim.tbl_extend("force", { name = var_name }, info))
     end
   end
   
   if config.sort_var_fn and type(config.sort_var_fn) == "function" then
-    table.sort(var_names, config.sort_var_fn)
+    table.sort(var_entries, function(a, b)
+      return config.sort_var_fn(a, b)
+    end)
   end
   
-  for _, var_name in ipairs(var_names) do
-    local var_info = env_vars[var_name]
+  for _, entry in ipairs(var_entries) do
     local display_value = _shelter.is_enabled("cmp")
-        and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
-      or var_info.value
+        and _shelter.mask_value(entry.value, "cmp", entry.name, entry.source)
+      or entry.value
 
-    local info = string.format("%s [%s] = %s", var_name, var_info.type, display_value)
-    if var_info.comment then
-      info = info .. " # " .. var_info.comment
+    local info = string.format("%s [%s] = %s", entry.name, entry.type, display_value)
+    if entry.comment then
+      info = info .. " # " .. entry.comment
     end
 
     table.insert(items, {
-      word = var_name,
-      kind = var_info.type,
-      menu = var_info.source,
+      word = entry.name,
+      kind = entry.type,
+      menu = entry.source,
       info = info,
       priority = 100 - _,
       user_data = { sort_index = string.format("%05d", _) }

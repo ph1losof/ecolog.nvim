@@ -88,30 +88,32 @@ local function setup_completion(cmp, opts, providers)
       end
 
       local items = {}
-     local var_names = {}
-     for var_name in pairs(env_vars) do
-       table.insert(var_names, var_name)
-     end
      
-     if config.sort_var_fn and type(config.sort_var_fn) == "function" then
-       table.sort(var_names, config.sort_var_fn)
-     end
-     
-     for _, var_name in ipairs(var_names) do
-       local var_info = env_vars[var_name]
+      local var_entries = {}
+      for var_name, info in pairs(env_vars) do
+        table.insert(var_entries, vim.tbl_extend("force", { name = var_name }, info))
+      end
+      
+      if config.sort_var_fn and type(config.sort_var_fn) == "function" then
+        table.sort(var_entries, function(a, b)
+          return config.sort_var_fn(a, b)
+        end)
+      end
+      
+      for _, entry in ipairs(var_entries) do
         local display_value = _shelter.is_enabled("cmp")
-            and _shelter.mask_value(var_info.value, "cmp", var_name, var_info.source)
-          or var_info.value
+            and _shelter.mask_value(entry.value, "cmp", entry.name, entry.source)
+          or entry.value
 
-        local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", var_info.type, display_value)
-        if var_info.comment then
-          doc_value = doc_value .. string.format("\n\n**Comment:** %s", var_info.comment)
+        local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", entry.type, display_value)
+        if entry.comment then
+          doc_value = doc_value .. string.format("\n\n**Comment:** %s", entry.comment)
         end
 
         local item = {
-          label = var_name,
+          label = entry.name,
           kind = cmp.lsp.CompletionItemKind.Variable,
-          detail = var_info.source,
+          detail = entry.source,
           documentation = {
             kind = "markdown",
             value = doc_value,
@@ -124,7 +126,7 @@ local function setup_completion(cmp, opts, providers)
         }
 
         if matched_provider and matched_provider.format_completion then
-          item = matched_provider.format_completion(item, var_name, var_info)
+          item = matched_provider.format_completion(item, entry.name, entry)
         end
 
         table.insert(items, item)

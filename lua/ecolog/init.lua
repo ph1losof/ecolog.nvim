@@ -608,6 +608,10 @@ function M.setup(opts)
       features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
     }
   elseif type(config.interpolation) == "table" then
+    if config.interpolation.enabled == nil then
+      config.interpolation.enabled = true
+    end
+
     if config.interpolation.features then
       config.interpolation.features =
         vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)

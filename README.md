@@ -2068,6 +2068,7 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
         },
       },
       interpolation = {
+        enabled = true,
         features = {
           commands = false,
         },

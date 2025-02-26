@@ -430,6 +430,7 @@ The provider will be automatically loaded when editing files of the specified fi
 | `:EcologAWSConfig`                         | Open configuration menu for AWS Secrets Manager (region, profile, secrets)            |
 | `:EcologVaultConfig`                       | Open configuration menu for HCP Vault (organization, project, apps)                   |
 | `:EcologInterpolationToggle`               | Toggle environment variable interpolation on/off                                      |
+| `:EcologShellToggle`                       | Loads and unloads shell variables                                                     |
 
 ## 📝 Environment File Priority
 

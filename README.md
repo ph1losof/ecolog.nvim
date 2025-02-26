@@ -1231,51 +1231,62 @@ Ecolog provides a built-in statusline component that shows your current environm
 ```lua
 require('ecolog').setup({
   integrations = {
-    snacks = {
-      shelter = {
-        mask_on_copy = false, -- Whether to mask values when copying
+    statusline = {
+      hidden_mode = false,  -- Hide when no env file is loaded
+      icons = {
+        enabled = true,     -- Enable icons in statusline
+        env = "🌲",         -- Icon for environment file
+        shelter = "🛡️",     -- Icon for shelter mode
       },
-      keys = {
-        copy_value = "<C-y>",  -- Copy variable value to clipboard
-        copy_name = "<C-n>",   -- Copy variable name to clipboard
-        append_value = "<C-a>", -- Append value at cursor position
-        append_name = "<CR>",   -- Append name at cursor position
+      format = {
+        env_file = function(name)
+          return name       -- Format environment file name
+        end,
+        vars_count = function(count)
+          return string.format("%d vars", count)  -- Format variables count
+        end,
+      },
+      highlights = {
+        enabled = true,           -- Enable custom highlights
+        env_file = "Directory",   -- Highlight group for file name
+        vars_count = "Number",    -- Highlight group for vars count
       },
     }
   }
 })
 ```
 
-You can trigger the Snacks picker using `:EcologSnacks` command.
+#### Native Statusline
+
+Add to your statusline:
+
+```lua
+vim.o.statusline = "%{%v:lua.require'ecolog'.get_status()%}"
+```
+
+#### Lualine Integration
+
+Add to your lualine config:
+
+```lua
+require('lualine').setup({
+  sections = {
+    lualine_x = {
+      require('ecolog').get_lualine,
+    }
+  }
+})
+```
 
 #### Features
 
-- 🎨 Beautiful VSCode-like interface
-- 🔍 Real-time fuzzy search
-- 📋 Copy variable names or values to clipboard
-- ⌨️ Insert variables into your code
-- 🛡️ Integrated with shelter mode for sensitive data protection
-- 📝 Live updates when environment files change
-- 🎯 Syntax highlighting for better readability
-
-#### Usage
-
-Open the environment variables picker:
-
-```vim
-:EcologSnacks
-```
-
-#### Default Keymaps
-
-| Key     | Action                  |
-| ------- | ----------------------- |
-| `<CR>`  | Insert variable name    |
-| `<C-y>` | Copy value to clipboard |
-| `<C-n>` | Copy name to clipboard  |
-| `<C-a>` | Append value to buffer  |
-
-All keymaps are customizable through the configuration.
+- Shows current environment file name
+- Displays number of loaded variables
+- Indicates shelter mode status
+- Configurable icons and formatting
+- Custom highlighting support
+- Automatic updates on file changes
+- Optional hiding when no env file is loaded
 
 ### AWS Secrets Manager
 

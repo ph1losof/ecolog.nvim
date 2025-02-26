@@ -536,6 +536,33 @@ local function create_commands(config)
       end,
       desc = "Toggle environment variable interpolation",
     },
+    EcologShellToggle = {
+      callback = function()
+        if not state.last_opts then
+          notify("Ecolog not initialized", vim.log.levels.ERROR)
+          return
+        end
+
+        local current_state
+        if type(state.last_opts.load_shell) == "boolean" then
+          current_state = not state.last_opts.load_shell
+          state.last_opts.load_shell = {
+            enabled = current_state,
+            override = false,
+            filter = nil,
+            transform = nil,
+          }
+        else
+          current_state = not state.last_opts.load_shell.enabled
+          state.last_opts.load_shell.enabled = current_state
+        end
+
+        M.refresh_env_vars(state.last_opts)
+
+        notify(string.format("Shell variables %s", current_state and "loaded" or "unloaded"), vim.log.levels.INFO)
+      end,
+      desc = "Toggle shell variables loading",
+    },
   }
 
   for name, cmd in pairs(commands) do

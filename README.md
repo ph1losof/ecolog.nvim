@@ -41,7 +41,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Pattern Format](#pattern-format)
   - [Examples](#examples)
   - [Features](#features-1)
-- [Custom Sort Function](#-custom-sort-function)
+- [Custom Sort Functions](#-custom-sort-function)
   - [Basic Usage](#basic-usage-2)
   - [Examples](#examples-1)
   - [Features](#features-2)
@@ -699,19 +699,22 @@ env_file_patterns = {
 #### Default Behavior
 
 If no custom patterns are specified, Ecolog uses these default patterns:
+
 - `.env` - Main environment file
 - `.envrc` - Shell environment file
 - `.env.*` - Environment-specific files (e.g., `.env.development`, `.env.test`)
 
-## 🔄 Custom Sort Function
+## 🔄 Custom Sort Functions
 
-Ecolog allows you to customize how environment files are sorted using the `sort_fn` option. This is useful when you need specific ordering beyond the default alphabetical sorting.
+### File Sorting (`sort_file_fn`)
+
+Ecolog allows you to customize how environment files are sorted using the `sort_file_fn` option (previously named `sort_fn`). This is useful when you need specific ordering beyond the default alphabetical sorting.
 
 #### Basic Usage
 
 ```lua
 require('ecolog').setup({
-  sort_fn = function(a, b)
+  sort_file_fn = function(a, b)
     -- Sort by file size (smaller files first)
     local a_size = vim.fn.getfsize(a)
     local b_size = vim.fn.getfsize(b)
@@ -725,7 +728,7 @@ require('ecolog').setup({
 1. **Priority-based sorting**:
 
 ```lua
-sort_fn = function(a, b)
+sort_file_fn = function(a, b)
   local priority = {
     [".env.production"] = 1,
     [".env.staging"] = 2,
@@ -741,7 +744,7 @@ end
 2. **Sort by modification time**:
 
 ```lua
-sort_fn = function(a, b)
+sort_file_fn = function(a, b)
   local a_time = vim.fn.getftime(a)
   local b_time = vim.fn.getftime(b)
   return a_time > b_time  -- Most recently modified first
@@ -751,7 +754,7 @@ end
 3. **Sort by environment type**:
 
 ```lua
-sort_fn = function(a, b)
+sort_file_fn = function(a, b)
   -- Extract environment type from filename
   local function get_env_type(file)
     local name = vim.fn.fnamemodify(file, ":t")
@@ -761,12 +764,79 @@ sort_fn = function(a, b)
 end
 ```
 
+### Variable Sorting (`sort_var_fn`)
+
+The `sort_var_fn` option allows you to customize how environment variables are sorted in various interfaces (completion, pickers, etc.).
+
+#### Basic Usage
+
+```lua
+require('ecolog').setup({
+  sort_var_fn = function(a, b)
+    -- Sort by variable name length (shorter names first)
+    return #a.name < #b.name
+  end
+})
+```
+
+#### Examples
+
+1. **Sort by value type**:
+
+```lua
+sort_var_fn = function(a, b)
+  -- Sort variables with types before those without
+  if a.type and not b.type then
+    return true
+  elseif not a.type and b.type then
+    return false
+  end
+  -- Then sort alphabetically by name
+  return a.name < b.name
+end
+```
+
+2. **Sort by source priority**:
+
+```lua
+sort_var_fn = function(a, b)
+  local priority = {
+    [".env.local"] = 1,
+    [".env"] = 2,
+    ["shell"] = 3
+  }
+  local a_priority = priority[a.source] or 99
+  local b_priority = priority[b.source] or 99
+  return a_priority < b_priority
+end
+```
+
+3. **Sort by custom categories**:
+
+```lua
+sort_var_fn = function(a, b)
+  -- Sort API keys first, then database variables, then others
+  local function get_category(var)
+    if var.name:match("_KEY$") then return 1
+    elseif var.name:match("^DB_") then return 2
+    else return 3 end
+  end
+  local a_cat = get_category(a)
+  local b_cat = get_category(b)
+  if a_cat ~= b_cat then
+    return a_cat < b_cat
+  end
+  return a.name < b.name
+end
+```
+
 #### Features
 
-- Custom sorting logic for environment files
-- Access to full file paths for advanced sorting
-- Compatible with `preferred_environment` option
-- Real-time sorting when files change
+- Custom sorting logic for both environment files and variables
+- Access to full file paths for file sorting
+- Access to variable metadata (name, type, source, value) for variable sorting
+- Real-time sorting when files or variables change
+- Affects all interfaces where variables are displayed (completion, pickers, etc.)
 
 ## 🔌 Integrations
 

@@ -2122,15 +2122,17 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 
 ### Environment Variable Completion (vs [cmp-dotenv](https://github.com/jcha0713/cmp-dotenv))
 
-| Feature                    | ecolog.nvim                                                                                    | cmp-dotenv                                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Language-aware Completion  | ✅ Fully configurable context-aware triggers for multiple languages and filetypes              | ❌ Basic environment variable completion only on every char |
-| Type System                | ✅ Built-in type validation and custom types                                                   | ❌ No type system                                           |
-| Nvim-cmp support           | ✅ Nvim-cmp integration                                                                        | ✅ Nvim-cmp integration                                     |
-| Blink-cmp support          | ✅ Native blink-cmp integration                                                                | ❌ Doesn't support blink-cmp natively                       |
-| Documentation Support      | ✅ Rich documentation with type info and source                                                | 🟡 Basic documentation support                              |
-| Shell Variable Integration | ✅ Configurable shell variable loading and filtering                                           | 🟡 Basic shell variable support                             |
-| Multiple Environment Files | ✅ Priority-based loading with custom sorting and switching between multiple environment files | 🟡 Basic environment variable loading                       |
+| Feature                    | ecolog.nvim                                                                                         | cmp-dotenv                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Language-aware Completion  | ✅ Fully configurable context-aware triggers for multiple languages and filetypes                   | ❌ Basic environment variable completion only on every char |
+| Type System                | ✅ Built-in type validation and custom types                                                        | ❌ No type system                                           |
+| Nvim-cmp support           | ✅ Nvim-cmp integration                                                                             | ✅ Nvim-cmp integration                                     |
+| Blink-cmp support          | ✅ Native blink-cmp integration                                                                     | ❌ Doesn't support blink-cmp natively                       |
+| Omnifunc support           | ✅ Native vim's omnifunc                                                                            | ❌ Doesn't support omnifunc                                 |
+| Documentation Support      | ✅ Rich documentation with type info and source                                                     | 🟡 Basic documentation support                              |
+| Shell Variable Integration | ✅ Configurable shell variable loading and filtering                                                | 🟡 Basic shell variable support                             |
+| Sorting                    | ✅ Built-in fully customizable sorting for both variables and files, involving all all integrations | ❌ No sorting supported                                     |
+| Multiple Environment Files | ✅ Priority-based loading with custom sorting and switching between multiple environment files      | 🟡 Basic environment variable loading                       |
 
 ### Security Features (vs [cloak.nvim](https://github.com/laytan/cloak.nvim))
 

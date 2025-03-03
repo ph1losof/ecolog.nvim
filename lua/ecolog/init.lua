@@ -618,7 +618,7 @@ function M.setup(opts)
 
   if config.providers then
     local providers = require("ecolog.providers")
-    if vim.tbl_islist(config.providers) then
+    if vim.islist(config.providers) then
       providers.register_many(config.providers)
     else
       providers.register(config.providers)

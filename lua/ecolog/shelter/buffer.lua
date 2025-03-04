@@ -327,11 +327,10 @@ function M.create_extmark(value, item, config, bufname, line_num)
   }
 
   if mask_length then
-    extmark_opts.conceal = ""
-    extmark_opts.hl_mode = "replace"
-    extmark_opts.end_col = item.eq_pos + #raw_value
-    extmark_opts.virt_text_pos = "inline"
-    extmark_opts.hl_group = "Conceal"
+    local padding = string.rep(" ", math.max(0, #raw_value - #masked_value))
+    extmark_opts.virt_text = {
+      { masked_value .. padding, (is_revealed or masked_value == raw_value) and "String" or config.highlight_group },
+    }
   end
 
   return {
@@ -540,6 +539,7 @@ local function setup_buffer_autocmds(config, group)
 end
 
 ---@param config table
+---@return table
 local function setup_paste_override(config)
   local original_paste = vim.paste
   vim.paste = (function()

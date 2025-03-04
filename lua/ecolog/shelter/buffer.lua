@@ -323,7 +323,7 @@ function M.create_extmark(value, item, config, bufname, line_num)
     virt_text_pos = "overlay",
     hl_mode = "combine",
     priority = item.is_comment and 10000 or 9999,
-    strict = true,
+    strict = false,
   }
 
   if mask_length then

@@ -424,7 +424,8 @@ The provider will be automatically loaded when editing files of the specified fi
 | `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                              |
 | `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)                  |
 | `:EcologSnacks`                            | Open environment variables picker using snacks.nvim (must have snacks.nvim installed) |
-| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
+| `:EcologEnvGet`                            | Get the value of a specific environment variable                                      |
+| `:EcologEnvSet`                            | Sets the value of a specified environment variable                                    |
 | `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
 | `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
 | `:EcologAWSConfig`                         | Open configuration menu for AWS Secrets Manager (region, profile, secrets)            |

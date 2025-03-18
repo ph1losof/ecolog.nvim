@@ -563,6 +563,42 @@ local function create_commands(config)
       end,
       desc = "Toggle shell variables loading",
     },
+    EcologEnvGet = {
+      callback = function(cmd_opts)
+        local env_module = get_env_module()
+        local var = cmd_opts.args
+        local value = env_module.get(var)
+        if value then
+          print(value.value)
+        else
+          print("Variable not found: " .. var)
+        end
+      end,
+      nargs = 1,
+      desc = "Get environment variable value",
+    },
+    EcologEnvSet = {
+      callback = function(cmd_opts)
+        local env_module = get_env_module()
+        local args = vim.split(cmd_opts.args, " ", { plain = true })
+        if #args < 2 then
+          print("Usage: EcologEnvSet KEY VALUE")
+          return
+        end
+        
+        local key = args[1]
+        local value = table.concat(args, " ", 2)
+        
+        local result = env_module.set(key, value)
+        if result then
+          print(string.format("Set %s = %s", key, value))
+        else
+          print("Failed to set variable: " .. key)
+        end
+      end,
+      nargs = "+",
+      desc = "Set environment variable value",
+    },
   }
 
   for name, cmd in pairs(commands) do

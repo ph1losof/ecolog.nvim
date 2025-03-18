@@ -29,20 +29,27 @@ function M.get(key)
   return env_vars[key]
 end
 
-function M.setup()
-  vim.api.nvim_create_user_command("EcologEnvGet", function(cmd_opts)
-    local var = cmd_opts.args
-    local value = M.get(var)
-    if value then
-      print(value.value)
-    else
-      print("Variable not found: " .. var)
-    end
-  end, {
-    nargs = 1,
-    desc = "Get environment variable value",
-  })
+function M.set(key, value)
+  local ecolog = require("ecolog")
+  local env_vars = ecolog.get_env_vars()
+  local types = require("ecolog.types")
+  
+  local type_name, transformed_value = types.detect_type(value)
+  
+  env_vars[key] = {
+    value = transformed_value,
+    type = type_name,
+    raw_value = value,
+    source = "shell",
+  }
+  
+  vim.env[key] = transformed_value
+  added_vars[key] = true
+  
+  return env_vars[key]
+end
 
+function M.setup()
   M.update_env_vars()
 end
 

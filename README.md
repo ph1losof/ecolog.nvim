@@ -527,12 +527,6 @@ Enable vim.env module in your setup:
 - Cleans up variables when they are removed from the environment file
 - Provides commands to inspect the current state
 
-### Commands
-
-| Command         | Description                                      |
-| --------------- | ------------------------------------------------ |
-| `:EcologEnvGet` | Get the value of a specific environment variable |
-
 ### Example
 
 ```lua

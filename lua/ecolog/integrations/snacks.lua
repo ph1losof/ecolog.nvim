@@ -145,12 +145,24 @@ function SnacksPicker:create_picker_items()
   local data = require("ecolog.integrations.pickers.data")
   local items = data.format_env_vars_for_picker(self:get_name():lower())
 
-  local longest_name = 0
+  local filtered_items = {}
   for _, item in ipairs(items) do
+    if item.value == nil then
+      item.value = ""
+    end
+    if item.masked_value == nil then
+      item.masked_value = ""
+    end
+    item.text = item.name .. " " .. (item.masked_value or "")
+    table.insert(filtered_items, item)
+  end
+
+  local longest_name = 0
+  for _, item in ipairs(filtered_items) do
     longest_name = math.max(longest_name, #item.name)
   end
 
-  return items, longest_name
+  return filtered_items, longest_name
 end
 
 ---Open environment variables picker

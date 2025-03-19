@@ -1104,6 +1104,8 @@ require('telescope').setup({
         append_value = "<C-a>",
         -- Key to append name to buffer (defaults to <CR>)
         append_name = "<CR>",
+        -- Key to edit environment variable
+        edit_var = "<C-e>",
       },
     }
   }
@@ -1128,6 +1130,7 @@ require('ecolog').setup({
         copy_name = "ctrl-n",   -- Copy variable name to clipboard
         append_value = "ctrl-a", -- Append value at cursor position
         append_name = "enter",   -- Append name at cursor position
+        edit_var = "ctrl-e",     -- Edit environment variable
       },
     }
   }
@@ -1141,6 +1144,7 @@ You can trigger the FZF picker using `:EcologFzf` command.
 - 🔍 Fuzzy search through environment variables
 - 📋 Copy variable names or values to clipboard
 - ⌨️ Insert variables into your code
+- ✏️ Edit environment variables directly from the picker
 - 🛡️ Integrated with shelter mode for sensitive data protection
 - 📝 Real-time updates when environment files change
 
@@ -1160,6 +1164,7 @@ Open the environment variables picker:
 | `<C-y>`   | Copy value to clipboard |
 | `<C-n>`   | Copy name to clipboard  |
 | `<C-a>`   | Append value to buffer  |
+| `<C-e>`   | Edit variable value     |
 
 All keymaps are customizable through the configuration.
 
@@ -1181,6 +1186,7 @@ require('ecolog').setup({
         copy_name = "<C-u>",   -- Copy variable name to clipboard
         append_value = "<C-a>", -- Append value at cursor position
         append_name = "<CR>",   -- Append name at cursor position
+        edit_var = "<C-e>",     -- Edit environment variable
       },
       layout = {  -- Any Snacks layout configuration
         preset = "dropdown",
@@ -1199,6 +1205,7 @@ You can trigger the Snacks picker using `:EcologSnacks` command.
 - 🔍 Real-time fuzzy search
 - 📋 Copy variable names or values to clipboard
 - ⌨️ Insert variables into your code
+- ✏️ Edit environment variables directly from the picker
 - 🛡️ Integrated with shelter mode for sensitive data protection
 - 📝 Live updates when environment files change
 - 🎯 Syntax highlighting for better readability
@@ -1219,6 +1226,7 @@ Open the environment variables picker:
 | `<C-y>` | Copy value to clipboard |
 | `<C-u>` | Copy name to clipboard  |
 | `<C-a>` | Append value to buffer  |
+| `<C-e>` | Edit variable value     |
 
 All keymaps are customizable through the configuration.
 

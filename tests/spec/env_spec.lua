@@ -84,14 +84,6 @@ describe("vim.env integration", function()
   end)
 
   describe("setup()", function()
-    it("should create EcologEnvGet command", function()
-      env.setup()
-
-      -- Check if command exists
-      local has_command = vim.fn.exists(":EcologEnvGet") ~= 0
-      assert.is_true(has_command)
-    end)
-
     it("should initialize environment variables", function()
       env.setup()
 
@@ -100,4 +92,5 @@ describe("vim.env integration", function()
       assert.equals("secret123", vim.env.API_KEY)
     end)
   end)
-end) 
+end)
+

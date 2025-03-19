@@ -5,7 +5,7 @@ local fn = vim.fn
 
 ---@class FzfConfig
 ---@field shelter { mask_on_copy: boolean }
----@field mappings { copy_value: string, copy_name: string, append_value: string, append_name: string }
+---@field mappings { copy_value: string, copy_name: string, append_value: string, append_name: string, edit_var: string }
 local DEFAULT_CONFIG = {
   shelter = {
     mask_on_copy = false,
@@ -15,6 +15,7 @@ local DEFAULT_CONFIG = {
     copy_name = "ctrl-n",
     append_value = "ctrl-a",
     append_name = "enter",
+    edit_var = "ctrl-e",
   },
 }
 
@@ -135,6 +136,33 @@ local function create_append_value_action(env_vars, config)
   end
 end
 
+---Create edit variable action
+---@param env_vars table Environment variables
+---@return function
+local function create_edit_var_action(env_vars)
+  return safe_action("edit_variable", function(selected)
+    local var_name = utils.extract_var_name(selected[1])
+    if not var_name then
+      return
+    end
+    
+    local selection = env_vars[var_name]
+    if not selection then
+      return
+    end
+    
+    vim.ui.input(
+      { prompt = string.format("New value for %s (current: %s): ", var_name, selection.value) },
+      function(input)
+        if input then
+          vim.cmd(string.format("EcologEnvSet %s %s", var_name, input))
+          notify_with_title(string.format("Updated environment variable '%s'", var_name), vim.log.levels.INFO)
+        end
+      end
+    )
+  end)
+end
+
 ---Create fzf actions mapping
 ---@return table<string, function>
 function M.actions()
@@ -146,6 +174,7 @@ function M.actions()
     [M.config.mappings.copy_name] = create_copy_name_action(),
     [M.config.mappings.append_name] = create_append_name_action(),
     [M.config.mappings.append_value] = create_append_value_action(env_vars, M.config),
+    [M.config.mappings.edit_var] = create_edit_var_action(env_vars),
   }
 end
 

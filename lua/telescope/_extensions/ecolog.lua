@@ -21,6 +21,7 @@ local config = {
     copy_name = "<C-n>",
     append_value = "<C-a>",
     append_name = "<CR>",
+    edit_var = "<C-e>",
   },
 }
 
@@ -142,6 +143,26 @@ local function env_picker(opts)
             vim.api.nvim_set_current_line(new_line)
             vim.api.nvim_win_set_cursor(0, { cursor[1], cursor[2] + #value })
             vim.notify("Appended environment value", vim.log.levels.INFO)
+          end)
+        end
+
+        if config.mappings.edit_var then
+          map("i", config.mappings.edit_var, function()
+            local selection = action_state.get_selected_entry()
+            local var_name = selection.value.name
+            local current_value = selection.value.value
+            
+            actions.close(prompt_bufnr)
+            
+            vim.ui.input(
+              { prompt = string.format("New value for %s (current: %s): ", var_name, current_value) },
+              function(input)
+                if input then
+                  vim.cmd(string.format("EcologEnvSet %s %s", var_name, input))
+                  vim.notify(string.format("Updated environment variable '%s'", var_name), vim.log.levels.INFO)
+                end
+              end
+            )
           end)
         end
 

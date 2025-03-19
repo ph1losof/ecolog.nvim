@@ -582,7 +582,17 @@ local function create_commands(config)
         local env_module = get_env_module()
         local args = vim.split(cmd_opts.args, " ", { plain = true })
         if #args < 2 then
-          print("Usage: EcologEnvSet KEY VALUE")
+          local key = args[1]
+          vim.ui.input({ prompt = string.format("Value for %s: ", key) }, function(input)
+            if input then
+              local result = env_module.set(key, input)
+              if result then
+                print(string.format("Set %s = %s", key, input))
+              else
+                print("Failed to set variable: " .. key)
+              end
+            end
+          end)
           return
         end
         

@@ -5,7 +5,7 @@ local fn = vim.fn
 
 ---@class SnacksConfig
 ---@field shelter { mask_on_copy: boolean }
----@field keys { copy_value: string, copy_name: string, append_value: string, append_name: string }
+---@field keys { copy_value: string, copy_name: string, append_value: string, append_name: string, edit_var: string }
 ---@field layout snacks.picker.layout.Config|string|{}|fun(source:string):(snacks.picker.layout.Config|string)
 local DEFAULT_CONFIG = {
   shelter = {
@@ -16,6 +16,7 @@ local DEFAULT_CONFIG = {
     copy_name = "<C-u>",
     append_value = "<C-a>",
     append_name = "<CR>",
+    edit_var = "<C-e>",
   },
   layout = {
     preset = "dropdown",
@@ -77,6 +78,27 @@ local function copy_to_clipboard(text, description)
   notify_with_title(string.format("Copied %s to clipboard", description), vim.log.levels.INFO)
 end
 
+---Prompt for a new value and update the environment variable
+---@param var_name string The environment variable name
+local function edit_environment_var(var_name)
+  if not validate_window() then
+    return false
+  end
+  
+  local current_value = require("ecolog").get_env_vars()[var_name].value
+  
+  vim.ui.input(
+    { prompt = string.format("New value for %s (current: %s): ", var_name, current_value) },
+    function(input)
+      if input then
+        vim.cmd(string.format("EcologEnvSet %s %s", var_name, input))
+      end
+    end
+  )
+  
+  return true
+end
+
 ---Create picker actions for handling different key mappings
 ---@return table<string, function>
 local function create_picker_actions()
@@ -108,6 +130,14 @@ local function create_picker_actions()
       if not item then return end
       if append_at_cursor(item.name) then
         notify_with_title("Appended environment name", vim.log.levels.INFO)
+        picker:close()
+      end
+    end,
+    edit_var = function(picker)
+      local item = picker:current()
+      if not item then return end
+      if edit_environment_var(item.name) then
+        notify_with_title(string.format("Editing environment variable '%s'", item.name), vim.log.levels.INFO)
         picker:close()
       end
     end,

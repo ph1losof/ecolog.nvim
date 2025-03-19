@@ -36,11 +36,17 @@ function M.set(key, value)
   
   local type_name, transformed_value = types.detect_type(value)
   
+  local source = "shell"
+
+  if env_vars[key] and env_vars[key].source then
+    source = env_vars[key].source
+  end
+  
   env_vars[key] = {
     value = transformed_value,
     type = type_name,
     raw_value = value,
-    source = "shell",
+    source = source,
   }
   
   vim.env[key] = transformed_value

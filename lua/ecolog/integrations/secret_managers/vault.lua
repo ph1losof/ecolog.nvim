@@ -277,7 +277,7 @@ end
 ---@return string[] secrets List of secret names
 local function extract_secret_names(parsed)
   local secrets = {}
-  if vim.tbl_islist(parsed) then
+  if vim.islist(parsed) then
     for _, secret in ipairs(parsed) do
       if secret.name then
         table.insert(secrets, secret.name)

@@ -41,10 +41,9 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Pattern Format](#pattern-format)
   - [Examples](#examples)
   - [Features](#features-1)
-- [Custom Sort Function](#-custom-sort-function)
-  - [Basic Usage](#basic-usage-2)
-  - [Examples](#examples-1)
-  - [Features](#features-2)
+- [Custom Sort Functions](#-custom-sort-functions)
+  - [File Sorting](#file-sorting)
+  - [Variable Sorting](#variable-sorting)
 - [Integrations](#-integrations)
   - [Nvim-cmp Integration](#nvim-cmp-integration)
   - [Blink-cmp Integration](#blink-cmp-integration)
@@ -95,6 +94,8 @@ A Neovim plugin for seamless environment variable integration and management. Pr
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### Plugin Setup
+
+> 💡 **Quick Start**: If you want to quickly start with ecolog.nvim, check out the [author's personal setup](#️-author-setup) section.
 
 ```lua
 {
@@ -423,12 +424,14 @@ The provider will be automatically loaded when editing files of the specified fi
 | `:Telescope ecolog env`                    | Alternative way to open Telescope picker                                              |
 | `:EcologFzf`                               | Alternative way to open fzf-lua picker (must have fzf-lua installed)                  |
 | `:EcologSnacks`                            | Open environment variables picker using snacks.nvim (must have snacks.nvim installed) |
-| `:EcologEnvGet`                            | Get the value of a specific environment variable(must enable vim_env)                 |
+| `:EcologEnvGet`                            | Get the value of a specific environment variable                                      |
+| `:EcologEnvSet`                            | Sets the value of a specified environment variable                                    |
 | `:EcologCopy [variable_name]`              | Copy raw value of environment variable to clipboard                                   |
 | `:EcologCopy`                              | Copy raw value of environment variable under cursor to clipboard                      |
 | `:EcologAWSConfig`                         | Open configuration menu for AWS Secrets Manager (region, profile, secrets)            |
 | `:EcologVaultConfig`                       | Open configuration menu for HCP Vault (organization, project, apps)                   |
 | `:EcologInterpolationToggle`               | Toggle environment variable interpolation on/off                                      |
+| `:EcologShellToggle`                       | Loads and unloads shell variables                                                     |
 
 ## 📝 Environment File Priority
 
@@ -523,12 +526,6 @@ Enable vim.env module in your setup:
 - Updates `vim.env` in real-time when environment files change
 - Cleans up variables when they are removed from the environment file
 - Provides commands to inspect the current state
-
-### Commands
-
-| Command         | Description                                      |
-| --------------- | ------------------------------------------------ |
-| `:EcologEnvGet` | Get the value of a specific environment variable |
 
 ### Example
 
@@ -633,7 +630,7 @@ This affects all features that extract variables from code (peek, goto definitio
 
 ## 💡 Custom Environment File Patterns
 
-Ecolog supports custom patterns for matching environment files. This allows you to define your own naming conventions beyond the default `.env*` pattern.
+Ecolog supports custom patterns for matching environment files. This allows you to define your own naming conventions and directory structures beyond the default `.env*` pattern.
 
 #### Basic Usage
 
@@ -641,7 +638,7 @@ Set a single custom pattern:
 
 ```lua
 require('ecolog').setup({
-  env_file_pattern = "^config/.+%.env$" -- Matches any .env file in the config directory
+  env_file_patterns = { "config/env.*" } -- Matches env.any_here file in the config directory
 })
 ```
 
@@ -649,47 +646,74 @@ Use multiple patterns:
 
 ```lua
 require('ecolog').setup({
-  env_file_pattern = {
-    "^config/.+%.env$",     -- Matches .env files in config directory
-    "^environments/.+%.env$" -- Matches .env files in environments directory
+  env_file_patterns = {
+    "config/.env",      -- Matches .env file in config directory
+    "config/.env.*",    -- Matches any .env.* file in config directory
+    "environments/*"    -- Matches any file in environments directory
   }
 })
 ```
 
 #### Pattern Format
 
-- Patterns use Lua pattern matching syntax
+- Patterns use glob/wildcard syntax (e.g., `*` matches any characters)
 - Patterns are relative to the project root (`path` option)
-- Default patterns (`.env*`) are always included as fallback
+- Default patterns (`.env`, `.envrc`, `.env.*`) are used if no custom patterns are specified
+- When custom patterns are specified, ONLY those patterns are used (defaults are not included)
+
+#### Pattern Matching Rules
+
+1. **Directory Structure**: Patterns can include directories (e.g., `config/.env`, `environments/.env.*`)
+2. **File Extensions**: Use `.*` to match any extension (e.g., `.env.*` matches `.env.development`, `.env.test`)
+3. **Wildcards**: Use `*` to match any characters (e.g., `config/*` matches any file in the config directory)
 
 #### Examples
 
 ```lua
-env_file_pattern = {
-  "^%.env%.%w+$",          -- Matches .env.development, .env.production, etc.
-  "^config/env%.%w+$",     -- Matches config/env.development, config/env.production, etc.
-  "^%.env%.local%.%w+$",   -- Matches .env.local.development, .env.local.production, etc.
-  "^environments/.+%.env$"  -- Matches any file ending in .env in the environments directory
+-- Match specific environments in config directory
+env_file_patterns = {
+  "config/.env.development",
+  "config/.env.production"
+}
+
+-- Match all env files in multiple directories
+env_file_patterns = {
+  "config/env/*",
+  "environments/*",
+  ".env*"
+}
+
+-- Match specific naming convention
+env_file_patterns = {
+  "env.*.config",
+  "env.*.local"
 }
 ```
 
-#### Features
+#### Default Behavior
 
-- Multiple pattern support
-- Directory-specific matching
-- Flexible naming conventions
-- Fallback to default patterns
-- Real-time file monitoring for custom patterns
+If no custom patterns are specified, Ecolog uses these default patterns:
 
-## 🔄 Custom Sort Function
+- `.env` - Main environment file
+- `.envrc` - Shell environment file
+- `.env.*` - Environment-specific files (e.g., `.env.development`, `.env.test`)
 
-Ecolog allows you to customize how environment files are sorted using the `sort_fn` option. This is useful when you need specific ordering beyond the default alphabetical sorting.
+## 🔄 Custom Sort Functions
+
+Ecolog provides two types of sort functions to customize how both environment files and variables are ordered in various interfaces:
+
+1. **File Sorting (`sort_file_fn`)**: Controls how environment files are prioritized and ordered
+2. **Variable Sorting (`sort_var_fn`)**: Controls how environment variables are sorted in completion, pickers, and other interfaces
+
+### File Sorting (`sort_file_fn`)
+
+Ecolog allows you to customize how environment files are sorted using the `sort_file_fn` option (previously named `sort_fn`). This is useful when you need specific ordering beyond the default alphabetical sorting.
 
 #### Basic Usage
 
 ```lua
 require('ecolog').setup({
-  sort_fn = function(a, b)
+  sort_file_fn = function(a, b)
     -- Sort by file size (smaller files first)
     local a_size = vim.fn.getfsize(a)
     local b_size = vim.fn.getfsize(b)
@@ -703,7 +727,7 @@ require('ecolog').setup({
 1. **Priority-based sorting**:
 
 ```lua
-sort_fn = function(a, b)
+sort_file_fn = function(a, b)
   local priority = {
     [".env.production"] = 1,
     [".env.staging"] = 2,
@@ -719,7 +743,7 @@ end
 2. **Sort by modification time**:
 
 ```lua
-sort_fn = function(a, b)
+sort_file_fn = function(a, b)
   local a_time = vim.fn.getftime(a)
   local b_time = vim.fn.getftime(b)
   return a_time > b_time  -- Most recently modified first
@@ -729,7 +753,7 @@ end
 3. **Sort by environment type**:
 
 ```lua
-sort_fn = function(a, b)
+sort_file_fn = function(a, b)
   -- Extract environment type from filename
   local function get_env_type(file)
     local name = vim.fn.fnamemodify(file, ":t")
@@ -739,12 +763,79 @@ sort_fn = function(a, b)
 end
 ```
 
+### Variable Sorting (`sort_var_fn`)
+
+The `sort_var_fn` option allows you to customize how environment variables are sorted in various interfaces (completion, pickers, etc.).
+
+#### Basic Usage
+
+```lua
+require('ecolog').setup({
+  sort_var_fn = function(a, b)
+    -- Sort by variable name length (shorter names first)
+    return #a.name < #b.name
+  end
+})
+```
+
+#### Examples
+
+1. **Sort by value type**:
+
+```lua
+sort_var_fn = function(a, b)
+  -- Sort variables with types before those without
+  if a.type and not b.type then
+    return true
+  elseif not a.type and b.type then
+    return false
+  end
+  -- Then sort alphabetically by name
+  return a.name < b.name
+end
+```
+
+2. **Sort by source priority**:
+
+```lua
+sort_var_fn = function(a, b)
+  local priority = {
+    [".env.local"] = 1,
+    [".env"] = 2,
+    ["shell"] = 3
+  }
+  local a_priority = priority[a.source] or 99
+  local b_priority = priority[b.source] or 99
+  return a_priority < b_priority
+end
+```
+
+3. **Sort by custom categories**:
+
+```lua
+sort_var_fn = function(a, b)
+  -- Sort API keys first, then database variables, then others
+  local function get_category(var)
+    if var.name:match("_KEY$") then return 1
+    elseif var.name:match("^DB_") then return 2
+    else return 3 end
+  end
+  local a_cat = get_category(a)
+  local b_cat = get_category(b)
+  if a_cat ~= b_cat then
+    return a_cat < b_cat
+  end
+  return a.name < b.name
+end
+```
+
 #### Features
 
-- Custom sorting logic for environment files
-- Access to full file paths for advanced sorting
-- Compatible with `preferred_environment` option
-- Real-time sorting when files change
+- Custom sorting logic for both environment files and variables
+- Access to full file paths for file sorting
+- Access to variable metadata (name, type, source, value) for variable sorting
+- Real-time sorting when files or variables change
+- Affects all interfaces where variables are displayed (completion, pickers, etc.)
 
 ## 🔌 Integrations
 
@@ -759,6 +850,7 @@ require('cmp').setup({
     -- your other sources...
   },
 })
+```
 
 Nvim-cmp integration is enabled by default. To disable it:
 
@@ -1012,6 +1104,8 @@ require('telescope').setup({
         append_value = "<C-a>",
         -- Key to append name to buffer (defaults to <CR>)
         append_name = "<CR>",
+        -- Key to edit environment variable
+        edit_var = "<C-e>",
       },
     }
   }
@@ -1036,6 +1130,7 @@ require('ecolog').setup({
         copy_name = "ctrl-n",   -- Copy variable name to clipboard
         append_value = "ctrl-a", -- Append value at cursor position
         append_name = "enter",   -- Append name at cursor position
+        edit_var = "ctrl-e",     -- Edit environment variable
       },
     }
   }
@@ -1049,6 +1144,7 @@ You can trigger the FZF picker using `:EcologFzf` command.
 - 🔍 Fuzzy search through environment variables
 - 📋 Copy variable names or values to clipboard
 - ⌨️ Insert variables into your code
+- ✏️ Edit environment variables directly from the picker
 - 🛡️ Integrated with shelter mode for sensitive data protection
 - 📝 Real-time updates when environment files change
 
@@ -1068,6 +1164,7 @@ Open the environment variables picker:
 | `<C-y>`   | Copy value to clipboard |
 | `<C-n>`   | Copy name to clipboard  |
 | `<C-a>`   | Append value to buffer  |
+| `<C-e>`   | Edit variable value     |
 
 All keymaps are customizable through the configuration.
 
@@ -1089,6 +1186,7 @@ require('ecolog').setup({
         copy_name = "<C-u>",   -- Copy variable name to clipboard
         append_value = "<C-a>", -- Append value at cursor position
         append_name = "<CR>",   -- Append name at cursor position
+        edit_var = "<C-e>",     -- Edit environment variable
       },
       layout = {  -- Any Snacks layout configuration
         preset = "dropdown",
@@ -1107,6 +1205,7 @@ You can trigger the Snacks picker using `:EcologSnacks` command.
 - 🔍 Real-time fuzzy search
 - 📋 Copy variable names or values to clipboard
 - ⌨️ Insert variables into your code
+- ✏️ Edit environment variables directly from the picker
 - 🛡️ Integrated with shelter mode for sensitive data protection
 - 📝 Live updates when environment files change
 - 🎯 Syntax highlighting for better readability
@@ -1127,6 +1226,7 @@ Open the environment variables picker:
 | `<C-y>` | Copy value to clipboard |
 | `<C-u>` | Copy name to clipboard  |
 | `<C-a>` | Append value to buffer  |
+| `<C-e>` | Edit variable value     |
 
 All keymaps are customizable through the configuration.
 
@@ -1139,51 +1239,62 @@ Ecolog provides a built-in statusline component that shows your current environm
 ```lua
 require('ecolog').setup({
   integrations = {
-    snacks = {
-      shelter = {
-        mask_on_copy = false, -- Whether to mask values when copying
+    statusline = {
+      hidden_mode = false,  -- Hide when no env file is loaded
+      icons = {
+        enabled = true,     -- Enable icons in statusline
+        env = "🌲",         -- Icon for environment file
+        shelter = "🛡️",     -- Icon for shelter mode
       },
-      keys = {
-        copy_value = "<C-y>",  -- Copy variable value to clipboard
-        copy_name = "<C-n>",   -- Copy variable name to clipboard
-        append_value = "<C-a>", -- Append value at cursor position
-        append_name = "<CR>",   -- Append name at cursor position
+      format = {
+        env_file = function(name)
+          return name       -- Format environment file name
+        end,
+        vars_count = function(count)
+          return string.format("%d vars", count)  -- Format variables count
+        end,
+      },
+      highlights = {
+        enabled = true,           -- Enable custom highlights
+        env_file = "Directory",   -- Highlight group for file name
+        vars_count = "Number",    -- Highlight group for vars count
       },
     }
   }
 })
 ```
 
-You can trigger the Snacks picker using `:EcologSnacks` command.
+#### Native Statusline
+
+Add to your statusline:
+
+```lua
+vim.o.statusline = "%{%v:lua.require'ecolog'.get_status()%}"
+```
+
+#### Lualine Integration
+
+Add to your lualine config:
+
+```lua
+require('lualine').setup({
+  sections = {
+    lualine_x = {
+      require('ecolog').get_lualine,
+    }
+  }
+})
+```
 
 #### Features
 
-- 🎨 Beautiful VSCode-like interface
-- 🔍 Real-time fuzzy search
-- 📋 Copy variable names or values to clipboard
-- ⌨️ Insert variables into your code
-- 🛡️ Integrated with shelter mode for sensitive data protection
-- 📝 Live updates when environment files change
-- 🎯 Syntax highlighting for better readability
-
-#### Usage
-
-Open the environment variables picker:
-
-```vim
-:EcologSnacks
-```
-
-#### Default Keymaps
-
-| Key     | Action                  |
-| ------- | ----------------------- |
-| `<CR>`  | Insert variable name    |
-| `<C-y>` | Copy value to clipboard |
-| `<C-n>` | Copy name to clipboard  |
-| `<C-a>` | Append value to buffer  |
-
-All keymaps are customizable through the configuration.
+- Shows current environment file name
+- Displays number of loaded variables
+- Indicates shelter mode status
+- Configurable icons and formatting
+- Custom highlighting support
+- Automatic updates on file changes
+- Optional hiding when no env file is loaded
 
 ### AWS Secrets Manager
 
@@ -1541,6 +1652,7 @@ Three modes of operation:
 You can control the length of masked portions using the `mask_length` option:
 
 1. **Full Masking Mode**:
+
    ```lua
    shelter = {
        configuration = {
@@ -1926,12 +2038,16 @@ The plugin seamlessly integrates with your current colorscheme:
 
 ## 🛠️ Author Setup
 
-It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't want to think much of a setup and reading docs:
+It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated. However, it usefull to quickly get started especially if you don't want to think much of a setup and reading docs:
+
+> **Note**: Additional setup is required for [nvim-cmp](#nvim-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
- {
-   'philosofonusus/ecolog.nvim',
+{
+    'philosofonusus/ecolog.nvim',
     keys = {
+      { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
+      { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
@@ -1941,6 +2057,35 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim if you don't wan
     opts = {
       preferred_environment = 'local',
       types = true,
+      providers = {
+        {
+          pattern = '{{[%w_]+}}?$',
+          filetype = 'http',
+          extract_var = function(line, col)
+            local utils = require 'ecolog.utils'
+            return utils.extract_env_var(line, col, '{{([%w_]+)}}?$')
+          end,
+          get_completion_trigger = function()
+            return '{{'
+          end,
+        },
+      },
+      interpolation = {
+        enabled = true,
+        features = {
+          commands = false,
+        },
+      },
+      sort_var_fn = function(a, b)
+        if a.source == 'shell' and b.source ~= 'shell' then
+          return false
+        end
+        if a.source ~= 'shell' and b.source == 'shell' then
+          return true
+        end
+
+        return a.name < b.name
+      end,
       integrations = {
         lspsaga = true,
         nvim_cmp = true,
@@ -1980,32 +2125,34 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 
 ### Environment Variable Completion (vs [cmp-dotenv](https://github.com/jcha0713/cmp-dotenv))
 
-| Feature                    | ecolog.nvim                                                                                    | cmp-dotenv                                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Language-aware Completion  | ✅ Fully configurable context-aware triggers for multiple languages and filetypes              | ❌ Basic environment variable completion only on every char |
-| Type System                | ✅ Built-in type validation and custom types                                                   | ❌ No type system                                           |
-| Nvim-cmp support           | ✅ Nvim-cmp integration                                                                        | ✅ Nvim-cmp integration                                     |
-| Blink-cmp support          | ✅ Native blink-cmp integration                                                                | ❌ Doesn't support blink-cmp natively                       |
-| Documentation Support      | ✅ Rich documentation with type info and source                                                | 🟡 Basic documentation support                              |
-| Shell Variable Integration | ✅ Configurable shell variable loading and filtering                                           | 🟡 Basic shell variable support                             |
-| Multiple Environment Files | ✅ Priority-based loading with custom sorting and switching between multiple environment files | 🟡 Basic environment variable loading                       |
+| Feature                    | ecolog.nvim                                                                                         | cmp-dotenv                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Language-aware Completion  | ✅ Fully configurable context-aware triggers for multiple languages and filetypes                   | ❌ Basic environment variable completion only on every char |
+| Type System                | ✅ Built-in type validation and custom types                                                        | ❌ No type system                                           |
+| Nvim-cmp support           | ✅ Nvim-cmp integration                                                                             | ✅ Nvim-cmp integration                                     |
+| Blink-cmp support          | ✅ Native blink-cmp integration                                                                     | ❌ Doesn't support blink-cmp natively                       |
+| Omnifunc support           | ✅ Native vim's omnifunc                                                                            | ❌ Doesn't support omnifunc                                 |
+| Documentation Support      | ✅ Rich documentation with type info and source                                                     | 🟡 Basic documentation support                              |
+| Shell Variable Integration | ✅ Configurable shell variable loading and filtering                                                | 🟡 Basic shell variable support                             |
+| Sorting                    | ✅ Built-in fully customizable sorting for both variables and files, involving all all integrations | ❌ No sorting supported                                     |
+| Multiple Environment Files | ✅ Priority-based loading with custom sorting and switching between multiple environment files      | 🟡 Basic environment variable loading                       |
 
 ### Security Features (vs [cloak.nvim](https://github.com/laytan/cloak.nvim))
 
-| Feature                      | ecolog.nvim                                                                                                                                     | cloak.nvim                                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Partial Value Masking        | ✅ Configurable partial masking with patterns                                                                                                   | 🟡 Full masking only                                                                       |
-| Pattern-based Security       | ✅ Custom patterns for different security levels                                                                                                | 🟡 Basic pattern matching                                                                  |
-| Preview Protection           | ✅ Telescope/FZF/Snacks picker preview protection                                                                                               | 🟡 Only Telescope preview protection                                                       |
-| Avoid value leaking          | ✅ Full support, never leak environment variables                                                                                               | ❌ Doesn't support masking on startup and pasting content from insert mode, flashes values |
-| Mask on leave                | ✅ Supports                                                                                                                                     | ✅ Supports                                                                                |
-| Completion disable           | ✅ Supports both blink-cmp and nvim-cmp, configurable                                                                                           | 🟡 Only nvim-cmp and can't disable                                                         |
-| Custom mask and highlights   | ✅ Supports                                                                                                                                     | ✅ Supports                                                                                |
-| Performance                  | ✅ Better performance, especially in previewer buffers due to LRU caching, opening files is ~20ms faster then normal neovim(from my experience) | 🟡 Significantly slower. However, minimal implementation and also good                     |
-| Line of code                 | 🟡 ~1500+ LOC actively used on average, the rest is lazy loaded                                                                                 | ✅ Only ~300 LOC                                                                           |
-| Supports custom integrations | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc.                                                         | 🟡 Only works in file buffers and telescope previewer                                      |
-| Static mask length           | ❌ Chose not to support it due to neovim limitations                                                                                            | 🟡 Supports but have caveats                                                               |
-| Filetype support             | 🟡 Supports only `sh` and `.env` files                                                                                                          | ✅ Can work in any filetype                                                                |
+| Feature                      | ecolog.nvim                                                                                                                                                 | cloak.nvim                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Partial Value Masking        | ✅ Configurable partial masking with patterns                                                                                                               | 🟡 Full masking only                                                                       |
+| Pattern-based Security       | ✅ Custom patterns for different security levels                                                                                                            | 🟡 Basic pattern matching                                                                  |
+| Preview Protection           | ✅ Telescope/FZF/Snacks picker preview protection                                                                                                           | 🟡 Only Telescope preview protection                                                       |
+| Avoid value leaking          | ✅ Full support, never leak environment variables                                                                                                           | ❌ Doesn't support masking on startup and pasting content from insert mode, flashes values |
+| Mask on leave                | ✅ Supports                                                                                                                                                 | ✅ Supports                                                                                |
+| Completion disable           | ✅ Supports both blink-cmp and nvim-cmp, configurable                                                                                                       | 🟡 Only nvim-cmp and can't disable                                                         |
+| Custom mask and highlights   | ✅ Supports                                                                                                                                                 | ✅ Supports                                                                                |
+| Performance                  | ✅ Better performance, especially in previewer buffers due to LRU caching, opening files is ~20ms faster then normal neovim(from my experience)             | 🟡 Significantly slower. However, minimal implementation and also good                     |
+| Line of code                 | 🟡 ~1500+ LOC actively used on average, the rest is lazy loaded                                                                                             | ✅ Only ~300 LOC                                                                           |
+| Supports custom integrations | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc.                                                                     | 🟡 Only works in file buffers and telescope previewer                                      |
+| Setup and Docs               | 🟡 Docs are big due to the amount of features, but it's well documented and the plugin provides a lot of defaults, so it should be relatively easy to setup | ✅ Well documented and easy to setup                                                       |
+| Filetype support             | 🟡 Supports only `sh` and `.env` files                                                                                                                      | ✅ Can work in any filetype                                                                |
 
 ### Environment Management (vs [telescope-env.nvim](https://github.com/LinArcX/telescope-env.nvim))
 
@@ -2053,3 +2200,4 @@ MIT License - See [LICENSE](./LICENSE) for details.
 <div align="center">
 Made with ❤️ by <a href="https://github.com/philosofonusus">TENTACLE</a>
 </div>
+```

@@ -1,11 +1,11 @@
 local utils = require("ecolog.utils")
-local shelter = utils.get_module("ecolog.shelter")
+local BasePicker = require("ecolog.integrations.pickers.base")
 local api = vim.api
 local fn = vim.fn
 
 ---@class SnacksConfig
 ---@field shelter { mask_on_copy: boolean }
----@field keys { copy_value: string, copy_name: string, append_value: string, append_name: string }
+---@field keys { copy_value: string, copy_name: string, append_value: string, append_name: string, edit_var: string }
 ---@field layout snacks.picker.layout.Config|string|{}|fun(source:string):(snacks.picker.layout.Config|string)
 local DEFAULT_CONFIG = {
   shelter = {
@@ -16,6 +16,7 @@ local DEFAULT_CONFIG = {
     copy_name = "<C-u>",
     append_value = "<C-a>",
     append_name = "<CR>",
+    edit_var = "<C-e>",
   },
   layout = {
     preset = "dropdown",
@@ -23,91 +24,101 @@ local DEFAULT_CONFIG = {
   },
 }
 
----@class Snacks
----@field _initialized boolean
----@field config SnacksConfig
+---@class SnacksPicker : BasePicker
 ---@field snacks function
-local M = {
-  _initialized = false,
-  config = DEFAULT_CONFIG,
-}
+local SnacksPicker = setmetatable({}, { __index = BasePicker })
+SnacksPicker.__index = SnacksPicker
 
--- Store window ID in module scope
-local original_winid = nil
-
----Notify user with Ecolog Snacks prefix
----@param msg string
----@param level number
-local function notify_with_title(msg, level)
-  vim.notify(string.format("Ecolog Snacks: %s", msg), level)
+---Create a new SnacksPicker instance
+---@param opts table|nil Optional configuration to override defaults
+---@return SnacksPicker
+function SnacksPicker:new(opts)
+  local instance = BasePicker.new(self, opts)
+  return instance
 end
 
----Validate if the original window is still valid
----@return boolean
-local function validate_window()
-  if not api.nvim_win_is_valid(original_winid) then
-    notify_with_title("Original window no longer valid", vim.log.levels.ERROR)
-    return false
-  end
-  return true
+---Get the name of this picker for notifications
+---@return string
+function SnacksPicker:get_name()
+  return "Ecolog Snacks"
 end
 
----Append text at cursor position
----@param text string
----@return boolean success
-local function append_at_cursor(text)
-  if not validate_window() then
-    return false
-  end
-
-  api.nvim_set_current_win(original_winid)
-  local cursor = api.nvim_win_get_cursor(original_winid)
-  local line = api.nvim_get_current_line()
-  local new_line = line:sub(1, cursor[2]) .. text .. line:sub(cursor[2] + 1)
-  api.nvim_set_current_line(new_line)
-  api.nvim_win_set_cursor(original_winid, { cursor[1], cursor[2] + #text })
-  return true
-end
-
----Copy text to clipboard with notification
----@param text string
----@param description string
-local function copy_to_clipboard(text, description)
-  fn.setreg("+", text)
-  notify_with_title(string.format("Copied %s to clipboard", description), vim.log.levels.INFO)
+---Get the default configuration for this picker
+---@return table
+function SnacksPicker:get_default_config()
+  return {
+    shelter = {
+      mask_on_copy = false,
+    },
+    keys = {
+      copy_value = "<C-y>",
+      copy_name = "<C-u>",
+      append_value = "<C-a>",
+      append_name = "<CR>",
+      edit_var = "<C-e>",
+    },
+    layout = {
+      preset = "dropdown",
+      preview = false,
+    },
+  }
 end
 
 ---Create picker actions for handling different key mappings
 ---@return table<string, function>
-local function create_picker_actions()
+function SnacksPicker:create_picker_actions()
   return {
     copy_value = function(picker)
       local item = picker:current()
-      if not item then return end
-      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks", nil, item.source) or item.value
-      copy_to_clipboard(value, string.format("value of '%s'", item.name))
+      if not item then
+        return
+      end
+      local value = self._config.shelter.mask_on_copy and self:get_masked_value(item.value, item.name, item.source)
+        or item.value
+      self:copy_to_clipboard(value, string.format("value of '%s'", item.name))
       picker:close()
     end,
+
     copy_name = function(picker)
       local item = picker:current()
-      if not item then return end
-      copy_to_clipboard(item.name, string.format("variable '%s' name", item.name))
+      if not item then
+        return
+      end
+      self:copy_to_clipboard(item.name, string.format("variable '%s' name", item.name))
       picker:close()
     end,
+
     append_value = function(picker)
       local item = picker:current()
-      if not item then return end
-      local value = M.config.shelter.mask_on_copy and shelter.mask_value(item.value, "snacks", nil, item.source) or item.value
-      if append_at_cursor(value) then
-        notify_with_title("Appended environment value", vim.log.levels.INFO)
+      if not item then
+        return
+      end
+      local value = self._config.shelter.mask_on_copy and self:get_masked_value(item.value, item.name, item.source)
+        or item.value
+      if self:append_at_cursor(value) then
+        self:notify("Appended environment value", vim.log.levels.INFO)
         picker:close()
       end
     end,
+
     append_name = function(picker)
       local item = picker:current()
-      if not item then return end
-      if append_at_cursor(item.name) then
-        notify_with_title("Appended environment name", vim.log.levels.INFO)
+      if not item then
+        return
+      end
+      if self:append_at_cursor(item.name) then
+        self:notify("Appended environment name", vim.log.levels.INFO)
+        picker:close()
+      end
+    end,
+
+    edit_var = function(picker)
+      local item = picker:current()
+      if not item then
+        return
+      end
+      if self:edit_environment_var(item.name, item.value) then
+        self:notify(string.format("Editing environment variable '%s'", item.name), vim.log.levels.INFO)
         picker:close()
       end
     end,
@@ -115,98 +126,122 @@ local function create_picker_actions()
 end
 
 ---Create keymap configuration for snacks picker
----@param config SnacksConfig
 ---@return table<string, table>
-local function create_keymaps(config)
+function SnacksPicker:create_keymaps()
   local function create_keymap(action)
     return { action, mode = { "i", "n" }, remap = true }
   end
 
   local keymaps = {}
-  for action, key in pairs(config.keys) do
+  for action, key in pairs(self._config.keys) do
     keymaps[key] = create_keymap(action)
   end
   return keymaps
 end
 
-
 ---Create picker items from environment variables
----@return table[]
----@return integer
-local function create_picker_items()
-  local ecolog = require("ecolog")
-  local env_vars = ecolog.get_env_vars()
-  local items = {}
-  local longest_name = 0
+---@return table[], integer
+function SnacksPicker:create_picker_items()
+  local data = require("ecolog.integrations.pickers.data")
+  local items = data.format_env_vars_for_picker(self:get_name():lower())
 
-  for name, var in pairs(env_vars) do
-    local display_value = shelter.mask_value(var.value, "snacks", name, var.source)
-    table.insert(items, {
-      name = name,
-      text = name,
-      value = var.value,
-      display_value = display_value,
-    })
-    longest_name = math.max(longest_name, #name)
+  local filtered_items = {}
+  for _, item in ipairs(items) do
+    if item.value == nil then
+      item.value = ""
+    end
+    if item.masked_value == nil then
+      item.masked_value = ""
+    end
+    item.text = item.name .. " " .. (item.masked_value or "")
+    table.insert(filtered_items, item)
   end
-  return items, longest_name
+
+  local longest_name = 0
+  for _, item in ipairs(filtered_items) do
+    longest_name = math.max(longest_name, #item.name)
+  end
+
+  return filtered_items, longest_name
 end
 
 ---Open environment variables picker
-function M.env_picker()
+function SnacksPicker:open()
   local has_snacks, snacks = pcall(require, "snacks.picker")
   if not has_snacks then
     vim.notify("This extension requires snacks.nvim (https://github.com/folke/snacks.nvim)", vim.log.levels.ERROR)
     return
   end
 
-  if not M._initialized then
-    M.setup({})
-    M._initialized = true
+  if not self._initialized then
+    self:setup({})
+    self._initialized = true
   end
 
-  original_winid = api.nvim_get_current_win()
+  self:save_current_window()
 
-  local items, longuest = create_picker_items()
+  local items, longest = self:create_picker_items()
 
   snacks.pick({
     title = "Environment Variables",
     items = items,
-    layout = M.config.layout,
+    layout = self._config.layout,
+    sort = {
+      fields = { "score:desc", "idx" },
+    },
     format = function(item)
       local ret = {}
-      ret[#ret + 1] = { ("%-" .. longuest .. "s"):format(item.name), "@variable" }
+      ret[#ret + 1] = { ("%-" .. longest .. "s"):format(item.name), "@variable" }
       ret[#ret + 1] = { " " }
-      ret[#ret + 1] = { item.display_value or "", "@string" }
+      ret[#ret + 1] = { item.masked_value or "", "@string" }
       return ret
     end,
     win = {
       input = {
-        keys = create_keymaps(M.config),
+        keys = self:create_keymaps(),
       },
     },
     confirm = function(picker, item)
-      if not item then return end
-      if append_at_cursor(item.name) then
-        notify_with_title("Appended environment name", vim.log.levels.INFO)
+      if not item then
+        return
+      end
+
+      if self:append_at_cursor(item.name) then
+        self:notify("Appended environment name", vim.log.levels.INFO)
         picker:close()
       end
     end,
-    actions = create_picker_actions(),
+    actions = self:create_picker_actions(),
   })
 end
 
 ---Setup snacks integration
 ---@param opts? table
-function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
-  M.snacks = M.env_picker
+function SnacksPicker:setup(opts)
+  BasePicker.setup(self, opts)
+  self.snacks = function()
+    self:open()
+  end
 
   api.nvim_create_user_command("EcologSnacks", function()
-    M.env_picker()
+    self:open()
   end, {
     desc = "Open environment variables picker using snacks.nvim",
   })
 end
+
+local instance = SnacksPicker:new()
+
+local M = {
+  setup = function(opts)
+    instance:setup(opts)
+  end,
+  env_picker = function()
+    instance:open()
+  end,
+  snacks = function()
+    instance:open()
+  end,
+}
 
 return M

@@ -6,6 +6,10 @@ local M = {}
 ---@class SelectOptions
 ---@field path? string Path to search for env files
 ---@field active_file? string Currently active env file
+---@field env_file_patterns? string[] Custom glob patterns for matching env files
+---@field sort_file_fn? function Custom function for sorting env files
+---@field sort_fn? function Deprecated: Use sort_file_fn instead
+---@field preferred_environment? string Preferred environment name
 
 function M.select_env_file(opts, callback)
   local env_files = utils.find_env_files(opts)

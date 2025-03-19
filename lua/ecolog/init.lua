@@ -13,11 +13,14 @@ local schedule = vim.schedule
 ---@field custom_types table Custom type definitions
 ---@field preferred_environment string Preferred environment name
 ---@field load_shell LoadShellConfig Shell variables loading configuration
----@field env_file_pattern string|string[] Custom pattern(s) for matching env files
----@field sort_fn? function Custom function for sorting env files
+---@field env_file_patterns string[] Custom glob patterns for matching env files (e.g., ".env.*", "config/.env*")
+---@field sort_file_fn? function Custom function for sorting env files
+---@field sort_fn? function Deprecated: Use sort_file_fn instead
+---@field sort_var_fn? function Custom function for sorting environment variables when returning from get_env_vars
 ---@field provider_patterns table|boolean Controls how environment variables are extracted from code
 ---@field vim_env boolean Enable vim.env integration
 ---@field interpolation boolean|InterpolationConfig Enable/disable and configure environment variable interpolation
+---@field providers? table|table[] Custom provider(s) for environment variable detection and completion
 
 ---@class IntegrationsConfig
 ---@field lsp boolean Enable LSP integration
@@ -91,8 +94,9 @@ local DEFAULT_CONFIG = {
     filter = nil,
     transform = nil,
   },
-  env_file_pattern = nil,
-  sort_fn = nil,
+  env_file_patterns = nil,
+  sort_file_fn = nil,
+  sort_var_fn = nil,
   interpolation = {
     enabled = false,
     max_iterations = 10,
@@ -207,6 +211,8 @@ function M.refresh_env_vars(opts)
   end
 end
 
+---Get all environment variables
+---@return table<string, EnvVarInfo> Environment variables with their metadata
 function M.get_env_vars()
   if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
     state.selected_env_file = nil
@@ -218,6 +224,7 @@ function M.get_env_vars()
   if next(state.env_vars) == nil then
     env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
   end
+
   return state.env_vars
 end
 
@@ -293,8 +300,9 @@ local function create_commands(config)
         select.select_env_file({
           path = config.path,
           active_file = state.selected_env_file,
-          env_file_pattern = config.env_file_pattern,
-          sort_fn = config.sort_fn,
+          env_file_patterns = config.env_file_patterns,
+          sort_file_fn = config.sort_file_fn,
+          sort_var_fn = config.sort_var_fn,
           preferred_environment = config.preferred_environment,
         }, function(file)
           handle_env_file_selection(file, config)
@@ -528,6 +536,79 @@ local function create_commands(config)
       end,
       desc = "Toggle environment variable interpolation",
     },
+    EcologShellToggle = {
+      callback = function()
+        if not state.last_opts then
+          notify("Ecolog not initialized", vim.log.levels.ERROR)
+          return
+        end
+
+        local current_state
+        if type(state.last_opts.load_shell) == "boolean" then
+          current_state = not state.last_opts.load_shell
+          state.last_opts.load_shell = {
+            enabled = current_state,
+            override = false,
+            filter = nil,
+            transform = nil,
+          }
+        else
+          current_state = not state.last_opts.load_shell.enabled
+          state.last_opts.load_shell.enabled = current_state
+        end
+
+        M.refresh_env_vars(state.last_opts)
+
+        notify(string.format("Shell variables %s", current_state and "loaded" or "unloaded"), vim.log.levels.INFO)
+      end,
+      desc = "Toggle shell variables loading",
+    },
+    EcologEnvGet = {
+      callback = function(cmd_opts)
+        local env_module = get_env_module()
+        local var = cmd_opts.args
+        local value = env_module.get(var)
+        if value then
+          print(value.value)
+        else
+          print("Variable not found: " .. var)
+        end
+      end,
+      nargs = 1,
+      desc = "Get environment variable value",
+    },
+    EcologEnvSet = {
+      callback = function(cmd_opts)
+        local env_module = get_env_module()
+        local args = vim.split(cmd_opts.args, " ", { plain = true })
+        if #args < 2 then
+          local key = args[1]
+          vim.ui.input({ prompt = string.format("Value for %s: ", key) }, function(input)
+            if input then
+              local result = env_module.set(key, input)
+              if result then
+                print(string.format("Set %s = %s", key, input))
+              else
+                print("Failed to set variable: " .. key)
+              end
+            end
+          end)
+          return
+        end
+        
+        local key = args[1]
+        local value = table.concat(args, " ", 2)
+        
+        local result = env_module.set(key, value)
+        if result then
+          print(string.format("Set %s = %s", key, value))
+        else
+          print("Failed to set variable: " .. key)
+        end
+      end,
+      nargs = "+",
+      desc = "Set environment variable value",
+    },
   }
 
   for name, cmd in pairs(commands) do
@@ -539,32 +620,25 @@ local function create_commands(config)
   end
 end
 
-function M.setup(opts)
-  if _setup_done then
-    return
-  end
-  _setup_done = true
-
-  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
-
-  if type(config.interpolation) == "boolean" then
-    config.interpolation = {
-      enabled = config.interpolation,
-      max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
-      warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
-      fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
-      features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
-    }
-  elseif type(config.interpolation) == "table" then
-    if config.interpolation.features then
-      config.interpolation.features =
-        vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
+---@param config EcologConfig
+local function validate_config(config)
+  -- Handle deprecated env_file_pattern if it exists
+  if config.env_file_pattern ~= nil then
+    notify(
+      "env_file_pattern is deprecated, please use env_file_patterns instead with glob patterns (e.g., '.env.*', 'config/.env*')",
+      vim.log.levels.WARN
+    )
+    if type(config.env_file_pattern) == "table" and #config.env_file_pattern > 0 then
+      config.env_file_patterns = config.env_file_pattern
     end
-
-    config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
+    config.env_file_pattern = nil
   end
 
-  state.selected_env_file = nil
+  -- Handle backward compatibility for sort_fn -> sort_file_fn
+  if config.sort_fn ~= nil and config.sort_file_fn == nil then
+    notify("sort_fn is deprecated, please use sort_file_fn instead", vim.log.levels.WARN)
+    config.sort_file_fn = config.sort_fn
+  end
 
   if type(config.provider_patterns) == "boolean" then
     config.provider_patterns = {
@@ -577,6 +651,48 @@ function M.setup(opts)
       cmp = true,
     }, config.provider_patterns)
   end
+end
+
+function M.setup(opts)
+  if _setup_done then
+    return
+  end
+  _setup_done = true
+
+  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+  validate_config(config)
+
+  if config.providers then
+    local providers = require("ecolog.providers")
+    if vim.islist(config.providers) then
+      providers.register_many(config.providers)
+    else
+      providers.register(config.providers)
+    end
+  end
+
+  if type(config.interpolation) == "boolean" then
+    config.interpolation = {
+      enabled = config.interpolation,
+      max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
+      warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
+      fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
+      features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
+    }
+  elseif type(config.interpolation) == "table" then
+    if config.interpolation.enabled == nil then
+      config.interpolation.enabled = true
+    end
+
+    if config.interpolation.features then
+      config.interpolation.features =
+        vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
+    end
+
+    config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
+  end
+
+  state.selected_env_file = nil
 
   state.last_opts = config
 
@@ -609,8 +725,9 @@ function M.setup(opts)
   local initial_env_files = utils.find_env_files({
     path = config.path,
     preferred_environment = config.preferred_environment,
-    env_file_pattern = config.env_file_pattern,
-    sort_fn = config.sort_fn,
+    env_file_patterns = config.env_file_patterns,
+    sort_file_fn = config.sort_file_fn,
+    sort_var_fn = config.sort_var_fn,
   })
 
   if #initial_env_files > 0 then

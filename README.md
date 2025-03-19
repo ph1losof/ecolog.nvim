@@ -416,6 +416,7 @@ The provider will be automatically loaded when editing files of the specified fi
 | `:EcologPeek`                              | Peek at environment variable under cursor                                             |
 | `:EcologRefresh`                           | Refresh environment variable cache                                                    |
 | `:EcologSelect`                            | Open a selection window to choose environment file                                    |
+| `:EcologSelect [file_path]`                | Directly load a specific environment file without selection prompt                    |
 | `:EcologGoto`                              | Open selected environment file in buffer                                              |
 | `:EcologGotoVar`                           | Go to specific variable definition in env file                                        |
 | `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor             |

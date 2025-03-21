@@ -42,6 +42,7 @@ function TelescopePicker:get_default_config()
       append_name = "<CR>",
       edit_var = "<C-e>",
     },
+    custom_actions = {},
   }
 end
 
@@ -138,6 +139,49 @@ function TelescopePicker:open(opts)
           end)
         end
 
+        local custom_actions = self:get_custom_actions()
+        for name, action in pairs(custom_actions) do
+          if type(action.key) == "string" then
+            map("i", action.key, function()
+              local selection = action_state.get_selected_entry()
+              local should_close = action.opts.close_on_action ~= false
+
+              local result = self:run_custom_action(name, selection.value)
+
+              if should_close then
+                actions.close(prompt_bufnr)
+              end
+
+              if result and action.opts.notify ~= false then
+                self:notify(
+                  action.opts.message or string.format("Custom action '%s' executed", name),
+                  vim.log.levels.INFO
+                )
+              end
+            end)
+          elseif type(action.key) == "table" then
+            for _, key in ipairs(action.key) do
+              map("i", key, function()
+                local selection = action_state.get_selected_entry()
+                local should_close = action.opts.close_on_action ~= false
+
+                local result = self:run_custom_action(name, selection.value)
+
+                if should_close then
+                  actions.close(prompt_bufnr)
+                end
+
+                if result and action.opts.notify ~= false then
+                  self:notify(
+                    action.opts.message or string.format("Custom action '%s' executed", name),
+                    vim.log.levels.INFO
+                  )
+                end
+              end)
+            end
+          end
+        end
+
         return true
       end,
     })
@@ -148,6 +192,15 @@ end
 ---@param opts table|nil
 function TelescopePicker:setup(opts)
   BasePicker.setup(self, opts)
+end
+
+---Add a custom action to the telescope picker
+---@param name string The name of the action
+---@param key string|table The key or keys to map to this action
+---@param callback function The callback function to run
+---@param opts table|nil Additional options for the action
+function TelescopePicker:add_action(name, key, callback, opts)
+  self:add_custom_action(name, key, callback, opts)
 end
 
 local instance = TelescopePicker:new()
@@ -162,6 +215,9 @@ return telescope.register_extension({
     end,
     setup = function(opts)
       instance:setup(opts)
+    end,
+    add_action = function(name, key, callback, opts)
+      instance:add_action(name, key, callback, opts)
     end,
   },
 })

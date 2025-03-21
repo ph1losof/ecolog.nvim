@@ -2201,4 +2201,96 @@ MIT License - See [LICENSE](./LICENSE) for details.
 <div align="center">
 Made with ❤️ by <a href="https://github.com/philosofonusus">TENTACLE</a>
 </div>
+
+## Custom Actions for Pickers
+
+All picker integrations (Telescope, FZF, and Snacks) support custom actions. This allows you to define your own key mappings and actions to perform on environment variables.
+
+### Adding Custom Actions
+
+You can add custom actions in your Neovim configuration when setting up Ecolog:
+
+```lua
+require("ecolog").setup({
+  -- Your other configuration options
+  integrations = {
+    telescope = {
+      custom_actions = {
+        -- Define a custom action that appends the variable with special formatting
+        format_var = {
+          key = "<C-f>",
+          callback = function(item, picker)
+            -- item contains: name, value, masked_value, source, type
+            return "${" .. item.name .. "}"
+          end,
+          opts = {
+            close_on_action = true, -- Close the picker after action
+            notify = true,          -- Show notification after action
+            message = "Formatted variable appended" -- Custom notification message
+          }
+        }
+      }
+    },
+    fzf = {
+      custom_actions = {
+        -- Similar structure for FZF custom actions
+      }
+    },
+    snacks = {
+      custom_actions = {
+        -- Similar structure for Snacks custom actions
+      }
+    }
+  }
+})
+```
+
+### Adding Actions After Setup
+
+You can also add custom actions after Ecolog has been set up:
+
+```lua
+-- For Telescope
+require("telescope").extensions.ecolog.add_action(
+  "format_var",          -- Action name
+  "<C-f>",               -- Key mapping
+  function(item, picker) -- Callback function
+    return "${" .. item.name .. "}"
+  end,
+  {                      -- Options
+    close_on_action = true,
+    notify = true,
+    message = "Formatted variable appended"
+  }
+)
+
+-- For FZF
+require("ecolog.integrations.fzf").add_action("format_var", "ctrl-f", function(item, picker)
+  return "${" .. item.name .. "}"
+end, { notify = true })
+
+-- For Snacks
+require("ecolog.integrations.snacks").add_action("format_var", "<C-f>", function(item, picker)
+  return "${" .. item.name .. "}"
+end, { close_on_action = true })
+```
+
+### Custom Action Parameters
+
+- `name`: A unique name for the action
+- `key`: A string or table of strings representing the key mappings
+- `callback`: A function that receives:
+  - `item`: The selected environment variable data
+  - `picker`: The picker instance
+- `opts`: Options table with:
+  - `close_on_action`: Whether to close the picker after action (default: true)
+  - `notify`: Whether to show a notification after action (default: true)
+  - `message`: Custom notification message
+
+The `item` parameter contains the following fields:
+- `name`: The environment variable name
+- `value`: The actual value
+- `masked_value`: The masked value (if shelter.mask_on_copy is enabled)
+- `source`: The source of the variable
+- `type`: The type of the variable
 ```

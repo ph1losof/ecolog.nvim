@@ -82,6 +82,7 @@ end
 ---@param bufnr number
 function M.setup_preview_buffer(bufnr)
   pcall(api.nvim_buf_set_option, bufnr, "conceallevel", 2)
+  pcall(api.nvim_buf_set_option, bufnr, "wrap", false)
 
   for _, winid in ipairs(api.nvim_list_wins()) do
     if api.nvim_win_get_buf(winid) == bufnr then

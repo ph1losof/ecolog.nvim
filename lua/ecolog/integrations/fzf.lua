@@ -35,6 +35,7 @@ function FzfPicker:get_default_config()
       append_name = "enter",
       edit_var = "ctrl-e",
     },
+    custom_actions = {},
   }
 end
 
@@ -154,16 +155,66 @@ function FzfPicker:create_edit_var_action()
   end)
 end
 
+---Create custom action wrapper
+---@param name string The name of the action
+---@return function
+function FzfPicker:create_custom_action(name)
+  local env_vars = require("ecolog").get_env_vars()
+  local self_ref = self
+
+  return self:safe_action(name, function(selected)
+    local var_name = utils.extract_var_name(selected[1])
+    if not var_name then
+      return
+    end
+
+    local selection = env_vars[var_name]
+    if not selection then
+      return
+    end
+
+    local item = {
+      name = var_name,
+      value = selection.value,
+      masked_value = self_ref:get_masked_value(selection.value, var_name, selection.source),
+      source = selection.source,
+      type = selection.type,
+    }
+
+    local result = self_ref:run_custom_action(name, item)
+
+    local action = self_ref._custom_actions[name]
+    if result and action and action.opts and action.opts.notify ~= false then
+      self_ref:notify(action.opts.message or string.format("Custom action '%s' executed", name), vim.log.levels.INFO)
+    end
+
+    return result
+  end)
+end
+
 ---Create fzf actions mapping
 ---@return table<string, function>
 function FzfPicker:create_actions()
-  return {
+  local actions = {
     [self._config.mappings.copy_value] = self:create_copy_value_action(),
     [self._config.mappings.copy_name] = self:create_copy_name_action(),
     [self._config.mappings.append_name] = self:create_append_name_action(),
     [self._config.mappings.append_value] = self:create_append_value_action(),
     [self._config.mappings.edit_var] = self:create_edit_var_action(),
   }
+
+  local custom_actions = self:get_custom_actions()
+  for name, action in pairs(custom_actions) do
+    if type(action.key) == "string" then
+      actions[action.key] = self:create_custom_action(name)
+    elseif type(action.key) == "table" then
+      for _, key in ipairs(action.key) do
+        actions[key] = self:create_custom_action(name)
+      end
+    end
+  end
+
+  return actions
 end
 
 ---Format environment variables for display
@@ -217,6 +268,15 @@ function FzfPicker:setup(opts)
   })
 end
 
+---Add a custom action to the fzf picker
+---@param name string The name of the action
+---@param key string|table The key or keys to map to this action
+---@param callback function The callback function to run
+---@param opts table|nil Additional options for the action
+function FzfPicker:add_action(name, key, callback, opts)
+  self:add_custom_action(name, key, callback, opts)
+end
+
 local instance = FzfPicker:new()
 
 local M = {
@@ -231,6 +291,9 @@ local M = {
   end,
   actions = function()
     return instance:create_actions()
+  end,
+  add_action = function(name, key, callback, opts)
+    instance:add_action(name, key, callback, opts)
   end,
 }
 

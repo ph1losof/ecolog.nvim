@@ -1,7 +1,5 @@
-local utils = require("ecolog.utils")
 local BasePicker = require("ecolog.integrations.pickers.base")
 local api = vim.api
-local fn = vim.fn
 
 ---@class SnacksConfig
 ---@field shelter { mask_on_copy: boolean }
@@ -22,6 +20,7 @@ local DEFAULT_CONFIG = {
     preset = "dropdown",
     preview = false,
   },
+  custom_actions = {},
 }
 
 ---@class SnacksPicker : BasePicker
@@ -61,13 +60,14 @@ function SnacksPicker:get_default_config()
       preset = "dropdown",
       preview = false,
     },
+    custom_actions = {},
   }
 end
 
 ---Create picker actions for handling different key mappings
 ---@return table<string, function>
 function SnacksPicker:create_picker_actions()
-  return {
+  local actions = {
     copy_value = function(picker)
       local item = picker:current()
       if not item then
@@ -123,6 +123,28 @@ function SnacksPicker:create_picker_actions()
       end
     end,
   }
+
+  local custom_actions = self:get_custom_actions()
+  for name, action in pairs(custom_actions) do
+    actions[name] = function(picker)
+      local item = picker:current()
+      if not item then
+        return
+      end
+
+      local result = self:run_custom_action(name, item)
+
+      if action.opts.close_on_action ~= false then
+        picker:close()
+      end
+
+      if result and action.opts.notify ~= false then
+        self:notify(action.opts.message or string.format("Custom action '%s' executed", name), vim.log.levels.INFO)
+      end
+    end
+  end
+
+  return actions
 end
 
 ---Create keymap configuration for snacks picker
@@ -136,6 +158,18 @@ function SnacksPicker:create_keymaps()
   for action, key in pairs(self._config.keys) do
     keymaps[key] = create_keymap(action)
   end
+
+  local custom_actions = self:get_custom_actions()
+  for name, action in pairs(custom_actions) do
+    if type(action.key) == "string" then
+      keymaps[action.key] = create_keymap(name)
+    elseif type(action.key) == "table" then
+      for _, key in ipairs(action.key) do
+        keymaps[key] = create_keymap(name)
+      end
+    end
+  end
+
   return keymaps
 end
 
@@ -230,6 +264,15 @@ function SnacksPicker:setup(opts)
   })
 end
 
+---Add a custom action to the snacks picker
+---@param name string The name of the action
+---@param key string|table The key or keys to map to this action
+---@param callback function The callback function to run
+---@param opts table|nil Additional options for the action
+function SnacksPicker:add_action(name, key, callback, opts)
+  self:add_custom_action(name, key, callback, opts)
+end
+
 local instance = SnacksPicker:new()
 
 local M = {
@@ -241,6 +284,9 @@ local M = {
   end,
   snacks = function()
     instance:open()
+  end,
+  add_action = function(name, key, callback, opts)
+    instance:add_action(name, key, callback, opts)
   end,
 }
 

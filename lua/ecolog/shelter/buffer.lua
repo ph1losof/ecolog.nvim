@@ -276,6 +276,8 @@ end
 ---@param bufnr number
 ---@param winid number
 local function setup_buffer_options(bufnr, winid)
+  vim.opt_local.wrap = false
+
   api.nvim_win_set_option(winid, "conceallevel", 2)
   api.nvim_win_set_option(winid, "concealcursor", "nvic")
   active_buffers[bufnr] = vim.loop.now()

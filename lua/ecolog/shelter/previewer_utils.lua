@@ -81,7 +81,8 @@ end
 ---Reset buffer settings to user's preferences for non-env files
 ---@param bufnr number Buffer number
 ---@param force boolean? Force reset even if buffer wasn't modified
-function M.reset_buffer_settings(bufnr, force)
+---@param from_setup boolean? Whether this is called from setup_preview_buffer
+function M.reset_buffer_settings(bufnr, force, from_setup)
   if not api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -96,15 +97,28 @@ function M.reset_buffer_settings(bufnr, force)
     return
   end
 
-  pcall(api.nvim_buf_set_option, bufnr, "wrap", vim.o.wrap)
-  pcall(api.nvim_buf_set_option, bufnr, "conceallevel", vim.o.conceallevel)
-  pcall(api.nvim_win_set_option, bufnr, "concealcursor", vim.o.concealcursor)
+  local original_settings = {}
+  ok, val = pcall(api.nvim_buf_get_var, bufnr, "ecolog_original_settings")
+  if ok and val then
+    original_settings = val
+  end
+
+  local wrap_setting = original_settings.wrap
+  if from_setup then
+    local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+    wrap_setting = config.default_wrap ~= nil and config.default_wrap or vim.o.wrap
+  else
+    wrap_setting = wrap_setting or vim.o.wrap
+  end
+
+  local conceallevel_setting = original_settings.conceallevel or vim.o.conceallevel
+  local concealcursor_setting = original_settings.concealcursor or vim.o.concealcursor
 
   for _, winid in ipairs(api.nvim_list_wins()) do
     if api.nvim_win_get_buf(winid) == bufnr then
-      pcall(api.nvim_win_set_option, winid, "wrap", vim.o.wrap)
-      pcall(api.nvim_win_set_option, winid, "conceallevel", vim.o.conceallevel)
-      pcall(api.nvim_win_set_option, winid, "concealcursor", vim.o.concealcursor)
+      pcall(api.nvim_win_set_option, winid, "wrap", wrap_setting)
+      pcall(api.nvim_win_set_option, winid, "conceallevel", conceallevel_setting)
+      pcall(api.nvim_win_set_option, winid, "concealcursor", concealcursor_setting)
       break
     end
   end
@@ -123,11 +137,22 @@ function M.setup_preview_buffer(bufnr, filename)
   local is_env_file = shelter_utils.match_env_file(filename, config)
 
   if is_env_file then
-    pcall(api.nvim_buf_set_option, bufnr, "conceallevel", 2)
-    pcall(api.nvim_buf_set_option, bufnr, "wrap", false)
+    local original_settings = {}
 
     for _, winid in ipairs(api.nvim_list_wins()) do
       if api.nvim_win_get_buf(winid) == bufnr then
+        original_settings.wrap = vim.wo[winid].wrap
+        original_settings.conceallevel = vim.wo[winid].conceallevel
+        original_settings.concealcursor = vim.wo[winid].concealcursor
+        break
+      end
+    end
+
+    pcall(api.nvim_buf_set_var, bufnr, "ecolog_original_settings", original_settings)
+
+    for _, winid in ipairs(api.nvim_list_wins()) do
+      if api.nvim_win_get_buf(winid) == bufnr then
+        pcall(api.nvim_win_set_option, winid, "wrap", false)
         pcall(api.nvim_win_set_option, winid, "conceallevel", 2)
         pcall(api.nvim_win_set_option, winid, "concealcursor", "nvic")
         break
@@ -136,7 +161,7 @@ function M.setup_preview_buffer(bufnr, filename)
 
     pcall(api.nvim_buf_set_var, bufnr, "ecolog_env_settings", true)
   else
-    M.reset_buffer_settings(bufnr)
+    M.reset_buffer_settings(bufnr, nil, true)
   end
 end
 

@@ -58,6 +58,8 @@ function M.create_masked_previewer(opts, preview_type)
           local config = require("ecolog").get_config and require("ecolog").get_config() or {}
           if shelter_utils.match_env_file(filename, config) then
             previewer_utils.mask_preview_buffer(bufnr, filename, "telescope")
+          else
+            previewer_utils.reset_buffer_settings(bufnr)
           end
         end,
       })

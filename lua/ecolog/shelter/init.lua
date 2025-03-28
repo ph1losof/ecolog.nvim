@@ -110,8 +110,8 @@ function M.setup(opts)
       callback = function(ev)
         if ev.event == "BufLeave" then
           local bufname = api.nvim_buf_get_name(bufnr)
-          buffer.clear_line_cache(current_line, bufname)
           state.reset_revealed_lines()
+          buffer.clear_line_cache(current_line, bufname)
           buffer.shelter_buffer()
           api.nvim_del_autocmd(ev.id)
           return true
@@ -122,9 +122,9 @@ function M.setup(opts)
 
           if new_line ~= current_line then
             local bufname = api.nvim_buf_get_name(bufnr)
+            state.reset_revealed_lines()
             buffer.clear_line_cache(current_line, bufname)
             buffer.clear_line_cache(new_line, bufname)
-            state.reset_revealed_lines()
             buffer.shelter_buffer()
             api.nvim_del_autocmd(ev.id)
             return true

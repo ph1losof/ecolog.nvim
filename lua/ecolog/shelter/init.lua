@@ -105,7 +105,7 @@ function M.setup(opts)
     buffer.shelter_buffer()
 
     local bufnr = api.nvim_get_current_buf()
-    api.nvim_create_autocmd({ "CursorMoved", "BufLeave" }, {
+    api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
       buffer = bufnr,
       callback = function(ev)
         if ev.event == "BufLeave" then

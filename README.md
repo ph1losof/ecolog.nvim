@@ -1318,6 +1318,7 @@ end, { close_on_action = true })
   - `message`: Custom notification message
 
 The `item` parameter contains the following fields:
+
 - `name`: The environment variable name
 - `value`: The actual value
 - `masked_value`: The masked value (if shelter.mask_on_copy is enabled)
@@ -1405,12 +1406,12 @@ require('ecolog').setup({
         env_file = "Directory",   -- Highlight group for file name
         vars_count = "Number",    -- Highlight group for vars count
         icons = "Special",        -- Highlight group for icons
-        
+
         -- OR using hex color codes
         env_file = "#7FBBB3",     -- Hex color for file name
         vars_count = "#A7C080",   -- Hex color for vars count
         icons = "#ED8796",        -- Hex color for icons
-        
+
         -- OR different highlights for env and shelter icons
         icons = {
           env = "String",         -- Highlight group for env icon
@@ -1428,6 +1429,7 @@ require('ecolog').setup({
 ```
 
 The highlighting system automatically detects the format and applies the appropriate highlighting:
+
 - Highlight group names: Links to existing highlight groups in your colorscheme
 - Hex color codes: Creates dynamic highlight groups with the specified colors
 - Table with env/shelter keys: Allows different highlights for each mode
@@ -2178,7 +2180,7 @@ The plugin seamlessly integrates with your current colorscheme:
 
 It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated. However, it usefull to quickly get started especially if you don't want to think much of a setup and reading docs:
 
-> **Note**: Additional setup is required for [nvim-cmp](#nvim-cmp-integration) and [statusline](#statusline-integration) integrations.
+> **Note**: Additional setup is required for [blink-cmp](#blink-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
 {
@@ -2186,6 +2188,7 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
     keys = {
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
       { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
+      { '<leader>ei', '<Cmd>EcologInterpolationToggle<cr>', desc = 'Toggle shell variables' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
@@ -2226,9 +2229,13 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
       end,
       integrations = {
         lspsaga = true,
-        nvim_cmp = true,
+        blink_cmp = true,
         statusline = {
           hidden_mode = true,
+          highlights = {
+            env_file = 'Directory',
+            vars_count = 'Number',
+          },
         },
         snacks = true,
       },

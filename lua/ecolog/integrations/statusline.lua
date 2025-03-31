@@ -15,7 +15,7 @@ local config = {
       return name
     end,
     vars_count = function(count)
-      return string.format("%d vars", count)
+      return string.format("%d", count)
     end,
   },
   highlights = {

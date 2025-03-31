@@ -381,7 +381,7 @@ function M.shelter_buffer()
   local extmarks = {}
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
-  local skip_comments = state.get_buffer_state().skip_comments
+  local skip_comments = state.get_config().skip_comments
 
   for chunk_start = 0, line_count - 1, CHUNK_SIZE do
     local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
@@ -444,7 +444,6 @@ local function setup_buffer_state(config)
     or {}
 
   local buffer_state = {
-    skip_comments = type(shelter_config) == "table" and shelter_config.skip_comments == true,
     disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp ~= false or false,
     revealed_lines = {},
   }

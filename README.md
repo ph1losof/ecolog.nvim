@@ -133,6 +133,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
             },
             mask_char = "*",   -- Character used for masking
             mask_length = nil, -- Optional: fixed length for masked portion (defaults to value length)
+            skip_comments = false, -- Skip masking comment lines in environment files (default: false)
         },
         modules = {
             cmp = true,       -- Enabled to mask values in completion
@@ -1696,6 +1697,7 @@ require('ecolog').setup({
             },
             mask_char = "*",   -- Character used for masking
             mask_length = nil, -- Optional: fixed length for masked portion (defaults to value length)
+            skip_comments = false, -- Skip masking comment lines in environment files (default: false)
         },
         modules = {
             cmp = false,       -- Mask values in completion
@@ -1920,6 +1922,9 @@ shelter = {
             disable_cmp = true,        -- Disable completion in sheltered buffers (default: true)
             skip_comments = false,     -- Skip masking comment lines in environment files (default: false)
         }
+    },
+    configuration = {
+        skip_comments = false,     -- Skip masking comment lines in environment files (default: false)
     }
 }
 ```
@@ -1929,6 +1934,21 @@ When `shelter_on_leave` is enabled (default when using boolean configuration), t
 The `disable_cmp` option (enabled by default) will automatically disable both nvim-cmp and blink-cmp completions in sheltered buffers. This prevents sensitive values from being exposed through the completion menu while editing environment files. Completion is automatically re-enabled when unsheltering the buffer.
 
 The `skip_comments` option (disabled by default) allows you to keep comments visible while masking the actual environment variable values. This can be useful when you want to maintain readability of documentation in your environment files while still protecting sensitive data.
+
+### Enhanced Comment Masking
+
+Ecolog now intelligently masks key-value pairs found in comments. This provides additional security for comments that might contain sensitive information. For example:
+
+```env
+# Configuration for testing - api_key=MY_SECRET_KEY user=admin
+DB_URL=postgres://user:password@localhost:5432/db
+```
+
+With comment masking enabled (the default), any key-value pairs in comments will also be masked, providing more comprehensive protection. This feature works across:
+
+- CMP completion popups (nvim-cmp, blink-cmp, omnifunc)
+- Peek information windows
+- File buffers (when shelter is enabled)
 
 ### Pattern-based Protection
 

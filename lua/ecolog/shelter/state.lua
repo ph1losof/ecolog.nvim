@@ -31,11 +31,11 @@ local MEMORY_THRESHOLD = 50 * 1024 * 1024
 ---@field shelter_on_leave boolean
 ---@field highlight_group string
 ---@field mask_length number|nil
+---@field skip_comments boolean
 
 ---@class BufferState
 ---@field revealed_lines table<number, boolean>
 ---@field disable_cmp boolean
----@field skip_comments boolean
 
 ---@class State
 ---@field config StateConfig
@@ -55,6 +55,7 @@ local state = {
     shelter_on_leave = false,
     highlight_group = "Comment",
     mask_length = nil,
+    skip_comments = false,
   },
   features = {
     enabled = {},
@@ -63,7 +64,6 @@ local state = {
   buffer = {
     revealed_lines = {},
     disable_cmp = true,
-    skip_comments = false,
   },
   telescope = {
     last_selection = nil,

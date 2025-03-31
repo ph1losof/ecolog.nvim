@@ -88,18 +88,18 @@ local function setup_completion(cmp, opts, providers)
       end
 
       local items = {}
-     
+
       local var_entries = {}
       for var_name, info in pairs(env_vars) do
         table.insert(var_entries, vim.tbl_extend("force", { name = var_name }, info))
       end
-      
+
       if config.sort_var_fn and type(config.sort_var_fn) == "function" then
         table.sort(var_entries, function(a, b)
           return config.sort_var_fn(a, b)
         end)
       end
-      
+
       for _, entry in ipairs(var_entries) do
         local display_value = _shelter.is_enabled("cmp")
             and _shelter.mask_value(entry.value, "cmp", entry.name, entry.source)
@@ -107,7 +107,12 @@ local function setup_completion(cmp, opts, providers)
 
         local doc_value = string.format("**Type:** `%s`\n**Value:** `%s`", entry.type, display_value)
         if entry.comment then
-          doc_value = doc_value .. string.format("\n\n**Comment:** %s", entry.comment)
+          local comment_value = entry.comment
+          if _shelter.is_enabled("cmp") and not _shelter.get_config().skip_comments then
+            local utils = require("ecolog.shelter.utils")
+            comment_value = utils.mask_comment(comment_value, entry.source, _shelter, "cmp")
+          end
+          doc_value = doc_value .. string.format("\n\n**Comment:** `%s`", comment_value)
         end
 
         local item = {
@@ -122,7 +127,7 @@ local function setup_completion(cmp, opts, providers)
           menu_hl_group = "CmpItemMenuEcolog",
           abbr_hl_group = "CmpItemAbbrMatchEcolog",
           sortText = string.format("%05d", _),
-          score = 100
+          score = 100,
         }
 
         if matched_provider and matched_provider.format_completion then

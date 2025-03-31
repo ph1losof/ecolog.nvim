@@ -50,7 +50,12 @@ local function create_peek_content(var_name, var_info, types)
   }
 
   if var_info.comment then
-    lines[5] = "Comment : " .. var_info.comment
+    local comment_value = var_info.comment
+    if shelter.is_enabled("peek") and not shelter.get_config().skip_comments then
+      local utils = require("ecolog.shelter.utils")
+      comment_value = utils.mask_comment(comment_value, var_info.source, shelter, "peek")
+    end
+    lines[5] = "Comment : " .. comment_value
     highlights[5] = { "Comment", 4, PATTERNS.label_width, -1 }
   end
 

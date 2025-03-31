@@ -88,15 +88,15 @@ function M.get_statusline()
 
   local parts = {}
   if config.icons.enabled then
-    table.insert(parts, config.icons.env)
+    if status.shelter_active then
+      table.insert(parts, config.icons.shelter)
+    else
+      table.insert(parts, config.icons.env)
+    end
   end
 
   table.insert(parts, format_with_hl(config.format.env_file(status.file), config.highlights.env_file))
   table.insert(parts, format_with_hl(config.format.vars_count(status.vars_count), config.highlights.vars_count))
-
-  if status.shelter_active and config.icons.enabled then
-    table.insert(parts, config.icons.shelter)
-  end
 
   return table.concat(parts, " ")
 end
@@ -111,7 +111,11 @@ function M.lualine()
 
       local parts = {}
       if config.icons.enabled then
-        table.insert(parts, config.icons.env)
+        if status.shelter_active then
+          table.insert(parts, config.icons.shelter)
+        else
+          table.insert(parts, config.icons.env)
+        end
       end
 
       table.insert(
@@ -122,10 +126,6 @@ function M.lualine()
           config.format.vars_count(status.vars_count):match("^(%d+)")
         )
       )
-
-      if status.shelter_active and config.icons.enabled then
-        table.insert(parts, config.icons.shelter)
-      end
 
       return table.concat(parts, " ")
     end,

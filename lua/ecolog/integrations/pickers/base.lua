@@ -7,6 +7,7 @@ local fn = vim.fn
 ---@field _initialized boolean
 ---@field _config table
 ---@field _original_winid number|nil
+---@field _custom_actions table|nil
 local BasePicker = {}
 BasePicker.__index = BasePicker
 
@@ -17,6 +18,7 @@ function BasePicker:new(opts)
   local instance = setmetatable({}, self)
   instance._initialized = false
   instance._config = vim.tbl_deep_extend("force", instance:get_default_config(), opts or {})
+  instance._custom_actions = {}
   return instance
 end
 
@@ -34,6 +36,7 @@ function BasePicker:get_default_config()
       append_name = "",
       edit_var = "",
     },
+    custom_actions = {},
   }
 end
 
@@ -121,10 +124,53 @@ function BasePicker:get_masked_value(value, var_name, source)
   return shelter.mask_value(value, self:get_name():lower(), var_name, source)
 end
 
+---Add a custom action to the picker
+---@param name string The name of the action
+---@param key string|table The key or keys to map to this action
+---@param callback function The callback function to run
+---@param opts table|nil Additional options for the action
+function BasePicker:add_custom_action(name, key, callback, opts)
+  opts = opts or {}
+  self._custom_actions[name] = {
+    name = name,
+    key = key,
+    callback = callback,
+    opts = opts
+  }
+end
+
+---Get all custom actions
+---@return table The custom actions
+function BasePicker:get_custom_actions()
+  return self._custom_actions
+end
+
+---Run a custom action with the current selection
+---@param name string The name of the action
+---@param selection any The selected item
+---@return any The result of the action
+function BasePicker:run_custom_action(name, selection)
+  local action = self._custom_actions[name]
+  if not action then
+    self:notify(string.format("Custom action '%s' not found", name), vim.log.levels.ERROR)
+    return nil
+  end
+  
+  return action.callback(selection, self)
+end
+
 ---Setup the picker with configuration
 ---@param opts table|nil
 function BasePicker:setup(opts)
   self._config = vim.tbl_deep_extend("force", self:get_default_config(), opts or {})
+  
+  -- Add any custom actions defined in config
+  if self._config.custom_actions then
+    for name, action in pairs(self._config.custom_actions) do
+      self:add_custom_action(name, action.key, action.callback, action.opts)
+    end
+  end
+  
   self._initialized = true
 end
 

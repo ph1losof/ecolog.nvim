@@ -57,6 +57,7 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Telescope Integration](#telescope-integration)
   - [FZF Integration](#fzf-integration)
   - [Snacks Integration](#snacks-integration)
+  - [Custom Actions for Pickers](#custom-actions-for-pickers)
   - [Statusline Integration](#statusline-integration)
   - [AWS Secrets Manager](#aws-secrets-manager)
   - [HashiCorp Vault Secrets](#hashicorp-vault-secrets)
@@ -416,6 +417,7 @@ The provider will be automatically loaded when editing files of the specified fi
 | `:EcologPeek`                              | Peek at environment variable under cursor                                             |
 | `:EcologRefresh`                           | Refresh environment variable cache                                                    |
 | `:EcologSelect`                            | Open a selection window to choose environment file                                    |
+| `:EcologSelect [file_path]`                | Directly load a specific environment file without selection prompt                    |
 | `:EcologGoto`                              | Open selected environment file in buffer                                              |
 | `:EcologGotoVar`                           | Go to specific variable definition in env file                                        |
 | `:EcologGotoVar [variable_name]`           | Go to specific variable definition in env file with variable under cursor             |
@@ -1230,6 +1232,99 @@ Open the environment variables picker:
 
 All keymaps are customizable through the configuration.
 
+### Custom Actions for Pickers
+
+All picker integrations (Telescope, FZF, and Snacks) support custom actions. This allows you to define your own key mappings and actions to perform on environment variables.
+
+#### Adding Custom Actions
+
+You can add custom actions in your Neovim configuration when setting up Ecolog:
+
+```lua
+require("ecolog").setup({
+  -- Your other configuration options
+  integrations = {
+    telescope = {
+      custom_actions = {
+        -- Define a custom action that appends the variable with special formatting
+        format_var = {
+          key = "<C-f>",
+          callback = function(item, picker)
+            -- item contains: name, value, masked_value, source, type
+            return "${" .. item.name .. "}"
+          end,
+          opts = {
+            close_on_action = true, -- Close the picker after action
+            notify = true,          -- Show notification after action
+            message = "Formatted variable appended" -- Custom notification message
+          }
+        }
+      }
+    },
+    fzf = {
+      custom_actions = {
+        -- Similar structure for FZF custom actions
+      }
+    },
+    snacks = {
+      custom_actions = {
+        -- Similar structure for Snacks custom actions
+      }
+    }
+  }
+})
+```
+
+#### Adding Actions After Setup
+
+You can also add custom actions after Ecolog has been set up:
+
+```lua
+-- For Telescope
+require("telescope").extensions.ecolog.add_action(
+  "format_var",          -- Action name
+  "<C-f>",               -- Key mapping
+  function(item, picker) -- Callback function
+    return "${" .. item.name .. "}"
+  end,
+  {                      -- Options
+    close_on_action = true,
+    notify = true,
+    message = "Formatted variable appended"
+  }
+)
+
+-- For FZF
+require("ecolog.integrations.fzf").add_action("format_var", "ctrl-f", function(item, picker)
+  return "${" .. item.name .. "}"
+end, { notify = true })
+
+-- For Snacks
+require("ecolog.integrations.snacks").add_action("format_var", "<C-f>", function(item, picker)
+  return "${" .. item.name .. "}"
+end, { close_on_action = true })
+```
+
+#### Custom Action Parameters
+
+- `name`: A unique name for the action
+- `key`: A string or table of strings representing the key mappings
+- `callback`: A function that receives:
+  - `item`: The selected environment variable data
+  - `picker`: The picker instance
+- `opts`: Options table with:
+  - `close_on_action`: Whether to close the picker after action (default: true)
+  - `notify`: Whether to show a notification after action (default: true)
+  - `message`: Custom notification message
+
+The `item` parameter contains the following fields:
+
+- `name`: The environment variable name
+- `value`: The actual value
+- `masked_value`: The masked value (if shelter.mask_on_copy is enabled)
+- `source`: The source of the variable
+- `type`: The type of the variable
+
 ### Statusline Integration
 
 Ecolog provides a built-in statusline component that shows your current environment file, variable count, and shelter mode status. It supports both native statusline and lualine integration.
@@ -1258,6 +1353,7 @@ require('ecolog').setup({
         enabled = true,           -- Enable custom highlights
         env_file = "Directory",   -- Highlight group for file name
         vars_count = "Number",    -- Highlight group for vars count
+        icons = "Special"
       },
     }
   }
@@ -1295,6 +1391,50 @@ require('lualine').setup({
 - Custom highlighting support
 - Automatic updates on file changes
 - Optional hiding when no env file is loaded
+
+#### Advanced Highlighting
+
+The statusline integration supports customizable highlighting with both highlight group names and hex color codes:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    statusline = {
+      highlights = {
+        enabled = true,
+        -- Using highlight groups
+        env_file = "Directory",   -- Highlight group for file name
+        vars_count = "Number",    -- Highlight group for vars count
+        icons = "Special",        -- Highlight group for icons
+
+        -- OR using hex color codes
+        env_file = "#7FBBB3",     -- Hex color for file name
+        vars_count = "#A7C080",   -- Hex color for vars count
+        icons = "#ED8796",        -- Hex color for icons
+
+        -- OR different highlights for env and shelter icons
+        icons = {
+          env = "String",         -- Highlight group for env icon
+          shelter = "WarningMsg"  -- Highlight group for shelter icon
+        },
+        -- OR with hex colors
+        icons = {
+          env = "#83C092",        -- Hex color for env icon
+          shelter = "#E67E80"     -- Hex color for shelter icon
+        }
+      },
+    }
+  }
+})
+```
+
+The highlighting system automatically detects the format and applies the appropriate highlighting:
+
+- Highlight group names: Links to existing highlight groups in your colorscheme
+- Hex color codes: Creates dynamic highlight groups with the specified colors
+- Table with env/shelter keys: Allows different highlights for each mode
+
+Both the native statusline and lualine integration fully support these highlighting options for all elements (file name, variable count, and icons), ensuring a consistent appearance across different statusline implementations.
 
 ### AWS Secrets Manager
 
@@ -2040,7 +2180,7 @@ The plugin seamlessly integrates with your current colorscheme:
 
 It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated. However, it usefull to quickly get started especially if you don't want to think much of a setup and reading docs:
 
-> **Note**: Additional setup is required for [nvim-cmp](#nvim-cmp-integration) and [statusline](#statusline-integration) integrations.
+> **Note**: Additional setup is required for [blink-cmp](#blink-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
 {
@@ -2048,6 +2188,7 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
     keys = {
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
       { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
+      { '<leader>ei', '<Cmd>EcologInterpolationToggle<cr>', desc = 'Toggle shell variables' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
@@ -2088,9 +2229,13 @@ It's author's (`philosofonusus`) personal setup for ecolog.nvim, it is opionated
       end,
       integrations = {
         lspsaga = true,
-        nvim_cmp = true,
+        blink_cmp = true,
         statusline = {
           hidden_mode = true,
+          highlights = {
+            env_file = 'Directory',
+            vars_count = 'Number',
+          },
         },
         snacks = true,
       },
@@ -2200,4 +2345,3 @@ MIT License - See [LICENSE](./LICENSE) for details.
 <div align="center">
 Made with ❤️ by <a href="https://github.com/philosofonusus">TENTACLE</a>
 </div>
-```

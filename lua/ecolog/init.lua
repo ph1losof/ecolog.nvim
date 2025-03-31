@@ -296,7 +296,17 @@ local function create_commands(config)
       desc = "Peek environment variable value",
     },
     EcologSelect = {
-      callback = function()
+      callback = function(args)
+        if args.args and args.args ~= "" then
+          local file_path = vim.fn.expand(args.args)
+          if vim.fn.filereadable(file_path) == 1 then
+            handle_env_file_selection(file_path, config)
+          else
+            notify(string.format("Environment file not found: %s", file_path), vim.log.levels.ERROR)
+          end
+          return
+        end
+
         select.select_env_file({
           path = config.path,
           active_file = state.selected_env_file,
@@ -308,6 +318,7 @@ local function create_commands(config)
           handle_env_file_selection(file, config)
         end)
       end,
+      nargs = "?",
       desc = "Select environment file to use",
     },
     EcologGenerateExample = {

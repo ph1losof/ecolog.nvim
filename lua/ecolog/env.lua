@@ -5,6 +5,11 @@ local added_vars = {}
 function M.update_env_vars()
   local ecolog = require("ecolog")
   local env_vars = ecolog.get_env_vars()
+  local config = ecolog.get_config()
+
+  if config.vim_env == false then
+    return
+  end
 
   for key, _ in pairs(added_vars) do
     if not env_vars[key] then
@@ -32,26 +37,29 @@ end
 function M.set(key, value)
   local ecolog = require("ecolog")
   local env_vars = ecolog.get_env_vars()
+  local config = ecolog.get_config()
   local types = require("ecolog.types")
-  
+
   local type_name, transformed_value = types.detect_type(value)
-  
+
   local source = "shell"
 
   if env_vars[key] and env_vars[key].source then
     source = env_vars[key].source
   end
-  
+
   env_vars[key] = {
     value = transformed_value,
     type = type_name,
     raw_value = value,
     source = source,
   }
-  
-  vim.env[key] = transformed_value
-  added_vars[key] = true
-  
+
+  if config.vim_env ~= false then
+    vim.env[key] = transformed_value
+    added_vars[key] = true
+  end
+
   return env_vars[key]
 end
 

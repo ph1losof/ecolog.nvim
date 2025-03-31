@@ -44,10 +44,9 @@ function M.setup_fzf_shelter()
     local is_env_file = shelter_utils.match_env_file(filename, config)
 
     if not (is_env_file and state.is_enabled("fzf_previewer")) then
+      previewer_utils.reset_buffer_settings(bufnr)
       return
     end
-
-    previewer_utils.setup_preview_buffer(bufnr)
 
     local lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
     local content_hash = vim.fn.sha256(table.concat(lines, "\n"))

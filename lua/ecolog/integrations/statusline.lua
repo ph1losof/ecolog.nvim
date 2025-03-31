@@ -76,16 +76,24 @@ function hl.is_highlight_group(str)
   return type(str) == "string" and not hl.is_hex_color(str)
 end
 
-function hl.get_color(hl_name)
+function hl.get_color(hl_name, visited)
+  visited = visited or {}
+
+  if visited[hl_name] then
+    return nil
+  end
+
   if hl.is_hex_color(hl_name) then
     return hl_name
   end
+
+  visited[hl_name] = true
 
   local success, highlight = pcall(vim.api.nvim_get_hl, 0, { name = hl_name, link = false })
   if not success or not highlight or not highlight.fg then
     local linked_success, linked_hl = pcall(vim.api.nvim_get_hl, 0, { name = hl_name, link = true })
     if linked_success and linked_hl and linked_hl.link then
-      return hl.get_color(linked_hl.link)
+      return hl.get_color(linked_hl.link, visited)
     end
     return nil
   end
@@ -349,13 +357,13 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
-  
+
   vim.schedule(function()
     hl.setup_highlights()
   end)
-  
+
   M.invalidate_cache()
-  
+
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = vim.api.nvim_create_augroup("EcologStatuslineHighlights", { clear = true }),
     callback = function()

@@ -1352,6 +1352,7 @@ require('ecolog').setup({
         enabled = true,           -- Enable custom highlights
         env_file = "Directory",   -- Highlight group for file name
         vars_count = "Number",    -- Highlight group for vars count
+        icons = "Special"
       },
     }
   }
@@ -1389,6 +1390,49 @@ require('lualine').setup({
 - Custom highlighting support
 - Automatic updates on file changes
 - Optional hiding when no env file is loaded
+
+#### Advanced Highlighting
+
+The statusline integration supports customizable highlighting with both highlight group names and hex color codes:
+
+```lua
+require('ecolog').setup({
+  integrations = {
+    statusline = {
+      highlights = {
+        enabled = true,
+        -- Using highlight groups
+        env_file = "Directory",   -- Highlight group for file name
+        vars_count = "Number",    -- Highlight group for vars count
+        icons = "Special",        -- Highlight group for icons
+        
+        -- OR using hex color codes
+        env_file = "#7FBBB3",     -- Hex color for file name
+        vars_count = "#A7C080",   -- Hex color for vars count
+        icons = "#ED8796",        -- Hex color for icons
+        
+        -- OR different highlights for env and shelter icons
+        icons = {
+          env = "String",         -- Highlight group for env icon
+          shelter = "WarningMsg"  -- Highlight group for shelter icon
+        },
+        -- OR with hex colors
+        icons = {
+          env = "#83C092",        -- Hex color for env icon
+          shelter = "#E67E80"     -- Hex color for shelter icon
+        }
+      },
+    }
+  }
+})
+```
+
+The highlighting system automatically detects the format and applies the appropriate highlighting:
+- Highlight group names: Links to existing highlight groups in your colorscheme
+- Hex color codes: Creates dynamic highlight groups with the specified colors
+- Table with env/shelter keys: Allows different highlights for each mode
+
+Both the native statusline and lualine integration fully support these highlighting options for all elements (file name, variable count, and icons), ensuring a consistent appearance across different statusline implementations.
 
 ### AWS Secrets Manager
 

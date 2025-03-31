@@ -22,6 +22,7 @@ local config = {
     enabled = true,
     env_file = "EcologStatusFile",
     vars_count = "EcologStatusCount",
+    icons = "EcologStatusIcons",
   },
 }
 
@@ -65,18 +66,85 @@ local function get_cached_status()
   return status
 end
 
+local function is_hex_color(str)
+  return type(str) == "string" and str:match("^#%x%x%x%x%x%x$")
+end
+
+local function get_icon_highlight(is_shelter)
+  local icon_hl = config.highlights.icons
+
+  if type(icon_hl) == "table" then
+    return is_shelter and icon_hl.shelter or icon_hl.env
+  end
+
+  return icon_hl
+end
+
 local function setup_highlights()
   if not config.highlights.enabled then
     return
   end
-  vim.api.nvim_set_hl(0, "EcologStatusFile", { link = "Directory" })
-  vim.api.nvim_set_hl(0, "EcologStatusCount", { link = "Number" })
+
+  if not is_hex_color(config.highlights.env_file) then
+    vim.api.nvim_set_hl(0, "EcologStatusFile", { link = "Directory" })
+  end
+
+  if not is_hex_color(config.highlights.vars_count) then
+    vim.api.nvim_set_hl(0, "EcologStatusCount", { link = "Number" })
+  end
+
+  local icon_hl = config.highlights.icons
+
+  if type(icon_hl) == "table" then
+    if not is_hex_color(icon_hl.env) then
+      vim.api.nvim_set_hl(0, "EcologStatusIconsEnv", { link = icon_hl.env or "Special" })
+    else
+      vim.api.nvim_set_hl(0, "EcologStatusIconsEnvHex", { fg = icon_hl.env })
+    end
+
+    if not is_hex_color(icon_hl.shelter) then
+      vim.api.nvim_set_hl(0, "EcologStatusIconsShelter", { link = icon_hl.shelter or "WarningMsg" })
+    else
+      vim.api.nvim_set_hl(0, "EcologStatusIconsShelterHex", { fg = icon_hl.shelter })
+    end
+  else
+    if not is_hex_color(icon_hl) then
+      vim.api.nvim_set_hl(0, "EcologStatusIcons", { link = "Special" })
+    else
+      vim.api.nvim_set_hl(0, "EcologStatusIconsHex", { fg = icon_hl })
+    end
+  end
+
+  if is_hex_color(config.highlights.env_file) then
+    vim.api.nvim_set_hl(0, "EcologStatusFileHex", { fg = config.highlights.env_file })
+  end
+
+  if is_hex_color(config.highlights.vars_count) then
+    vim.api.nvim_set_hl(0, "EcologStatusCountHex", { fg = config.highlights.vars_count })
+  end
 end
 
-local function format_with_hl(text, hl_group)
+local function format_with_hl(text, hl_spec)
   if not config.highlights.enabled then
     return text
   end
+
+  local hl_group = hl_spec
+  
+  if hl_spec == config.highlights.env_file then
+    hl_group = is_hex_color(hl_spec) and "EcologStatusFileHex" or "EcologStatusFile"
+  elseif hl_spec == config.highlights.vars_count then
+    hl_group = is_hex_color(hl_spec) and "EcologStatusCountHex" or "EcologStatusCount"
+  elseif type(config.highlights.icons) == "table" then
+    if hl_spec == config.highlights.icons.env then
+      hl_group = is_hex_color(hl_spec) and "EcologStatusIconsEnvHex" or "EcologStatusIconsEnv"
+    elseif hl_spec == config.highlights.icons.shelter then
+      hl_group = is_hex_color(hl_spec) and "EcologStatusIconsShelterHex" or "EcologStatusIconsShelter"
+    end
+  elseif hl_spec == config.highlights.icons then
+    hl_group = is_hex_color(hl_spec) and "EcologStatusIconsHex" or "EcologStatusIcons"
+  end
+
   return string.format("%%#%s#%s%%*", hl_group, text)
 end
 
@@ -88,11 +156,9 @@ function M.get_statusline()
 
   local parts = {}
   if config.icons.enabled then
-    if status.shelter_active then
-      table.insert(parts, config.icons.shelter)
-    else
-      table.insert(parts, config.icons.env)
-    end
+    local icon = status.shelter_active and config.icons.shelter or config.icons.env
+    local icon_hl = get_icon_highlight(status.shelter_active)
+    table.insert(parts, format_with_hl(icon, icon_hl))
   end
 
   table.insert(parts, format_with_hl(config.format.env_file(status.file), config.highlights.env_file))
@@ -111,19 +177,20 @@ function M.lualine()
 
       local parts = {}
       if config.icons.enabled then
-        if status.shelter_active then
-          table.insert(parts, config.icons.shelter)
-        else
-          table.insert(parts, config.icons.env)
-        end
+        local icon = status.shelter_active and config.icons.shelter or config.icons.env
+        local icon_hl = get_icon_highlight(status.shelter_active)
+        table.insert(parts, format_with_hl(icon, icon_hl))
       end
 
+      local file_name = config.format.env_file(status.file)
+      local vars_count = config.format.vars_count(status.vars_count):match("^(%d+)")
+      
       table.insert(
         parts,
         string.format(
           "%s (%s)",
-          config.format.env_file(status.file),
-          config.format.vars_count(status.vars_count):match("^(%d+)")
+          format_with_hl(file_name, config.highlights.env_file),
+          format_with_hl(vars_count, config.highlights.vars_count)
         )
       )
 

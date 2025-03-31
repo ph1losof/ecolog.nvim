@@ -62,7 +62,16 @@ function M.setup(opts)
         state.set_initial_feature_state(feature, true)
         state.get_config().shelter_on_leave = partial[feature].shelter_on_leave
         state.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
-        state.get_config().skip_comments = partial[feature].skip_comments == true
+        
+        -- Handle deprecated skip_comments in files module
+        if partial[feature].skip_comments ~= nil then
+          notify(
+            "DEPRECATED: Using skip_comments in shelter.modules.files module is deprecated. " ..
+            "Please move it to shelter.configuration.skip_comments instead.",
+            vim.log.levels.WARN
+          )
+          state.get_config().skip_comments = partial[feature].skip_comments == true
+        end
       else
         state.set_feature_state(feature, value)
         state.set_initial_feature_state(feature, value)

@@ -274,6 +274,11 @@ function M.lualine()
       return ""
     end
 
+    if not self._highlights_initialized and config.highlights.enabled then
+      self:setup_lualine_highlights()
+      self._highlights_initialized = true
+    end
+
     local parts = {}
 
     if config.icons.enabled then
@@ -344,8 +349,19 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
-  hl.setup_highlights()
+  
+  vim.schedule(function()
+    hl.setup_highlights()
+  end)
+  
   M.invalidate_cache()
+  
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("EcologStatuslineHighlights", { clear = true }),
+    callback = function()
+      hl.setup_highlights()
+    end,
+  })
 end
 
 function M.lualine_config()

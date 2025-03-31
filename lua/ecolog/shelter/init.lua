@@ -34,6 +34,7 @@ function M.setup(opts)
     state.get_config().mask_char = opts.config.mask_char or "*"
     state.get_config().highlight_group = opts.config.highlight_group or "Comment"
     state.get_config().mask_length = type(opts.config.mask_length) == "number" and opts.config.mask_length or nil
+    state.get_config().skip_comments = type(opts.config.skip_comments) == "boolean" and opts.config.skip_comments or false
 
     if opts.config.patterns then
       state.get_config().patterns = opts.config.patterns
@@ -61,14 +62,13 @@ function M.setup(opts)
         state.set_initial_feature_state(feature, true)
         state.get_config().shelter_on_leave = partial[feature].shelter_on_leave
         state.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
-        state.update_buffer_state("skip_comments", partial[feature].skip_comments == false)
+        state.get_config().skip_comments = partial[feature].skip_comments == true
       else
         state.set_feature_state(feature, value)
         state.set_initial_feature_state(feature, value)
         if value then
           state.get_config().shelter_on_leave = true
           state.update_buffer_state("disable_cmp", true)
-          state.update_buffer_state("skip_comments", false)
         end
       end
     else

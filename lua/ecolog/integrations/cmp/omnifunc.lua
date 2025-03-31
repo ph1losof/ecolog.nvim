@@ -39,7 +39,10 @@ local function get_env_completion(findstart, base)
         local trigger_len = #trigger
         local text_before_cursor = line_to_cursor:sub(-trigger_len)
 
-        if text_before_cursor == trigger or (provider.pattern and text_before_cursor:match("^" .. provider.pattern .. "$")) then
+        if
+          text_before_cursor == trigger
+          or (provider.pattern and text_before_cursor:match("^" .. provider.pattern .. "$"))
+        then
           should_complete = true
           break
         end
@@ -59,20 +62,20 @@ local function get_env_completion(findstart, base)
   end
 
   local items = {}
-  
+
   local var_entries = {}
   for var_name, info in pairs(env_vars) do
     if var_name:lower():find(base:lower(), 1, true) == 1 then
       table.insert(var_entries, vim.tbl_extend("force", { name = var_name }, info))
     end
   end
-  
+
   if config.sort_var_fn and type(config.sort_var_fn) == "function" then
     table.sort(var_entries, function(a, b)
       return config.sort_var_fn(a, b)
     end)
   end
-  
+
   for _, entry in ipairs(var_entries) do
     local display_value = _shelter.is_enabled("cmp")
         and _shelter.mask_value(entry.value, "cmp", entry.name, entry.source)
@@ -80,7 +83,12 @@ local function get_env_completion(findstart, base)
 
     local info = string.format("%s [%s] = %s", entry.name, entry.type, display_value)
     if entry.comment then
-      info = info .. " # " .. entry.comment
+      local comment_value = entry.comment
+      if _shelter.is_enabled("cmp") and not _shelter.get_config().skip_comments then
+        local utils = require("ecolog.shelter.utils")
+        comment_value = utils.mask_comment(comment_value, entry.source, _shelter, "cmp")
+      end
+      info = info .. " # " .. comment_value
     end
 
     table.insert(items, {
@@ -89,7 +97,7 @@ local function get_env_completion(findstart, base)
       menu = entry.source,
       info = info,
       priority = 100 - _,
-      user_data = { sort_index = string.format("%05d", _) }
+      user_data = { sort_index = string.format("%05d", _) },
     })
   end
 
@@ -104,14 +112,14 @@ function M.setup(opts, _, providers, shelter)
     if not vim.opt.completeopt:get()[1]:match("preview") then
       vim.opt.completeopt:append("preview")
     end
-    
+
     local supported_filetypes = {}
     for _, filetypes in pairs(_providers.filetype_map) do
       vim.list_extend(supported_filetypes, filetypes)
     end
-    
+
     local group = vim.api.nvim_create_augroup("EcologOmnifunc", { clear = true })
-    
+
     vim.api.nvim_create_autocmd("FileType", {
       group = group,
       pattern = supported_filetypes,
@@ -121,12 +129,12 @@ function M.setup(opts, _, providers, shelter)
         end
       end,
     })
-    
+
     local function close_preview()
-      vim.cmd('pclose')
+      vim.cmd("pclose")
     end
-    
-    vim.api.nvim_create_autocmd({"InsertLeave", "CompleteDone"}, {
+
+    vim.api.nvim_create_autocmd({ "InsertLeave", "CompleteDone" }, {
       group = group,
       callback = close_preview,
     })
@@ -138,4 +146,3 @@ function M.complete(findstart, base)
 end
 
 return M
-

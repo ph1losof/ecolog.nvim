@@ -157,10 +157,7 @@ function M.determine_masked_value(value, settings)
   end
 
   local available_mask_space = #value - show_start - show_end
-  local effective_mask_length = math.max(
-    math.min(mask_length or available_mask_space, available_mask_space),
-    min_mask
-  )
+  local effective_mask_length = math.max(math.min(mask_length or available_mask_space, available_mask_space), min_mask)
 
   local result = string_sub(value, 1, show_start)
     .. string_rep(conf.mask_char, effective_mask_length)
@@ -215,6 +212,37 @@ end
 
 function M.has_cmp()
   return vim.fn.exists(":CmpStatus") > 0
+end
+
+---Mask key-value pairs in a comment string
+---@param comment_value string The comment text containing key-value pairs
+---@param source string The source of the comment (e.g., file path)
+---@param shelter table The shelter module reference
+---@param feature string The feature name to check for enabling/masking
+---@return string The comment text with masked values
+function M.mask_comment(comment_value, source, shelter, feature)
+  if not comment_value or shelter.get_config().skip_comments then
+    return comment_value
+  end
+
+  local buffer = require("ecolog.shelter.buffer")
+  local pos = 1
+  local result = comment_value
+
+  while true do
+    local kv = buffer.find_next_key_value(result, pos)
+    if not kv then
+      break
+    end
+
+    local masked = shelter.mask_value(kv.value, feature, kv.key, source)
+
+    result = result:sub(1, kv.eq_pos) .. masked .. result:sub(kv.next_pos)
+
+    pos = kv.eq_pos + #masked + 1
+  end
+
+  return result
 end
 
 return M

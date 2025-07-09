@@ -100,7 +100,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-  't3ntxcl3s/ecolog.nvim',
+  'ssstba/ecolog.nvim',
   -- Optional: you can add some keybindings
   -- (I personally use lspsaga so check out lspsaga integration or lsp integration for a smoother experience without separate keybindings)
   keys = {
@@ -161,7 +161,7 @@ To use the latest features and improvements, you can use the beta branch:
 
 ```lua
 {
-  't3ntxcl3s/ecolog.nvim',
+  'ssstba/ecolog.nvim',
   branch = 'beta',
   -- ... rest of your configuration
 }
@@ -1068,7 +1068,7 @@ The integration adds two commands that intelligently handle both environment var
 
 ```lua
 {
-  't3ntxcl3s/ecolog.nvim',
+  'ssstba/ecolog.nvim',
   opts = {
     integrations = {
       lspsaga = true,
@@ -2198,13 +2198,13 @@ The plugin seamlessly integrates with your current colorscheme:
 
 ## 🛠️ Author Setup
 
-It's author's (`t3ntxcl3s`) personal setup for ecolog.nvim, it is opionated. However, it usefull to quickly get started especially if you don't want to think much of a setup and reading docs:
+It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. However, it usefull to quickly get started especially if you don't want to think much of a setup and reading docs:
 
 > **Note**: Additional setup is required for [blink-cmp](#blink-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
 {
-    't3ntxcl3s/ecolog.nvim',
+    'ssstba/ecolog.nvim',
     keys = {
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
       { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
@@ -2363,5 +2363,5 @@ MIT License - See [LICENSE](./LICENSE) for details.
 ---
 
 <div align="center">
-Made with ❤️ by <a href="https://github.com/t3ntxcl3s">TENTACLE</a>
+Made with ❤️ by <a href="https://github.com/ssstba">TENTACLE</a>
 </div>

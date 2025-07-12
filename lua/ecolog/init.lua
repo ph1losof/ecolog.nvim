@@ -144,19 +144,183 @@ local _loading = {}
 local _setup_done = false
 local _lazy_setup_tasks = {}
 
+-- Improved synchronization primitives
+local _state_lock = false
+local _state_waiters = {}
+local _module_locks = {}
+local _lock_start_time = 0
+local _lock_owner = nil
+local _lock_count = 0
+local _pending_operations = 0
+
+-- Lock-free read operations for better performance
+local function safe_read_state(key)
+  -- Direct access for read-only operations
+  if key then
+    return state[key]
+  end
+  return state
+end
+
+-- Lightweight lock for critical sections only
+local function try_acquire_lock(timeout_ms)
+  timeout_ms = timeout_ms or 1000
+  local start_time = vim.loop.now()
+  
+  while _state_lock do
+    local elapsed = vim.loop.now() - start_time
+    if elapsed > timeout_ms then
+      return false
+    end
+    vim.wait(10)
+  end
+  
+  _state_lock = true
+  _lock_start_time = vim.loop.now()
+  _lock_owner = debug.traceback("Lock acquired", 2)
+  return true
+end
+
+-- Enhanced mutex with better error handling
+local function acquire_state_lock(timeout_ms)
+  timeout_ms = timeout_ms or 2000
+  
+  -- Track pending operations
+  _pending_operations = _pending_operations + 1
+  
+  -- Quick path for uncontended case
+  if not _state_lock then
+    _state_lock = true
+    _lock_start_time = vim.loop.now()
+    _lock_owner = debug.traceback("Lock acquired", 2)
+    return true
+  end
+  
+  -- Check if lock is held too long
+  if _lock_start_time > 0 then
+    local elapsed = vim.loop.now() - _lock_start_time
+    if elapsed > 15000 then -- 15 seconds is definitely too long
+      vim.notify(
+        string.format(
+          "Lock held for %dms by:\n%s\nForcing unlock", 
+          elapsed, 
+          _lock_owner or "unknown"
+        ), 
+        vim.log.levels.ERROR
+      )
+      _state_lock = false
+      _lock_start_time = 0
+      _lock_owner = nil
+    end
+  end
+  
+  -- Try to acquire with timeout
+  local start_time = vim.loop.now()
+  local wait_time = 5
+  
+  while _state_lock do
+    local elapsed = vim.loop.now() - start_time
+    if elapsed > timeout_ms then
+      _pending_operations = math.max(0, _pending_operations - 1)
+      return false
+    end
+    
+    vim.wait(math.min(wait_time, 50))
+    wait_time = math.min(wait_time * 1.2, 100)
+  end
+  
+  _state_lock = true
+  _lock_start_time = vim.loop.now()
+  _lock_owner = debug.traceback("Lock acquired", 2)
+  return true
+end
+
+local function release_state_lock()
+  _state_lock = false
+  _lock_start_time = 0
+  _lock_owner = nil
+  _pending_operations = math.max(0, _pending_operations - 1)
+  
+  -- Wake up any waiting operations
+  for _, waiter in ipairs(_state_waiters) do
+    if waiter then
+      vim.schedule(waiter)
+    end
+  end
+  _state_waiters = {}
+end
+
+-- Thread-safe module loading with proper synchronization
 local function require_module(name)
+  if not name or type(name) ~= "string" then
+    vim.notify("Invalid module name: " .. tostring(name), vim.log.levels.ERROR)
+    return {}
+  end
+
+  -- Check if module is already loaded (fast path)
   if _loaded_modules[name] then
     return _loaded_modules[name]
   end
 
+  -- Acquire lock for this specific module
+  if _module_locks[name] then
+    -- Another thread is loading this module, wait for it
+    local start_time = vim.loop.now()
+    while _module_locks[name] do
+      if vim.loop.now() - start_time > 5000 then
+        vim.notify("Module lock timeout for: " .. name, vim.log.levels.WARN)
+        break
+      end
+      vim.wait(10)
+    end
+    
+    -- Check again if module was loaded while waiting
+    if _loaded_modules[name] then
+      return _loaded_modules[name]
+    end
+  end
+
+  -- Set lock for this module
+  _module_locks[name] = true
+
+  -- Check for circular dependencies
   if _loading[name] then
-    error("Circular dependency detected: " .. name)
+    _module_locks[name] = nil
+    vim.notify("Circular dependency detected: " .. name .. ". Using fallback module.", vim.log.levels.WARN)
+    local stub = {}
+    setmetatable(stub, {
+      __index = function(_, key)
+        vim.notify(
+          "Attempted to access '" .. key .. "' from stub module due to circular dependency",
+          vim.log.levels.WARN
+        )
+        return function() end -- Return no-op function
+      end,
+    })
+    return stub
   end
 
   _loading[name] = true
-  local module = require(name)
+  local success, module = pcall(require, name)
   _loading[name] = nil
+
+  if not success then
+    vim.notify("Failed to load module: " .. name .. ". Error: " .. tostring(module), vim.log.levels.ERROR)
+    -- Return stub module instead of failing
+    local stub = {}
+    setmetatable(stub, {
+      __index = function(_, key)
+        vim.notify("Attempted to access '" .. key .. "' from failed module: " .. name, vim.log.levels.WARN)
+        return function() end -- Return no-op function
+      end,
+    })
+    _loaded_modules[name] = stub
+    _module_locks[name] = nil
+    return stub
+  end
+
   _loaded_modules[name] = module
+  _module_locks[name] = nil
   return module
 end
 
@@ -185,60 +349,126 @@ local function get_secret_manager(name)
 end
 
 function M.refresh_env_vars(opts)
-  state.cached_env_files = nil
-  state.file_cache_opts = nil
-
-  local base_opts = state.last_opts or DEFAULT_CONFIG
-
-  opts = vim.tbl_deep_extend("force", base_opts, opts or {})
-  env_loader.load_environment(opts, state, true)
-
-  if opts.integrations.statusline then
-    local statusline = require("ecolog.integrations.statusline")
-    statusline.invalidate_cache()
-  end
-
-  if opts.integrations.secret_managers then
-    if opts.integrations.secret_managers.aws then
-      local aws = get_secret_manager("aws")
-      aws.load_aws_secrets(opts.integrations.secret_managers.aws)
+  -- Use async approach to avoid blocking
+  vim.schedule(function()
+    if not acquire_state_lock(5000) then
+      vim.notify("Refresh operation queued due to lock contention", vim.log.levels.INFO)
+      -- Queue the operation for later
+      vim.defer_fn(function()
+        M.refresh_env_vars(opts)
+      end, 1000)
+      return
     end
 
-    if opts.integrations.secret_managers.vault then
-      local vault = get_secret_manager("vault")
-      vault.load_vault_secrets(opts.integrations.secret_managers.vault)
+    local success, err = pcall(function()
+      state.cached_env_files = nil
+      state.file_cache_opts = nil
+
+      local base_opts = state.last_opts or DEFAULT_CONFIG
+      opts = vim.tbl_deep_extend("force", base_opts, opts or {})
+      env_loader.load_environment(opts, state, true)
+
+      if opts.integrations.statusline then
+        local statusline = require("ecolog.integrations.statusline")
+        statusline.invalidate_cache()
+      end
+
+      if opts.integrations.secret_managers then
+        if opts.integrations.secret_managers.aws then
+          local aws = get_secret_manager("aws")
+          aws.load_aws_secrets(opts.integrations.secret_managers.aws)
+        end
+
+        if opts.integrations.secret_managers.vault then
+          local vault = get_secret_manager("vault")
+          vault.load_vault_secrets(opts.integrations.secret_managers.vault)
+        end
+      end
+    end)
+
+    release_state_lock()
+
+    if not success then
+      vim.notify("Error in refresh_env_vars: " .. tostring(err), vim.log.levels.ERROR)
     end
-  end
+  end)
 end
 
 ---Get all environment variables
 ---@return table<string, EnvVarInfo> Environment variables with their metadata
 function M.get_env_vars()
-  if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
-    state.selected_env_file = nil
-    state.env_vars = {}
-    state._env_line_cache = {}
-    env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state, true)
+  -- Quick read-only check first
+  local env_vars = safe_read_state("env_vars")
+  local selected_file = safe_read_state("selected_env_file")
+  
+  -- If we have vars and file is still valid, return immediately
+  if env_vars and next(env_vars) ~= nil then
+    if not selected_file or vim.fn.filereadable(selected_file) == 1 then
+      return vim.deepcopy(env_vars)
+    end
+  end
+  
+  -- Need to modify state, acquire lock
+  if not acquire_state_lock(3000) then
+    -- Fallback: return what we have
+    return vim.deepcopy(env_vars or {})
   end
 
-  if next(state.env_vars) == nil then
-    env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
+  local result = {}
+  local success, err = pcall(function()
+    if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
+      state.selected_env_file = nil
+      state.env_vars = {}
+      state._env_line_cache = {}
+      env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state, true)
+    end
+
+    if next(state.env_vars) == nil then
+      env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
+    end
+
+    result = vim.deepcopy(state.env_vars)
+  end)
+
+  release_state_lock()
+
+  if not success then
+    vim.notify("Error in get_env_vars: " .. tostring(err), vim.log.levels.ERROR)
+    return {}
   end
 
-  return state.env_vars
+  return result
 end
 
 local function handle_env_file_selection(file, config)
-  if file then
+  if not file then
+    return
+  end
+
+  -- Note: This function is called from within already locked contexts,
+  -- so we don't need to acquire the lock here again to avoid deadlocks
+  local success, err = pcall(function()
     state.selected_env_file = file
     config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
     file_watcher.setup_watcher(config, state, M.refresh_env_vars)
     state.cached_env_files = nil
-    M.refresh_env_vars(config)
+    
+    -- Don't call M.refresh_env_vars here as it would cause deadlock
+    -- Instead, directly call the internal function
+    state.cached_env_files = nil
+    state.file_cache_opts = nil
+    local base_opts = state.last_opts or DEFAULT_CONFIG
+    local opts = vim.tbl_deep_extend("force", base_opts, config or {})
+    env_loader.load_environment(opts, state, true)
+    
     if state._env_module then
       state._env_module.update_env_vars()
     end
     notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
+  end)
+
+  if not success then
+    vim.notify("Error in handle_env_file_selection: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
 
@@ -606,10 +836,10 @@ local function create_commands(config)
           end)
           return
         end
-        
+
         local key = args[1]
         local value = table.concat(args, " ", 2)
-        
+
         local result = env_module.set(key, value)
         if result then
           print(string.format("Set %s = %s", key, value))
@@ -665,140 +895,216 @@ local function validate_config(config)
 end
 
 function M.setup(opts)
-  if _setup_done then
+  if not acquire_state_lock() then
+    vim.notify("Failed to acquire state lock for setup", vim.log.levels.ERROR)
     return
   end
-  _setup_done = true
 
-  local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
-  validate_config(config)
-
-  if config.providers then
-    local providers = require("ecolog.providers")
-    if vim.islist(config.providers) then
-      providers.register_many(config.providers)
-    else
-      providers.register(config.providers)
+  local success, err = pcall(function()
+    if _setup_done then
+      return
     end
-  end
+    _setup_done = true
 
-  if type(config.interpolation) == "boolean" then
-    config.interpolation = {
-      enabled = config.interpolation,
-      max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
-      warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
-      fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
-      features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
-    }
-  elseif type(config.interpolation) == "table" then
-    if config.interpolation.enabled == nil then
-      config.interpolation.enabled = true
+    local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+    validate_config(config)
+
+    if config.providers then
+      local providers = require("ecolog.providers")
+      if vim.islist(config.providers) then
+        providers.register_many(config.providers)
+      else
+        providers.register(config.providers)
+      end
     end
 
-    if config.interpolation.features then
-      config.interpolation.features =
-        vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
+    if type(config.interpolation) == "boolean" then
+      config.interpolation = {
+        enabled = config.interpolation,
+        max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
+        warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
+        fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
+        features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
+      }
+    elseif type(config.interpolation) == "table" then
+      if config.interpolation.enabled == nil then
+        config.interpolation.enabled = true
+      end
+
+      if config.interpolation.features then
+        config.interpolation.features =
+          vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation.features, config.interpolation.features)
+      end
+
+      config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
     end
 
-    config.interpolation = vim.tbl_deep_extend("force", DEFAULT_CONFIG.interpolation, config.interpolation)
-  end
+    state.selected_env_file = nil
+    state.last_opts = config
 
-  state.selected_env_file = nil
-
-  state.last_opts = config
-
-  if config.integrations.blink_cmp then
-    config.integrations.nvim_cmp = false
-  end
-
-  require("ecolog.highlights").setup()
-  shelter.setup({
-    config = config.shelter.configuration,
-    partial = config.shelter.modules,
-  })
-  types.setup({
-    types = config.types,
-    custom_types = config.custom_types,
-  })
-
-  if config.integrations.secret_managers then
-    if config.integrations.secret_managers.aws then
-      local aws = get_secret_manager("aws")
-      aws.load_aws_secrets(config.integrations.secret_managers.aws)
+    if config.integrations.blink_cmp then
+      config.integrations.nvim_cmp = false
     end
 
-    if config.integrations.secret_managers.vault then
-      local vault = get_secret_manager("vault")
-      vault.load_vault_secrets(config.integrations.secret_managers.vault)
-    end
-  end
+    require("ecolog.highlights").setup()
+    shelter.setup({
+      config = config.shelter.configuration,
+      partial = config.shelter.modules,
+    })
+    types.setup({
+      types = config.types,
+      custom_types = config.custom_types,
+    })
 
-  local initial_env_files = utils.find_env_files({
-    path = config.path,
-    preferred_environment = config.preferred_environment,
-    env_file_patterns = config.env_file_patterns,
-    sort_file_fn = config.sort_file_fn,
-    sort_var_fn = config.sort_var_fn,
-  })
+    if config.integrations.secret_managers then
+      if config.integrations.secret_managers.aws then
+        local aws = get_secret_manager("aws")
+        aws.load_aws_secrets(config.integrations.secret_managers.aws)
+      end
 
-  if #initial_env_files > 0 then
-    handle_env_file_selection(initial_env_files[1], config)
-  end
-
-  table.insert(_lazy_setup_tasks, function()
-    setup_integrations(config)
-  end)
-
-  schedule(function()
-    env_loader.load_environment(config, state)
-    file_watcher.setup_watcher(config, state, M.refresh_env_vars)
-
-    for _, task in ipairs(_lazy_setup_tasks) do
-      task()
+      if config.integrations.secret_managers.vault then
+        local vault = get_secret_manager("vault")
+        vault.load_vault_secrets(config.integrations.secret_managers.vault)
+      end
     end
 
-    create_commands(config)
-  end)
+    local initial_env_files = utils.find_env_files({
+      path = config.path,
+      preferred_environment = config.preferred_environment,
+      env_file_patterns = config.env_file_patterns,
+      sort_file_fn = config.sort_file_fn,
+      sort_var_fn = config.sort_var_fn,
+    })
 
-  if opts.vim_env then
-    schedule(function()
-      get_env_module()
+    if #initial_env_files > 0 then
+      handle_env_file_selection(initial_env_files[1], config)
+    end
+
+    table.insert(_lazy_setup_tasks, function()
+      setup_integrations(config)
     end)
+
+    schedule(function()
+      env_loader.load_environment(config, state)
+      file_watcher.setup_watcher(config, state, M.refresh_env_vars)
+
+      for _, task in ipairs(_lazy_setup_tasks) do
+        local task_success, task_err = pcall(task)
+        if not task_success then
+          vim.notify("Error in lazy setup task: " .. tostring(task_err), vim.log.levels.ERROR)
+        end
+      end
+
+      create_commands(config)
+    end)
+
+    if opts and opts.vim_env then
+      schedule(function()
+        get_env_module()
+      end)
+    end
+  end)
+
+  release_state_lock()
+
+  if not success then
+    vim.notify("Error in setup: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
 
 function M.get_status()
-  if not state.last_opts or not state.last_opts.integrations.statusline then
+  -- Lock-free status check
+  local selected_file = safe_read_state("selected_env_file")
+  local opts = safe_read_state("last_opts")
+  
+  if not opts or not opts.integrations.statusline then
     return ""
   end
 
-  local config = state.last_opts.integrations.statusline
-  if type(config) == "table" and config.hidden_mode and not state.selected_env_file then
+  local config = opts.integrations.statusline
+  if type(config) == "table" and config.hidden_mode and not selected_file then
     return ""
   end
 
-  return require("ecolog.integrations.statusline").get_statusline()
+  -- Simple fallback status
+  if selected_file then
+    return vim.fn.fnamemodify(selected_file, ":t")
+  end
+  
+  return ""
 end
 
 function M.get_lualine()
-  if not state.last_opts or not state.last_opts.integrations.statusline then
+  -- Lock-free lualine status
+  local selected_file = safe_read_state("selected_env_file")
+  local opts = safe_read_state("last_opts")
+  
+  if not opts or not opts.integrations.statusline then
     return ""
   end
 
-  local config = state.last_opts.integrations.statusline
-  if type(config) == "table" and config.hidden_mode and not state.selected_env_file then
+  local config = opts.integrations.statusline
+  if type(config) == "table" and config.hidden_mode and not selected_file then
     return ""
   end
 
-  return require("ecolog.integrations.statusline").lualine()
+  -- Simple fallback status for lualine
+  if selected_file then
+    return vim.fn.fnamemodify(selected_file, ":t")
+  end
+  
+  return ""
 end
 
 function M.get_state()
-  return state
+  -- Lock-free shallow copy for most fields
+  local result = {}
+  for k, v in pairs(state) do
+    if k == "_env_line_cache" then
+      -- Skip cache to avoid expensive copy
+      result[k] = {}
+    elseif type(v) ~= "table" then
+      result[k] = v
+    else
+      -- Safe shallow copy for tables
+      result[k] = vim.tbl_extend("force", {}, v)
+    end
+  end
+  return result
+end
+
+---Get lock health information for debugging
+---@return table health_info
+function M.get_lock_health()
+  return {
+    state_lock = _state_lock,
+    lock_start_time = _lock_start_time,
+    lock_duration = _lock_start_time > 0 and (vim.loop.now() - _lock_start_time) or 0,
+    lock_owner = _lock_owner,
+    pending_operations = _pending_operations,
+    waiting_operations = #_state_waiters,
+    module_locks = vim.tbl_count(_module_locks),
+  }
+end
+
+---Force release all locks (emergency function)
+function M.force_unlock_all()
+  vim.notify("Force unlocking all state locks", vim.log.levels.WARN)
+  _state_lock = false
+  _lock_start_time = 0
+  _lock_owner = nil
+  _pending_operations = 0
+  _state_waiters = {}
+  _module_locks = {}
 end
 
 function M.get_config()
-  return state.last_opts or DEFAULT_CONFIG
+  -- Use lock-free read for config (read-only operation)
+  local config = safe_read_state("last_opts")
+  if config then
+    return vim.deepcopy(config)
+  end
+  return vim.deepcopy(DEFAULT_CONFIG)
 end
 
 return M

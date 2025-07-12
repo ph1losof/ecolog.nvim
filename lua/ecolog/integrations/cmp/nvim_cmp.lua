@@ -4,32 +4,76 @@ local api = vim.api
 local _shelter = nil
 
 local function setup_completion(cmp, opts, providers)
-  api.nvim_set_hl(0, "CmpItemKindEcolog", { link = "EcologVariable" })
-  api.nvim_set_hl(0, "CmpItemAbbrMatchEcolog", { link = "EcologVariable" })
-  api.nvim_set_hl(0, "CmpItemAbbrMatchFuzzyEcolog", { link = "EcologVariable" })
-  api.nvim_set_hl(0, "CmpItemMenuEcolog", { link = "EcologSource" })
+  -- Validate inputs
+  if not cmp then
+    vim.notify("nvim-cmp is not available", vim.log.levels.ERROR)
+    return
+  end
+  
+  if not providers then
+    vim.notify("Providers module is not available", vim.log.levels.ERROR)
+    return
+  end
+  
+  -- Set up highlights with error handling
+  local highlight_groups = {
+    "CmpItemKindEcolog",
+    "CmpItemAbbrMatchEcolog", 
+    "CmpItemAbbrMatchFuzzyEcolog",
+    "CmpItemMenuEcolog"
+  }
+  
+  local highlight_links = {
+    "EcologVariable",
+    "EcologVariable",
+    "EcologVariable", 
+    "EcologSource"
+  }
+  
+  for i, group in ipairs(highlight_groups) do
+    local success, err = pcall(api.nvim_set_hl, 0, group, { link = highlight_links[i] })
+    if not success then
+      vim.notify("Failed to set highlight group " .. group .. ": " .. tostring(err), vim.log.levels.WARN)
+    end
+  end
 
-  cmp.register_source("ecolog", {
+  -- Register completion source with error handling
+  local success, err = pcall(cmp.register_source, "ecolog", {
     get_trigger_characters = function()
       local has_ecolog, ecolog = pcall(require, "ecolog")
       if not has_ecolog then
         return {}
       end
 
-      local config = ecolog.get_config()
-      if not config.provider_patterns.cmp then
+      local config_success, config = pcall(ecolog.get_config)
+      if not config_success or not config then
+        return {}
+      end
+      
+      if not config.provider_patterns or not config.provider_patterns.cmp then
         return { "" }
       end
 
       local triggers = {}
-      local available_providers = providers.get_providers(vim.bo.filetype)
+      local filetype = vim.bo.filetype
+      
+      if not filetype or filetype == "" then
+        return {}
+      end
+      
+      local providers_success, available_providers = pcall(providers.get_providers, filetype)
+      if not providers_success or not available_providers then
+        return {}
+      end
 
       for _, provider in ipairs(available_providers) do
-        if provider.get_completion_trigger then
-          local trigger = provider.get_completion_trigger()
-          for char in trigger:gmatch(".") do
-            if not vim.tbl_contains(triggers, char) then
-              table.insert(triggers, char)
+        if provider and provider.get_completion_trigger then
+          local trigger_success, trigger = pcall(provider.get_completion_trigger)
+          if trigger_success and trigger and type(trigger) == "string" then
+            for char in trigger:gmatch(".") do
+              if not vim.tbl_contains(triggers, char) then
+                table.insert(triggers, char)
+              end
             end
           end
         end
@@ -39,16 +83,42 @@ local function setup_completion(cmp, opts, providers)
     end,
 
     complete = function(self, request, callback)
-      local has_ecolog, ecolog = pcall(require, "ecolog")
-      if not has_ecolog then
-        callback({ items = {}, isIncomplete = false })
-        return
-      end
+      -- Wrap entire completion logic in pcall for safety
+      local success, err = pcall(function()
+        -- Validate callback
+        if not callback or type(callback) ~= "function" then
+          return
+        end
+        
+        local has_ecolog, ecolog = pcall(require, "ecolog")
+        if not has_ecolog then
+          callback({ items = {}, isIncomplete = false })
+          return
+        end
 
-      local config = ecolog.get_config()
-      local env_vars = ecolog.get_env_vars()
-      local filetype = vim.bo.filetype
-      local available_providers = providers.get_providers(filetype)
+        local config_success, config = pcall(ecolog.get_config)
+        if not config_success or not config then
+          callback({ items = {}, isIncomplete = false })
+          return
+        end
+        
+        local env_vars_success, env_vars = pcall(ecolog.get_env_vars)
+        if not env_vars_success or not env_vars then
+          callback({ items = {}, isIncomplete = false })
+          return
+        end
+        
+        local filetype = vim.bo.filetype
+        if not filetype or filetype == "" then
+          callback({ items = {}, isIncomplete = false })
+          return
+        end
+        
+        local providers_success, available_providers = pcall(providers.get_providers, filetype)
+        if not providers_success or not available_providers then
+          callback({ items = {}, isIncomplete = false })
+          return
+        end
 
       if vim.tbl_count(env_vars) == 0 then
         callback({ items = {}, isIncomplete = false })
@@ -137,24 +207,57 @@ local function setup_completion(cmp, opts, providers)
         table.insert(items, item)
       end
 
-      callback({ items = items, isIncomplete = false })
+        callback({ items = items, isIncomplete = false })
+      end)
+      
+      if not success then
+        vim.notify("nvim-cmp completion failed: " .. tostring(err), vim.log.levels.ERROR)
+        if callback then
+          callback({ items = {}, isIncomplete = false })
+        end
+      end
     end,
   })
+  
+  if not success then
+    vim.notify("Failed to register nvim-cmp source: " .. tostring(err), vim.log.levels.ERROR)
+  end
 end
 
 function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
+  -- Validate required parameters
+  if not providers then
+    vim.notify("Providers module is required for nvim-cmp integration", vim.log.levels.ERROR)
+    return
+  end
+  
+  if not shelter then
+    vim.notify("Shelter module is required for nvim-cmp integration", vim.log.levels.ERROR)
+    return
+  end
+  
   _shelter = shelter
 
-  vim.api.nvim_create_autocmd("InsertEnter", {
+  local autocmd_success, autocmd_err = pcall(vim.api.nvim_create_autocmd, "InsertEnter", {
     callback = function()
-      local has_cmp, cmp = pcall(require, "cmp")
-      if has_cmp and not M._cmp_loaded then
-        setup_completion(cmp, opts, providers)
-        M._cmp_loaded = true
+      local success, err = pcall(function()
+        local has_cmp, cmp = pcall(require, "cmp")
+        if has_cmp and not M._cmp_loaded then
+          setup_completion(cmp, opts, providers)
+          M._cmp_loaded = true
+        end
+      end)
+      
+      if not success then
+        vim.notify("nvim-cmp autocmd callback failed: " .. tostring(err), vim.log.levels.ERROR)
       end
     end,
     once = true,
   })
+  
+  if not autocmd_success then
+    vim.notify("Failed to create nvim-cmp autocmd: " .. tostring(autocmd_err), vim.log.levels.ERROR)
+  end
 end
 
 return M

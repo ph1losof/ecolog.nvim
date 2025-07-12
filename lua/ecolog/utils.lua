@@ -629,36 +629,90 @@ end
 ---@param env_file string Path to the source .env file
 ---@return boolean success Whether the file was generated successfully
 function M.generate_example_file(env_file)
+  -- Validate input
+  if not env_file or type(env_file) ~= "string" then
+    vim.notify("Invalid environment file path provided", vim.log.levels.ERROR)
+    return false
+  end
+  
+  -- Check file readability
+  if vim.fn.filereadable(env_file) == 0 then
+    vim.notify("Environment file is not readable: " .. env_file, vim.log.levels.ERROR)
+    return false
+  end
+  
   local f = io.open(env_file, "r")
   if not f then
-    vim.notify("Could not open .env file", vim.log.levels.ERROR)
+    vim.notify("Could not open .env file: " .. env_file, vim.log.levels.ERROR)
     return false
   end
 
   local example_content = {}
-  for line in f:lines() do
-    if line:match("^%s*$") or line:match("^%s*#") then
-      table.insert(example_content, line)
-    else
-      local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
-      if name then
-        name = name:gsub("^%s*(.-)%s*$", "%1")
-        comment = comment:gsub("^%s*(.-)%s*$", "%1")
-        table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+  
+  -- Use pcall to protect against file reading errors
+  local read_success, read_err = pcall(function()
+    for line in f:lines() do
+      if line:match("^%s*$") or line:match("^%s*#") then
+        table.insert(example_content, line)
+      else
+        local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
+        if name then
+          name = name:gsub("^%s*(.-)%s*$", "%1")
+          comment = comment:gsub("^%s*(.-)%s*$", "%1")
+          table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+        end
       end
     end
+  end)
+  
+  -- Ensure input file is always closed
+  local close_success, close_err = pcall(function()
+    f:close()
+  end)
+  
+  if not read_success then
+    vim.notify("Error reading environment file: " .. tostring(read_err), vim.log.levels.ERROR)
+    return false
   end
-  f:close()
+  
+  if not close_success then
+    vim.notify("Error closing environment file: " .. tostring(close_err), vim.log.levels.WARN)
+  end
 
   local example_file = env_file:gsub("%.env$", "") .. ".env.example"
+  
+  -- Check if we can write to the directory
+  local dir = vim.fn.fnamemodify(example_file, ":h")
+  if vim.fn.isdirectory(dir) == 0 then
+    vim.notify("Directory does not exist: " .. dir, vim.log.levels.ERROR)
+    return false
+  end
+  
   local out = io.open(example_file, "w")
   if not out then
-    vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
+    vim.notify("Could not create .env.example file: " .. example_file, vim.log.levels.ERROR)
     return false
   end
 
-  out:write(table.concat(example_content, "\n"))
-  out:close()
+  -- Use pcall to protect against file writing errors
+  local write_success, write_err = pcall(function()
+    out:write(table.concat(example_content, "\n"))
+  end)
+  
+  -- Ensure output file is always closed
+  local out_close_success, out_close_err = pcall(function()
+    out:close()
+  end)
+  
+  if not write_success then
+    vim.notify("Error writing to example file: " .. tostring(write_err), vim.log.levels.ERROR)
+    return false
+  end
+  
+  if not out_close_success then
+    vim.notify("Error closing example file: " .. tostring(out_close_err), vim.log.levels.WARN)
+  end
+  
   vim.notify("Generated " .. example_file, vim.log.levels.INFO)
   return true
 end

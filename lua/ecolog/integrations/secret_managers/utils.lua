@@ -110,9 +110,18 @@ function M.update_environment(secrets, override, source_prefix)
 
   for k, v in pairs(final_vars) do
     if type(v) == "table" and v.value then
-      vim.env[k] = tostring(v.value)
+      -- Use vim.env for faster access if available, fallback to vim.fn.setenv
+      if vim.env then
+        vim.env[k] = tostring(v.value)
+      else
+        vim.fn.setenv(k, tostring(v.value))
+      end
     else
-      vim.env[k] = tostring(v)
+      if vim.env then
+        vim.env[k] = tostring(v)
+      else
+        vim.fn.setenv(k, tostring(v))
+      end
     end
   end
 end
@@ -148,9 +157,9 @@ function M.create_secret_selection_ui(secrets, selected, on_select, source_prefi
 
   local function update_buffer(bufnr, winid)
     local content = get_content()
-    api.nvim_buf_set_option(bufnr, "modifiable", true)
+    vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
     api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
-    api.nvim_buf_set_option(bufnr, "modifiable", false)
+    vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
 
     api.nvim_buf_clear_namespace(bufnr, -1, 0, -1)
     for i = 1, #content do
@@ -168,20 +177,20 @@ function M.create_secret_selection_ui(secrets, selected, on_select, source_prefi
   local original_guicursor = vim.opt.guicursor:get()
   local bufnr = api.nvim_create_buf(false, true)
 
-  api.nvim_buf_set_option(bufnr, "buftype", "nofile")
-  api.nvim_buf_set_option(bufnr, "bufhidden", "wipe")
-  api.nvim_buf_set_option(bufnr, "modifiable", true)
-  api.nvim_buf_set_option(bufnr, "filetype", "ecolog")
+  vim.api.nvim_set_option_value("buftype", "nofile", { buf = bufnr })
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = bufnr })
+  vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
+  vim.api.nvim_set_option_value("filetype", "ecolog", { buf = bufnr })
 
   api.nvim_buf_set_lines(bufnr, 0, -1, false, get_content())
-  api.nvim_buf_set_option(bufnr, "modifiable", false)
+  vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
 
   local winid = api.nvim_open_win(bufnr, true, float_opts)
 
-  api.nvim_win_set_option(winid, "conceallevel", 2)
-  api.nvim_win_set_option(winid, "concealcursor", "niv")
-  api.nvim_win_set_option(winid, "cursorline", true)
-  api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+  vim.api.nvim_set_option_value("conceallevel", 2, { win = winid })
+  vim.api.nvim_set_option_value("concealcursor", "niv", { win = winid })
+  vim.api.nvim_set_option_value("cursorline", true, { win = winid })
+  vim.api.nvim_set_option_value("winhl", "Normal:EcologNormal,FloatBorder:EcologBorder", { win = winid })
 
   update_buffer(bufnr, winid)
 

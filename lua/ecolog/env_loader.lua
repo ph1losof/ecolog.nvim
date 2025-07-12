@@ -72,20 +72,61 @@ end
 ---@return table<string, EnvVarInfo>
 local function load_env_file(file_path, _env_line_cache, env_vars, opts)
   local env_vars_result = {}
+  
+  -- Validate input parameters
+  if not file_path or type(file_path) ~= "string" then
+    vim.notify("Invalid file path provided to load_env_file", vim.log.levels.ERROR)
+    return env_vars_result
+  end
+  
+  if not _env_line_cache then
+    _env_line_cache = {}
+  end
+  
+  if not env_vars then
+    env_vars = {}
+  end
+  
+  if not opts then
+    opts = {}
+  end
+  
+  -- Check file readability before attempting to open
+  if vim.fn.filereadable(file_path) == 0 then
+    vim.notify(string.format("Environment file is not readable: %s", file_path), vim.log.levels.WARN)
+    return env_vars_result
+  end
+  
   local env_file = io.open(file_path, "r")
   if not env_file then
     vim.notify(string.format("Could not open environment file: %s", file_path), vim.log.levels.WARN)
     return env_vars_result
   end
 
-  for line in env_file:lines() do
-    local initial_opts = vim.tbl_deep_extend("force", {}, opts)
-    local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts)
-    if key then
-      env_vars_result[key] = var_info
+  -- Use pcall to protect against file reading errors
+  local success, err = pcall(function()
+    for line in env_file:lines() do
+      local initial_opts = vim.tbl_deep_extend("force", {}, opts)
+      local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts)
+      if key then
+        env_vars_result[key] = var_info
+      end
     end
+  end)
+  
+  -- Ensure file is always closed, even on error
+  local close_success, close_err = pcall(function()
+    env_file:close()
+  end)
+  
+  if not success then
+    vim.notify(string.format("Error reading environment file %s: %s", file_path, tostring(err)), vim.log.levels.ERROR)
+    return env_vars_result
   end
-  env_file:close()
+  
+  if not close_success then
+    vim.notify(string.format("Error closing environment file %s: %s", file_path, tostring(close_err)), vim.log.levels.WARN)
+  end
 
   if opts.interpolation and opts.interpolation.enabled then
     for key, var_info in pairs(env_vars_result) do

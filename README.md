@@ -27,6 +27,12 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Configuration Options](#configuration-options)
   - [Features](#features)
   - [Best Practices](#best-practices)
+- [Monorepo Support](#-monorepo-support)
+  - [Configuration](#configuration)
+  - [Workspace Detection](#workspace-detection)
+  - [Environment File Resolution](#environment-file-resolution)
+  - [Workspace Switching](#workspace-switching)
+  - [Advanced Configuration](#advanced-configuration-1)
 - [Variable Interpolation](#-variable-interpolation)
   - [Supported Syntax](#supported-syntax)
   - [Examples](#examples)
@@ -227,6 +233,14 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Priority-based loading system
 - Environment-specific configurations
 - Custom sort functions for file priority
+
+🏢 **Monorepo Support**
+
+- Automatic workspace detection (Turborepo, Nx, Lerna, Rush, etc.)
+- Intelligent environment file resolution strategies
+- Workspace-aware variable completion and display
+- Automatic and manual workspace switching
+- Cross-workspace environment file management
 
 💡 **Type System**
 
@@ -508,6 +522,183 @@ require('ecolog').setup({
 2. Consider using `transform` to clearly mark shell-sourced variables
 3. Be mindful of the `override` setting when working with both shell and .env variables
 4. Apply shelter mode settings to shell variables containing sensitive data
+
+## 🏢 Monorepo Support
+
+Ecolog provides comprehensive monorepo support for managing environment variables across multiple workspaces and projects. This feature automatically detects monorepo structures and provides intelligent workspace-aware environment variable management.
+
+### Configuration
+
+Enable monorepo support with default settings:
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    enabled = true,
+    auto_switch = true,  -- Automatically switch to workspace based on current file
+  }
+})
+```
+
+### Workspace Detection
+
+Ecolog automatically detects monorepo structures using multiple strategies:
+
+#### Detection Strategies
+
+1. **File Markers**: Looks for common monorepo configuration files
+2. **Package Managers**: Detects workspace configurations in package manager files
+
+#### Common Monorepo Markers
+
+Ecolog recognizes these monorepo indicators:
+
+| Tool/Framework | Marker Files |
+|----------------|-------------|
+| Turborepo | `turbo.json` |
+| Nx | `nx.json`, `workspace.json` |
+| Lerna | `lerna.json` |
+| Rush | `rush.json` |
+| Yarn/NPM Workspaces | `package.json` (with workspaces field) |
+| Bazel | `WORKSPACE`, `WORKSPACE.bazel` |
+| Cargo Workspaces | `Cargo.toml` (with workspace section) |
+| Gradle | `settings.gradle`, `settings.gradle.kts` |
+| Maven | `pom.xml` (with modules) |
+| Generic | `.workspace`, `.monorepo` |
+
+#### Default Workspace Patterns
+
+Ecolog looks for workspaces using these patterns:
+
+- `apps/*` - Application packages
+- `packages/*` - Shared packages
+- `libs/*` - Library packages
+- `services/*` - Service packages
+- `modules/*` - Module packages
+- `components/*` - Component packages
+- `tools/*` - Tool packages
+- `internal/*` - Internal packages
+- `external/*` - External packages
+- `projects/*` - Project packages
+
+### Environment File Resolution
+
+Ecolog provides flexible strategies for resolving environment files in monorepo workspaces:
+
+#### Resolution Strategies
+
+1. **`workspace_first`** (default): Workspace files take precedence over root files
+2. **`root_first`**: Root files take precedence over workspace files
+3. **`workspace_only`**: Only load workspace environment files
+4. **`merge`**: Merge files based on override order
+
+#### Example Configuration
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    enabled = true,
+    detection = {
+      strategies = { "file_markers", "package_managers" },
+      max_depth = 4,  -- Maximum directory depth to search
+      cache_duration = 300000,  -- Cache results for 5 minutes
+    },
+    workspace_patterns = {
+      "apps/*", "packages/*", "libs/*", "services/*"
+    },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,  -- Workspace inherits from root
+      override_order = { "workspace", "root" }
+    },
+    auto_switch = true,
+    workspace_priority = { "apps", "packages", "services", "libs" }
+  }
+})
+```
+
+### Workspace Switching
+
+#### Automatic Workspace Switching
+
+When `auto_switch = true`, Ecolog automatically switches to the appropriate workspace based on your current file location:
+
+```lua
+-- Opens file in apps/frontend/src/component.tsx
+-- Automatically switches to apps/frontend workspace
+-- Loads environment files from apps/frontend/.env, apps/frontend/.env.local, etc.
+```
+
+#### Manual Workspace Selection
+
+When `auto_switch = false`, use `:EcologSelect` to manually choose environment files from all workspaces:
+
+```vim
+:EcologSelect
+```
+
+This will show files with workspace context:
+```
+1. .env.local (apps/frontend)
+2. .env (apps/frontend)
+3. .env.local (apps/backend)
+4. .env (apps/backend)
+5. .env.local (packages/shared)
+6. .env (root)
+```
+
+#### Workspace Context Display
+
+All ecolog integrations display workspace context for better identification:
+
+- **File Selection**: Shows workspace path in file listings
+- **Completion**: Displays workspace context in completion details
+- **Pickers**: Shows workspace information in Telescope, FZF, and Snacks
+- **Peek Window**: Displays workspace context in source information
+- **Statusline**: Shows current workspace and environment file
+
+### Advanced Configuration
+
+#### Custom Workspace Patterns
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    workspace_patterns = {
+      "frontend/*",
+      "backend/*",
+      "microservices/*",
+      "shared/*/packages"
+    }
+  }
+})
+```
+
+#### Environment File Inheritance
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    }
+  }
+})
+```
+
+#### Workspace Priority Sorting
+
+Configure workspace type priorities for file sorting:
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    workspace_priority = { "apps", "packages", "services", "libs" }
+  }
+})
+```
 
 ## 💡 vim.env Integration
 

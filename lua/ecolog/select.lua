@@ -34,23 +34,7 @@ function M.select_env_file(opts, callback)
     local content = {}
     for i, file in ipairs(env_files) do
       local prefix = i == selected_idx and " → " or "   "
-      local display_name = vim.fn.fnamemodify(file, ":t")
-      
-      -- In manual monorepo mode, show workspace context
-      if opts._is_monorepo_manual_mode and opts._monorepo_root then
-        local relative_path = file:sub(#opts._monorepo_root + 2) -- Remove root path + "/"
-        local workspace_parts = vim.split(relative_path, "/")
-        
-        if #workspace_parts >= 2 then
-          -- Show workspace type and name (e.g., "apps/api")
-          local workspace_context = workspace_parts[1] .. "/" .. workspace_parts[2]
-          display_name = string.format("%s (%s)", display_name, workspace_context)
-        elseif #workspace_parts == 1 then
-          -- Root level file
-          display_name = string.format("%s (root)", display_name)
-        end
-      end
-      
+      local display_name = utils.get_env_file_display_name(file, opts)
       table.insert(content, string.format("%s%d. %s", prefix, i, display_name))
     end
     return content

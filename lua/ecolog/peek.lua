@@ -24,7 +24,7 @@ function peek:clean()
   self.winid = nil
 end
 
-local function create_peek_content(var_name, var_info, types)
+local function create_peek_content(var_name, var_info, types, config)
   -- Input validation with nil checks
   if not var_name or type(var_name) ~= "string" then
     var_name = "unknown"
@@ -50,6 +50,15 @@ local function create_peek_content(var_name, var_info, types)
   local var_value = value or var_info.value or ""
   local source = var_info.source or "unknown"
   
+  -- Get workspace context for the source display
+  local source_display = source
+  if utils and utils.get_env_file_display_name and config then
+    local success, display_name = pcall(utils.get_env_file_display_name, source, config)
+    if success and display_name then
+      source_display = display_name
+    end
+  end
+  
   -- Safe call to shelter.mask_value with nil checks
   local display_value = var_value
   if shelter and shelter.mask_value then
@@ -69,12 +78,12 @@ local function create_peek_content(var_name, var_info, types)
 
   lines[1] = "Name    : " .. var_name
   lines[2] = "Type    : " .. display_type
-  lines[3] = "Source  : " .. source
+  lines[3] = "Source  : " .. source_display
   lines[4] = "Value   : " .. display_value
 
   highlights[1] = { "EcologVariable", 0, PATTERNS.label_width, PATTERNS.label_width + #var_name }
   highlights[2] = { "EcologType", 1, PATTERNS.label_width, PATTERNS.label_width + #display_type }
-  highlights[3] = { "EcologSource", 2, PATTERNS.label_width, PATTERNS.label_width + #source }
+  highlights[3] = { "EcologSource", 2, PATTERNS.label_width, PATTERNS.label_width + #source_display }
   
   -- Safe highlight group selection with nil checks
   local highlight_group = "EcologValue"
@@ -223,8 +232,17 @@ function M.peek_env_var(available_providers, var_name)
     return
   end
 
+  -- Get configuration for workspace context
+  local config = nil
+  if ecolog.get_config and type(ecolog.get_config) == "function" then
+    local success, result = pcall(ecolog.get_config)
+    if success and result then
+      config = result
+    end
+  end
+
   -- Create content with error handling
-  local content = create_peek_content(var_name, var_info, types)
+  local content = create_peek_content(var_name, var_info, types, config)
   if not content or not content.lines or not content.highlights then
     notify("Failed to create peek content", vim.log.levels.ERROR)
     return

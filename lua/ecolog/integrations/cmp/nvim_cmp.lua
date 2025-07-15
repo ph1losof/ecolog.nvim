@@ -185,10 +185,14 @@ local function setup_completion(cmp, opts, providers)
           doc_value = doc_value .. string.format("\n\n**Comment:** `%s`", comment_value)
         end
 
+        -- Get workspace context for the source
+        local utils = require("ecolog.utils")
+        local source_display = utils.get_env_file_display_name(entry.source, config)
+        
         local item = {
           label = entry.name,
           kind = cmp.lsp.CompletionItemKind.Variable,
-          detail = entry.source,
+          detail = source_display,
           documentation = {
             kind = "markdown",
             value = doc_value,

@@ -287,12 +287,19 @@ function M:get_completions(ctx, callback)
         doc_value = doc_value .. string.format("\n\n**Comment:** `%s`", comment_value)
       end
 
+      -- Get workspace context for the source
+      local utils = safe_call(require, "ecolog.utils")
+      local source_display = entry.source or "unknown"
+      if utils and utils.get_env_file_display_name then
+        source_display = safe_call(utils.get_env_file_display_name, entry.source, config) or source_display
+      end
+      
       local item = {
         label = entry.name,
         kind = vim.lsp.protocol.CompletionItemKind.Variable,
         insertTextFormat = vim.lsp.protocol.InsertTextFormat.PlainText,
         insertText = entry.name,
-        detail = entry.source or "unknown",
+        detail = source_display,
         documentation = {
           kind = vim.lsp.protocol.MarkupKind.Markdown,
           value = doc_value,

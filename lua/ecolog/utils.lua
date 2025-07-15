@@ -42,6 +42,31 @@ function M.convert_to_lua_pattern(pattern)
   return escaped:gsub("%*", ".*")
 end
 
+---Generate display name for environment file with workspace context
+---@param file_path string Full path to the environment file
+---@param opts table Configuration options (should contain monorepo info)
+---@return string display_name The display name with workspace context
+function M.get_env_file_display_name(file_path, opts)
+  local display_name = vim.fn.fnamemodify(file_path, ":t")
+  
+  -- Show workspace context for any monorepo setup (both manual and auto modes)
+  if opts and opts._monorepo_root then
+    local relative_path = file_path:sub(#opts._monorepo_root + 2) -- Remove root path + "/"
+    local workspace_parts = vim.split(relative_path, "/")
+    
+    if #workspace_parts >= 2 then
+      -- Show workspace type and name (e.g., "apps/api")
+      local workspace_context = workspace_parts[1] .. "/" .. workspace_parts[2]
+      display_name = string.format("%s (%s)", display_name, workspace_context)
+    elseif #workspace_parts == 1 then
+      -- Root level file
+      display_name = string.format("%s (root)", display_name)
+    end
+  end
+  
+  return display_name
+end
+
 -- Path handling utilities
 ---Get the project root based on configuration
 ---@param config table The configuration containing path and project_root settings

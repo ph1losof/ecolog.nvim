@@ -170,10 +170,17 @@ local function get_env_completion(findstart, base)
         info = info .. " # " .. comment_value
       end
 
+      -- Get workspace context for the source
+      local utils = safe_call(require, "ecolog.utils")
+      local source_display = entry.source or "unknown"
+      if utils and utils.get_env_file_display_name then
+        source_display = safe_call(utils.get_env_file_display_name, entry.source, config) or source_display
+      end
+      
       table.insert(items, {
         word = entry.name,
         kind = entry.type or "unknown",
-        menu = entry.source or "unknown",
+        menu = source_display,
         info = info,
         priority = 100 - _,
         user_data = { sort_index = string.format("%05d", _) },

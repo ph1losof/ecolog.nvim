@@ -449,6 +449,24 @@ end
 ---@param group number
 local function setup_buffer_autocmds(config, group)
   local watch_patterns = main_utils.get_watch_patterns(config)
+  
+  -- Add monorepo workspace patterns if in monorepo mode
+  if config._monorepo_root then
+    local monorepo_patterns = {}
+    local base_patterns = config.env_file_patterns or { ".env", ".envrc", ".env.*" }
+    
+    -- Add patterns for monorepo root and all workspaces
+    for _, pattern in ipairs(base_patterns) do
+      table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
+      table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
+    end
+    
+    -- Extend existing patterns with monorepo patterns
+    for _, pattern in ipairs(monorepo_patterns) do
+      table.insert(watch_patterns, pattern)
+    end
+  end
+  
   if #watch_patterns == 0 then
     watch_patterns = { ".env*" }
   end
@@ -591,6 +609,24 @@ function M.setup_file_shelter()
   setup_buffer_state(config)
   setup_buffer_autocmds(config, group)
   setup_paste_override(config)
+end
+
+-- Refresh shelter when monorepo workspace changes
+function M.refresh_shelter_for_monorepo()
+  -- Clear existing autocmds
+  pcall(api.nvim_del_augroup_by_name, "ecolog_shelter")
+  
+  -- Re-setup with current config (which should include updated monorepo context)
+  M.setup_file_shelter()
+  
+  -- Re-apply masking to current buffer if it's an env file
+  local current_file = fn.bufname()
+  local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+  if current_file and shelter_utils.match_env_file(current_file, config) and state.is_enabled("files") then
+    vim.schedule(function()
+      M.shelter_buffer()
+    end)
+  end
 end
 
 ---@param line_num number The line number to clear from cache

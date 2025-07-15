@@ -395,10 +395,10 @@ function M.find_env_files(opts)
     }
     
     -- Get files using monorepo resolution strategy
-    files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns)
+    files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
     
-    -- Sort and return
-    return M.sort_env_files(files, opts)
+    -- Files are already sorted by resolve_env_files, just return them
+    return files
   end
   
   -- Handle monorepo manual mode - collect files from all workspaces
@@ -414,7 +414,7 @@ function M.find_env_files(opts)
     
     -- Iterate through all workspaces and collect environment files
     for _, workspace in ipairs(opts._all_workspaces) do
-      local workspace_files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns)
+      local workspace_files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
       vim.list_extend(all_files, workspace_files)
     end
     
@@ -493,13 +493,14 @@ end
 ---Default sorting function for environment files
 ---@param a string First file path
 ---@param b string Second file path
----@param opts table Options containing preferred_environment
+---@param opts table Options containing preferred_environment and monorepo context
 ---@return boolean Whether a should come before b
 local function default_sort_file_fn(a, b, opts)
   if not a or not b then
     return false
   end
 
+  -- Preferred environment sorting (highest priority - same as non-monorepo)
   if opts and opts.preferred_environment and opts.preferred_environment ~= "" then
     local pref_pattern = "%." .. vim.pesc(opts.preferred_environment) .. "$"
     local a_is_preferred = a:match(pref_pattern) ~= nil
@@ -509,10 +510,52 @@ local function default_sort_file_fn(a, b, opts)
     end
   end
 
+  -- Standard .env file priority (second priority - same as non-monorepo)
   local a_is_env = a:match(M.PATTERNS.env_file_combined) ~= nil
   local b_is_env = b:match(M.PATTERNS.env_file_combined) ~= nil
   if a_is_env ~= b_is_env then
     return a_is_env
+  end
+
+  -- Monorepo workspace-aware sorting (applied after preferred environment)
+  if opts and opts._monorepo_root and opts._current_workspace_info then
+    local current_workspace = opts._current_workspace_info
+    local workspace_path = current_workspace.path
+    
+    local a_in_current = a:find(workspace_path, 1, true) == 1
+    local b_in_current = b:find(workspace_path, 1, true) == 1
+    
+    -- Prioritize files from current workspace in manual mode
+    if opts._is_monorepo_manual_mode and a_in_current ~= b_in_current then
+      return a_in_current
+    end
+    
+    -- In auto mode or when both files are from same workspace level,
+    -- apply workspace type priority if configured
+    if opts.monorepo and opts.monorepo.workspace_priority then
+      local function get_workspace_priority(file_path)
+        if not opts._monorepo_root then return 999 end
+        
+        local relative_path = file_path:sub(#opts._monorepo_root + 2)
+        local workspace_parts = vim.split(relative_path, "/")
+        
+        if #workspace_parts >= 1 then
+          local workspace_type = workspace_parts[1]
+          for i, priority_type in ipairs(opts.monorepo.workspace_priority) do
+            if workspace_type == priority_type then
+              return i
+            end
+          end
+        end
+        return 999
+      end
+      
+      local a_priority = get_workspace_priority(a)
+      local b_priority = get_workspace_priority(b)
+      if a_priority ~= b_priority then
+        return a_priority < b_priority
+      end
+    end
   end
 
   return a < b

@@ -340,8 +340,9 @@ end
 ---@param root_path string Monorepo root path
 ---@param config table Environment resolution config
 ---@param env_file_patterns string[] Environment file patterns
+---@param opts table|nil Additional options including preferred_environment and sorting functions
 ---@return string[] env_files List of environment files in resolution order
-function M.resolve_env_files(workspace, root_path, config, env_file_patterns)
+function M.resolve_env_files(workspace, root_path, config, env_file_patterns, opts)
   config = config or DEFAULT_MONOREPO_CONFIG.env_resolution
   env_file_patterns = env_file_patterns or { ".env", ".env.*" }
   
@@ -409,6 +410,12 @@ function M.resolve_env_files(workspace, root_path, config, env_file_patterns)
     end
   end
   
+  -- Apply proper sorting with preferred environment if opts provided
+  if opts then
+    local utils = require("ecolog.utils")
+    unique_files = utils.sort_env_files(unique_files, opts)
+  end
+  
   return unique_files
 end
 
@@ -431,6 +438,12 @@ function M.set_current_workspace(workspace)
           _workspace_file_handled = true,
           _workspace_selected_file = selected_file
         })
+        
+        -- Refresh shelter configuration for new workspace context
+        local has_shelter_buffer, shelter_buffer = pcall(require, "ecolog.shelter.buffer")
+        if has_shelter_buffer and shelter_buffer.refresh_shelter_for_monorepo then
+          shelter_buffer.refresh_shelter_for_monorepo()
+        end
       end)
     end
   end
@@ -478,7 +491,8 @@ function M.handle_env_file_transition(new_workspace, previous_workspace, ecolog)
     new_workspace,
     root_path, 
     env_resolution,
-    config.env_file_patterns
+    config.env_file_patterns,
+    config
   )
   
   if #available_files == 0 then

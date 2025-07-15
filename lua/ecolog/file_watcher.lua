@@ -7,7 +7,6 @@ local utils = require("ecolog.utils")
 -- Debouncing configuration
 local DEBOUNCE_DELAY = 250 -- milliseconds
 local _debounce_timers = {}
-local _pending_refreshes = {}
 
 -- Debounced callback wrapper
 local function debounced_callback(callback_id, callback_fn, config)
@@ -19,11 +18,11 @@ local function debounced_callback(callback_id, callback_fn, config)
     end
     _debounce_timers[callback_id] = nil
   end
-  
+
   -- Set up new timer
   _debounce_timers[callback_id] = vim.fn.timer_start(DEBOUNCE_DELAY, function()
     _debounce_timers[callback_id] = nil
-    
+
     -- Execute the callback safely
     local success, err = pcall(callback_fn, config)
     if not success then
@@ -49,10 +48,10 @@ local function cleanup_watchers(state)
   if not state then
     return
   end
-  
+
   -- Clean up debounce timers first
   cleanup_debounce_timers()
-  
+
   -- Clean up autocmds
   if state._file_watchers then
     for _, watcher in pairs(state._file_watchers) do
@@ -65,7 +64,7 @@ local function cleanup_watchers(state)
     end
     state._file_watchers = {}
   end
-  
+
   -- Clean up augroup last
   if state.current_watcher_group then
     local success, err = pcall(api.nvim_del_augroup_by_id, state.current_watcher_group)
@@ -85,7 +84,7 @@ function M.setup_watcher(config, state, refresh_callback)
     vim.notify("Invalid parameters passed to setup_watcher", vim.log.levels.ERROR)
     return
   end
-  
+
   if type(refresh_callback) ~= "function" then
     vim.notify("refresh_callback must be a function", vim.log.levels.ERROR)
     return
@@ -113,6 +112,28 @@ function M.setup_watcher(config, state, refresh_callback)
     return
   end
 
+  -- Filter patterns to only watch files that exist or could exist
+  local valid_patterns = {}
+  for i = 1, #watch_patterns do
+    local pattern = watch_patterns[i]
+    if pattern:find("*") then
+      -- Wildcard pattern - keep as is
+      valid_patterns[#valid_patterns + 1] = pattern
+    else
+      -- Exact file path - only add if file exists
+      if vim.fn.filereadable(pattern) == 1 then
+        valid_patterns[#valid_patterns + 1] = pattern
+      end
+    end
+  end
+
+  if #valid_patterns == 0 then
+    -- If no valid patterns, fall back to basic .env pattern
+    valid_patterns = { vim.fn.getcwd() .. "/.env*" }
+  end
+
+  watch_patterns = valid_patterns
+
   -- Create autocmd for file changes with error handling
   local function create_safe_callback(callback_fn)
     return function(ev)
@@ -135,7 +156,7 @@ function M.setup_watcher(config, state, refresh_callback)
       debounced_callback("write_change", refresh_callback, config)
     end),
   })
-  
+
   if write_success then
     table.insert(state._file_watchers, write_autocmd)
   else
@@ -160,7 +181,7 @@ function M.setup_watcher(config, state, refresh_callback)
       end
     end),
   })
-  
+
   if delete_success then
     table.insert(state._file_watchers, delete_autocmd)
   else
@@ -175,7 +196,7 @@ function M.setup_watcher(config, state, refresh_callback)
       if not ev.file then
         return
       end
-      
+
       local matches = utils.filter_env_files({ ev.file }, config.env_file_patterns)
       if #matches > 0 then
         state.cached_env_files = nil
@@ -191,7 +212,7 @@ function M.setup_watcher(config, state, refresh_callback)
       end
     end),
   })
-  
+
   if create_success then
     table.insert(state._file_watchers, create_autocmd)
   else

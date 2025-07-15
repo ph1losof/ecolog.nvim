@@ -134,8 +134,8 @@ local state = {
   selected_env_file = nil,
   _env_module = nil,
   _file_watchers = {},
-  _env_line_cache = setmetatable({}, { __mode = "k" }),
-  _secret_managers = {},
+  _env_line_cache = setmetatable({}, { __mode = "kv" }),
+  _secret_managers = setmetatable({}, { __mode = "v" }),
   initialized = false,
 }
 
@@ -143,6 +143,16 @@ local _loaded_modules = {}
 local _loading = {}
 local _setup_done = false
 local _lazy_setup_tasks = {}
+
+-- Cache management
+local MAX_CACHE_SIZE = 1000
+local _cache_stats = { hits = 0, misses = 0, cleanups = 0 }
+local _last_cleanup = 0
+local CLEANUP_INTERVAL = 300000 -- 5 minutes in milliseconds
+
+-- Configuration cache
+local _config_cache = {}
+local _config_cache_key = nil
 
 -- Improved synchronization primitives
 local _state_lock = false
@@ -166,7 +176,7 @@ end
 local function try_acquire_lock(timeout_ms)
   timeout_ms = timeout_ms or 1000
   local start_time = vim.loop.now()
-  
+
   while _state_lock do
     local elapsed = vim.loop.now() - start_time
     if elapsed > timeout_ms then
@@ -174,7 +184,7 @@ local function try_acquire_lock(timeout_ms)
     end
     vim.wait(10)
   end
-  
+
   _state_lock = true
   _lock_start_time = vim.loop.now()
   _lock_owner = debug.traceback("Lock acquired", 2)
@@ -184,10 +194,10 @@ end
 -- Enhanced mutex with better error handling
 local function acquire_state_lock(timeout_ms)
   timeout_ms = timeout_ms or 2000
-  
+
   -- Track pending operations
   _pending_operations = _pending_operations + 1
-  
+
   -- Quick path for uncontended case
   if not _state_lock then
     _state_lock = true
@@ -195,17 +205,13 @@ local function acquire_state_lock(timeout_ms)
     _lock_owner = debug.traceback("Lock acquired", 2)
     return true
   end
-  
+
   -- Check if lock is held too long
   if _lock_start_time > 0 then
     local elapsed = vim.loop.now() - _lock_start_time
     if elapsed > 15000 then -- 15 seconds is definitely too long
       vim.notify(
-        string.format(
-          "Lock held for %dms by:\n%s\nForcing unlock", 
-          elapsed, 
-          _lock_owner or "unknown"
-        ), 
+        string.format("Lock held for %dms by:\n%s\nForcing unlock", elapsed, _lock_owner or "unknown"),
         vim.log.levels.ERROR
       )
       _state_lock = false
@@ -213,22 +219,22 @@ local function acquire_state_lock(timeout_ms)
       _lock_owner = nil
     end
   end
-  
+
   -- Try to acquire with timeout
   local start_time = vim.loop.now()
   local wait_time = 5
-  
+
   while _state_lock do
     local elapsed = vim.loop.now() - start_time
     if elapsed > timeout_ms then
       _pending_operations = math.max(0, _pending_operations - 1)
       return false
     end
-    
+
     vim.wait(math.min(wait_time, 50))
     wait_time = math.min(wait_time * 1.2, 100)
   end
-  
+
   _state_lock = true
   _lock_start_time = vim.loop.now()
   _lock_owner = debug.traceback("Lock acquired", 2)
@@ -240,7 +246,7 @@ local function release_state_lock()
   _lock_start_time = 0
   _lock_owner = nil
   _pending_operations = math.max(0, _pending_operations - 1)
-  
+
   -- Wake up any waiting operations
   for _, waiter in ipairs(_state_waiters) do
     if waiter then
@@ -248,6 +254,63 @@ local function release_state_lock()
     end
   end
   _state_waiters = {}
+end
+
+-- Cache cleanup functions
+local function should_cleanup_cache()
+  local now = vim.loop.now()
+  return now - _last_cleanup > CLEANUP_INTERVAL
+end
+
+local function cleanup_caches()
+  if not should_cleanup_cache() then
+    return
+  end
+
+  _last_cleanup = vim.loop.now()
+  _cache_stats.cleanups = _cache_stats.cleanups + 1
+
+  -- Clean up module cache if it gets too large
+  local module_count = 0
+  for _ in pairs(_loaded_modules) do
+    module_count = module_count + 1
+  end
+
+  if module_count > MAX_CACHE_SIZE then
+    -- Keep only frequently used modules
+    local essential_modules = {
+      "ecolog.utils",
+      "ecolog.providers",
+      "ecolog.env_loader",
+      "ecolog.file_watcher",
+    }
+
+    local new_modules = {}
+    for _, module_name in ipairs(essential_modules) do
+      if _loaded_modules[module_name] then
+        new_modules[module_name] = _loaded_modules[module_name]
+      end
+    end
+    _loaded_modules = new_modules
+  end
+
+  -- Clean up line cache if it gets too large
+  local cache_size = 0
+  for _ in pairs(state._env_line_cache) do
+    cache_size = cache_size + 1
+  end
+
+  if cache_size > MAX_CACHE_SIZE then
+    state._env_line_cache = setmetatable({}, { __mode = "kv" })
+  end
+end
+
+local function get_cache_stats()
+  return vim.tbl_extend("force", _cache_stats, {
+    module_count = vim.tbl_count(_loaded_modules),
+    line_cache_size = vim.tbl_count(state._env_line_cache),
+    last_cleanup = _last_cleanup,
+  })
 end
 
 -- Thread-safe module loading with proper synchronization
@@ -259,8 +322,14 @@ local function require_module(name)
 
   -- Check if module is already loaded (fast path)
   if _loaded_modules[name] then
+    _cache_stats.hits = _cache_stats.hits + 1
     return _loaded_modules[name]
   end
+
+  _cache_stats.misses = _cache_stats.misses + 1
+
+  -- Periodic cache cleanup
+  cleanup_caches()
 
   -- Acquire lock for this specific module
   if _module_locks[name] then
@@ -273,7 +342,7 @@ local function require_module(name)
       end
       vim.wait(10)
     end
-    
+
     -- Check again if module was loaded while waiting
     if _loaded_modules[name] then
       return _loaded_modules[name]
@@ -397,21 +466,35 @@ end
 ---Get all environment variables
 ---@return table<string, EnvVarInfo> Environment variables with their metadata
 function M.get_env_vars()
+  -- Periodic cache cleanup
+  cleanup_caches()
+
   -- Quick read-only check first
   local env_vars = safe_read_state("env_vars")
   local selected_file = safe_read_state("selected_env_file")
-  
+
   -- If we have vars and file is still valid, return immediately
   if env_vars and next(env_vars) ~= nil then
     if not selected_file or vim.fn.filereadable(selected_file) == 1 then
-      return vim.deepcopy(env_vars)
+      -- Use shallow copy for better performance where possible
+      local result = {}
+      for k, v in pairs(env_vars) do
+        result[k] = v
+      end
+      return result
     end
   end
-  
+
   -- Need to modify state, acquire lock
   if not acquire_state_lock(3000) then
-    -- Fallback: return what we have
-    return vim.deepcopy(env_vars or {})
+    -- Fallback: return what we have with shallow copy
+    local result = {}
+    if env_vars then
+      for k, v in pairs(env_vars) do
+        result[k] = v
+      end
+    end
+    return result
   end
 
   local result = {}
@@ -427,7 +510,11 @@ function M.get_env_vars()
       env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
     end
 
-    result = vim.deepcopy(state.env_vars)
+    -- Use shallow copy for better performance
+    result = {}
+    for k, v in pairs(state.env_vars) do
+      result[k] = v
+    end
   end)
 
   release_state_lock()
@@ -452,7 +539,7 @@ local function handle_env_file_selection(file, config)
     config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
     file_watcher.setup_watcher(config, state, M.refresh_env_vars)
     state.cached_env_files = nil
-    
+
     -- Don't call M.refresh_env_vars here as it would cause deadlock
     -- Instead, directly call the internal function
     state.cached_env_files = nil
@@ -460,7 +547,7 @@ local function handle_env_file_selection(file, config)
     local base_opts = state.last_opts or DEFAULT_CONFIG
     local opts = vim.tbl_deep_extend("force", base_opts, config or {})
     env_loader.load_environment(opts, state, true)
-    
+
     if state._env_module then
       state._env_module.update_env_vars()
     end
@@ -473,44 +560,62 @@ local function handle_env_file_selection(file, config)
 end
 
 local function setup_integrations(config)
+  -- Only setup integrations that are actually enabled
+  -- Use lazy loading to defer module loading until needed
+
   if config.integrations.lsp then
-    local lsp = require_module("ecolog.integrations.lsp")
-    lsp.setup()
+    vim.defer_fn(function()
+      local lsp = require_module("ecolog.integrations.lsp")
+      lsp.setup()
+    end, 100)
   end
 
   if config.integrations.lspsaga then
-    local lspsaga = require_module("ecolog.integrations.lspsaga")
-    lspsaga.setup()
+    vim.defer_fn(function()
+      local lspsaga = require_module("ecolog.integrations.lspsaga")
+      lspsaga.setup()
+    end, 100)
   end
 
   if config.integrations.nvim_cmp then
+    -- Defer nvim_cmp loading until InsertEnter (already done in nvim_cmp.lua)
     local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
     nvim_cmp.setup(config.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
   end
 
   if config.integrations.blink_cmp then
-    local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
-    blink_cmp.setup(config.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+    vim.defer_fn(function()
+      local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
+      blink_cmp.setup(config.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+    end, 50)
   end
 
   if config.integrations.omnifunc then
-    local omnifunc = require("ecolog.integrations.cmp.omnifunc")
-    omnifunc.setup(config.integrations.omnifunc, state.env_vars, providers, shelter)
+    vim.defer_fn(function()
+      local omnifunc = require("ecolog.integrations.cmp.omnifunc")
+      omnifunc.setup(config.integrations.omnifunc, state.env_vars, providers, shelter)
+    end, 50)
   end
 
   if config.integrations.fzf then
-    local fzf = require("ecolog.integrations.fzf")
-    fzf.setup(type(config.integrations.fzf) == "table" and config.integrations.fzf or {})
+    -- Defer FZF loading until first command usage
+    vim.defer_fn(function()
+      local fzf = require("ecolog.integrations.fzf")
+      fzf.setup(type(config.integrations.fzf) == "table" and config.integrations.fzf or {})
+    end, 200)
   end
 
   if config.integrations.statusline then
+    -- Statusline can be loaded immediately as it's lightweight
     local statusline = require("ecolog.integrations.statusline")
     statusline.setup(type(config.integrations.statusline) == "table" and config.integrations.statusline or {})
   end
 
   if config.integrations.snacks then
-    local snacks = require("ecolog.integrations.snacks")
-    snacks.setup(type(config.integrations.snacks) == "table" and config.integrations.snacks or {})
+    vim.defer_fn(function()
+      local snacks = require("ecolog.integrations.snacks")
+      snacks.setup(type(config.integrations.snacks) == "table" and config.integrations.snacks or {})
+    end, 200)
   end
 end
 
@@ -1016,7 +1121,7 @@ function M.get_status()
   -- Lock-free status check
   local selected_file = safe_read_state("selected_env_file")
   local opts = safe_read_state("last_opts")
-  
+
   if not opts or not opts.integrations.statusline then
     return ""
   end
@@ -1030,7 +1135,7 @@ function M.get_status()
   if selected_file then
     return vim.fn.fnamemodify(selected_file, ":t")
   end
-  
+
   return ""
 end
 
@@ -1038,7 +1143,7 @@ function M.get_lualine()
   -- Lock-free lualine status
   local selected_file = safe_read_state("selected_env_file")
   local opts = safe_read_state("last_opts")
-  
+
   if not opts or not opts.integrations.statusline then
     return ""
   end
@@ -1052,7 +1157,7 @@ function M.get_lualine()
   if selected_file then
     return vim.fn.fnamemodify(selected_file, ":t")
   end
-  
+
   return ""
 end
 
@@ -1102,9 +1207,38 @@ function M.get_config()
   -- Use lock-free read for config (read-only operation)
   local config = safe_read_state("last_opts")
   if config then
-    return vim.deepcopy(config)
+    -- Generate cache key based on config content
+    local cache_key = vim.inspect(config)
+
+    -- Check if we have a cached version
+    if _config_cache_key == cache_key and _config_cache[cache_key] then
+      return _config_cache[cache_key]
+    end
+
+    -- Create cached copy
+    local cached_config = vim.tbl_extend("force", {}, config)
+    _config_cache[cache_key] = cached_config
+    _config_cache_key = cache_key
+
+    return cached_config
   end
-  return vim.deepcopy(DEFAULT_CONFIG)
+
+  -- Cache default config too
+  if not _config_cache["DEFAULT"] then
+    _config_cache["DEFAULT"] = vim.tbl_extend("force", {}, DEFAULT_CONFIG)
+  end
+  return _config_cache["DEFAULT"]
+end
+
+---Get cache statistics for debugging and monitoring
+---@return table cache_stats
+function M.get_cache_stats()
+  return get_cache_stats()
+end
+
+---Manually trigger cache cleanup
+function M.cleanup_caches()
+  cleanup_caches()
 end
 
 return M

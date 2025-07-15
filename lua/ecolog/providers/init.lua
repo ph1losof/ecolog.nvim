@@ -135,12 +135,31 @@ function M.cleanup_cache()
   _cache_size = 0
 end
 
+-- Improved cache cleanup with selective retention
+function M.cleanup_cache_selective()
+  -- Keep essential providers in cache
+  local essential_providers = {
+    "lua",
+  }
+
+  local new_cache = {}
+  for _, provider_name in ipairs(essential_providers) do
+    if _provider_cache[provider_name] then
+      new_cache[provider_name] = _provider_cache[provider_name]
+    end
+  end
+
+  _provider_cache = new_cache
+  _pattern_cache = setmetatable({}, { __mode = "k" })
+  _cache_size = #essential_providers
+end
+
 -- Add cache size monitoring
 local function check_cache_size()
   _cache_size = _cache_size + 1
   if _cache_size > MAX_CACHE_SIZE then
     vim.notify("Provider cache size limit exceeded, clearing cache", vim.log.levels.WARN)
-    M.cleanup_cache()
+    M.cleanup_cache_selective()
   end
 end
 

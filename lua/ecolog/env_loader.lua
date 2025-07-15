@@ -72,31 +72,31 @@ end
 ---@return table<string, EnvVarInfo>
 local function load_env_file(file_path, _env_line_cache, env_vars, opts)
   local env_vars_result = {}
-  
+
   -- Validate input parameters
   if not file_path or type(file_path) ~= "string" then
     vim.notify("Invalid file path provided to load_env_file", vim.log.levels.ERROR)
     return env_vars_result
   end
-  
+
   if not _env_line_cache then
     _env_line_cache = {}
   end
-  
+
   if not env_vars then
     env_vars = {}
   end
-  
+
   if not opts then
     opts = {}
   end
-  
+
   -- Check file readability before attempting to open
   if vim.fn.filereadable(file_path) == 0 then
     vim.notify(string.format("Environment file is not readable: %s", file_path), vim.log.levels.WARN)
     return env_vars_result
   end
-  
+
   local env_file = io.open(file_path, "r")
   if not env_file then
     vim.notify(string.format("Could not open environment file: %s", file_path), vim.log.levels.WARN)
@@ -113,19 +113,22 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
       end
     end
   end)
-  
+
   -- Ensure file is always closed, even on error
   local close_success, close_err = pcall(function()
     env_file:close()
   end)
-  
+
   if not success then
     vim.notify(string.format("Error reading environment file %s: %s", file_path, tostring(err)), vim.log.levels.ERROR)
     return env_vars_result
   end
-  
+
   if not close_success then
-    vim.notify(string.format("Error closing environment file %s: %s", file_path, tostring(close_err)), vim.log.levels.WARN)
+    vim.notify(
+      string.format("Error closing environment file %s: %s", file_path, tostring(close_err)),
+      vim.log.levels.WARN
+    )
   end
 
   if opts.interpolation and opts.interpolation.enabled then
@@ -148,6 +151,82 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
   end
 
   return env_vars_result
+end
+
+---Load environment file asynchronously using vim.fn.readfile
+---@param file_path string Path to the env file
+---@param _env_line_cache table Cache for parsed lines
+---@param env_vars table<string, EnvVarInfo> Current environment variables
+---@param opts table Configuration options
+---@param callback function Callback function to handle result
+local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, callback)
+  -- Validate input parameters
+  if not file_path or type(file_path) ~= "string" then
+    vim.schedule(function()
+      callback({}, "Invalid file path provided to load_env_file_async")
+    end)
+    return
+  end
+
+  if not callback or type(callback) ~= "function" then
+    vim.notify("Invalid callback provided to load_env_file_async", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Check file readability before attempting to read
+  if vim.fn.filereadable(file_path) == 0 then
+    vim.schedule(function()
+      callback({}, "Environment file is not readable: " .. file_path)
+    end)
+    return
+  end
+
+  -- Use vim.defer_fn to read file in background
+  vim.defer_fn(function()
+    local env_vars_result = {}
+    local success, lines = pcall(vim.fn.readfile, file_path)
+
+    if not success then
+      vim.schedule(function()
+        callback({}, "Error reading environment file: " .. tostring(lines))
+      end)
+      return
+    end
+
+    -- Process lines
+    for i = 1, #lines do
+      local line = lines[i]
+      local initial_opts = vim.tbl_deep_extend("force", {}, opts or {})
+      local key, var_info = parse_env_line(line, file_path, _env_line_cache or {}, env_vars or {}, initial_opts)
+      if key then
+        env_vars_result[key] = var_info
+      end
+    end
+
+    -- Apply interpolation if enabled
+    if opts and opts.interpolation and opts.interpolation.enabled then
+      for key, var_info in pairs(env_vars_result) do
+        if var_info.quote_char ~= "'" then
+          local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
+          if interpolated_value ~= var_info.raw_value then
+            local type_name, transformed_value = types.detect_type(interpolated_value)
+            env_vars_result[key] = {
+              value = transformed_value or interpolated_value,
+              type = type_name,
+              raw_value = var_info.raw_value,
+              source = var_info.source,
+              comment = var_info.comment,
+              quote_char = var_info.quote_char,
+            }
+          end
+        end
+      end
+    end
+
+    vim.schedule(function()
+      callback(env_vars_result, nil)
+    end)
+  end, 0)
 end
 
 ---@param target table<string, EnvVarInfo> Target table to merge into
@@ -260,6 +339,137 @@ function M.load_environment(opts, state, force)
 
   state.env_vars = env_vars
   return env_vars
+end
+
+---Load environment asynchronously with callback
+---@param opts table The configuration options
+---@param state LoaderState The current loader state
+---@param callback function Callback function to handle result
+---@param force boolean? Whether to force reload environment variables
+function M.load_environment_async(opts, state, callback, force)
+  if not callback or type(callback) ~= "function" then
+    vim.notify("Invalid callback provided to load_environment_async", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Use vim.defer_fn to process in background
+  vim.defer_fn(function()
+    if force then
+      state.env_vars = {}
+      state._env_line_cache = {}
+    end
+
+    if not force and next(state.env_vars) ~= nil then
+      vim.schedule(function()
+        callback(state.env_vars, nil)
+      end)
+      return
+    end
+
+    if not state.selected_env_file then
+      local env_files = utils.find_env_files(opts)
+      if #env_files > 0 then
+        state.selected_env_file = env_files[1]
+      end
+    end
+
+    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+      state.selected_env_file = nil
+      state.env_vars = {}
+      state._env_line_cache = {}
+      local env_files = utils.find_env_files(opts)
+      if #env_files > 0 then
+        state.selected_env_file = env_files[1]
+      end
+    end
+
+    local env_vars = {}
+    local shell_enabled = opts.load_shell
+      and (
+        (type(opts.load_shell) == "boolean" and opts.load_shell)
+        or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
+      )
+    local shell_override = shell_enabled and type(opts.load_shell) == "table" and opts.load_shell.override
+
+    if shell_override then
+      local shell_vars = shell_enabled and shell.load_shell_vars(opts.load_shell) or {}
+      merge_vars(env_vars, shell_vars, true)
+
+      if state.selected_env_file then
+        load_env_file_async(
+          state.selected_env_file,
+          state._env_line_cache or {},
+          env_vars,
+          opts,
+          function(file_vars, err)
+            if err then
+              vim.schedule(function()
+                callback({}, err)
+              end)
+              return
+            end
+
+            merge_vars(env_vars, file_vars, false)
+            env_vars = load_secrets(opts, env_vars)
+            state.env_vars = env_vars
+
+            vim.schedule(function()
+              callback(env_vars, nil)
+            end)
+          end
+        )
+      else
+        env_vars = load_secrets(opts, env_vars)
+        state.env_vars = env_vars
+        vim.schedule(function()
+          callback(env_vars, nil)
+        end)
+      end
+    else
+      if state.selected_env_file then
+        load_env_file_async(
+          state.selected_env_file,
+          state._env_line_cache or {},
+          env_vars,
+          opts,
+          function(file_vars, err)
+            if err then
+              vim.schedule(function()
+                callback({}, err)
+              end)
+              return
+            end
+
+            env_vars = file_vars
+
+            if shell_enabled then
+              local shell_vars = shell.load_shell_vars(opts.load_shell)
+              merge_vars(env_vars, shell_vars, false)
+            end
+
+            env_vars = load_secrets(opts, env_vars)
+            state.env_vars = env_vars
+
+            vim.schedule(function()
+              callback(env_vars, nil)
+            end)
+          end
+        )
+      else
+        if shell_enabled then
+          local shell_vars = shell.load_shell_vars(opts.load_shell)
+          merge_vars(env_vars, shell_vars, false)
+        end
+
+        env_vars = load_secrets(opts, env_vars)
+        state.env_vars = env_vars
+
+        vim.schedule(function()
+          callback(env_vars, nil)
+        end)
+      end
+    end
+  end, 0)
 end
 
 return M

@@ -111,9 +111,15 @@ function M.filter_env_files(files, patterns)
     return {}
   end
 
-  files = vim.tbl_filter(function(f)
-    return f ~= nil
-  end, files)
+  -- Filter out nil values more efficiently
+  local valid_files = {}
+  for i = 1, #files do
+    local file = files[i]
+    if file then
+      valid_files[#valid_files + 1] = file
+    end
+  end
+  files = valid_files
 
   if not patterns or type(patterns) ~= "table" then
     patterns = DEFAULT_ENV_PATTERNS
@@ -123,18 +129,21 @@ function M.filter_env_files(files, patterns)
     return files
   end
 
-  return vim.tbl_filter(function(file)
-    if not file then
-      return false
-    end
-    local filename = vim.fn.fnamemodify(file, ":t")
-    for _, pattern in ipairs(patterns) do
-      if type(pattern) == "string" and vim.fn.match(filename, vim.fn.glob2regpat(pattern)) >= 0 then
-        return true
+  local filtered_files = {}
+  for i = 1, #files do
+    local file = files[i]
+    if file then
+      local filename = vim.fn.fnamemodify(file, ":t")
+      for j = 1, #patterns do
+        local pattern = patterns[j]
+        if type(pattern) == "string" and vim.fn.match(filename, vim.fn.glob2regpat(pattern)) >= 0 then
+          filtered_files[#filtered_files + 1] = file
+          break
+        end
       end
     end
-    return false
-  end, files)
+  end
+  return filtered_files
 end
 
 ---Detect pattern type based on its content
@@ -368,7 +377,8 @@ function M.find_env_files(opts)
 
     local all_files = {}
     local collect_fn = function(results, items)
-      for _, item in ipairs(items) do
+      for i = 1, #items do
+        local item = items[i]
         local found = vim.fn.glob(item, false, true)
         if type(found) == "string" then
           found = { found }
@@ -391,10 +401,11 @@ function M.find_env_files(opts)
   -- Remove duplicates that might occur from overlapping patterns
   local unique_files = {}
   local seen = {}
-  for _, file in ipairs(files) do
+  for i = 1, #files do
+    local file = files[i]
     if not seen[file] then
       seen[file] = true
-      table.insert(unique_files, file)
+      unique_files[#unique_files + 1] = file
     end
   end
 
@@ -440,16 +451,22 @@ function M.sort_env_files(files, opts)
 
   opts = opts or {}
   local sort_file_fn = opts.sort_file_fn
-  
+
   if not sort_file_fn and opts.sort_fn then
     sort_file_fn = opts.sort_fn
   end
-  
+
   sort_file_fn = sort_file_fn or default_sort_file_fn
 
-  files = vim.tbl_filter(function(f)
-    return f ~= nil
-  end, files)
+  -- Filter out nil values more efficiently
+  local valid_files = {}
+  for i = 1, #files do
+    local file = files[i]
+    if file then
+      valid_files[#valid_files + 1] = file
+    end
+  end
+  files = valid_files
 
   table.sort(files, function(a, b)
     return sort_file_fn(a, b, opts)
@@ -634,13 +651,13 @@ function M.generate_example_file(env_file)
     vim.notify("Invalid environment file path provided", vim.log.levels.ERROR)
     return false
   end
-  
+
   -- Check file readability
   if vim.fn.filereadable(env_file) == 0 then
     vim.notify("Environment file is not readable: " .. env_file, vim.log.levels.ERROR)
     return false
   end
-  
+
   local f = io.open(env_file, "r")
   if not f then
     vim.notify("Could not open .env file: " .. env_file, vim.log.levels.ERROR)
@@ -648,7 +665,7 @@ function M.generate_example_file(env_file)
   end
 
   local example_content = {}
-  
+
   -- Use pcall to protect against file reading errors
   local read_success, read_err = pcall(function()
     for line in f:lines() do
@@ -664,30 +681,30 @@ function M.generate_example_file(env_file)
       end
     end
   end)
-  
+
   -- Ensure input file is always closed
   local close_success, close_err = pcall(function()
     f:close()
   end)
-  
+
   if not read_success then
     vim.notify("Error reading environment file: " .. tostring(read_err), vim.log.levels.ERROR)
     return false
   end
-  
+
   if not close_success then
     vim.notify("Error closing environment file: " .. tostring(close_err), vim.log.levels.WARN)
   end
 
   local example_file = env_file:gsub("%.env$", "") .. ".env.example"
-  
+
   -- Check if we can write to the directory
   local dir = vim.fn.fnamemodify(example_file, ":h")
   if vim.fn.isdirectory(dir) == 0 then
     vim.notify("Directory does not exist: " .. dir, vim.log.levels.ERROR)
     return false
   end
-  
+
   local out = io.open(example_file, "w")
   if not out then
     vim.notify("Could not create .env.example file: " .. example_file, vim.log.levels.ERROR)
@@ -698,21 +715,21 @@ function M.generate_example_file(env_file)
   local write_success, write_err = pcall(function()
     out:write(table.concat(example_content, "\n"))
   end)
-  
+
   -- Ensure output file is always closed
   local out_close_success, out_close_err = pcall(function()
     out:close()
   end)
-  
+
   if not write_success then
     vim.notify("Error writing to example file: " .. tostring(write_err), vim.log.levels.ERROR)
     return false
   end
-  
+
   if not out_close_success then
     vim.notify("Error closing example file: " .. tostring(out_close_err), vim.log.levels.WARN)
   end
-  
+
   vim.notify("Generated " .. example_file, vim.log.levels.INFO)
   return true
 end

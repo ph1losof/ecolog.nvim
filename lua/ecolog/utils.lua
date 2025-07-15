@@ -389,10 +389,18 @@ function M.find_env_files(opts)
     local monorepo = require("ecolog.monorepo")
     local workspace = opts._workspace_info
     local root_path = opts._monorepo_root
-    local monorepo_config = opts.monorepo and opts.monorepo.env_resolution or {
+    
+    -- Use provider-specific env_resolution if available, otherwise fall back to provider default
+    local monorepo_config = {
       strategy = "workspace_first",
       inheritance = true
     }
+    
+    if type(opts.monorepo) == "table" and opts.monorepo.env_resolution then
+      monorepo_config = opts.monorepo.env_resolution
+    elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.env_resolution then
+      monorepo_config = opts._detected_info.provider.env_resolution
+    end
     
     -- Get files using monorepo resolution strategy
     files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
@@ -405,10 +413,18 @@ function M.find_env_files(opts)
   if opts._is_monorepo_manual_mode and opts._all_workspaces then
     local monorepo = require("ecolog.monorepo")
     local root_path = opts._monorepo_root
-    local monorepo_config = opts.monorepo and opts.monorepo.env_resolution or {
+    
+    -- Use provider-specific env_resolution if available, otherwise fall back to provider default
+    local monorepo_config = {
       strategy = "workspace_first",
       inheritance = true
     }
+    
+    if type(opts.monorepo) == "table" and opts.monorepo.env_resolution then
+      monorepo_config = opts.monorepo.env_resolution
+    elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.env_resolution then
+      monorepo_config = opts._detected_info.provider.env_resolution
+    end
     
     local all_files = {}
     
@@ -532,7 +548,14 @@ local function default_sort_file_fn(a, b, opts)
     
     -- In auto mode or when both files are from same workspace level,
     -- apply workspace type priority if configured
-    if opts.monorepo and opts.monorepo.workspace_priority then
+    local workspace_priority = nil
+    if type(opts.monorepo) == "table" and opts.monorepo.workspace_priority then
+      workspace_priority = opts.monorepo.workspace_priority
+    elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.workspace_priority then
+      workspace_priority = opts._detected_info.provider.workspace_priority
+    end
+    
+    if workspace_priority then
       local function get_workspace_priority(file_path)
         if not opts._monorepo_root then return 999 end
         
@@ -541,7 +564,7 @@ local function default_sort_file_fn(a, b, opts)
         
         if #workspace_parts >= 1 then
           local workspace_type = workspace_parts[1]
-          for i, priority_type in ipairs(opts.monorepo.workspace_priority) do
+          for i, priority_type in ipairs(workspace_priority) do
             if workspace_type == priority_type then
               return i
             end

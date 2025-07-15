@@ -466,7 +466,7 @@ function M.refresh_env_vars(opts)
       opts = vim.tbl_deep_extend("force", base_opts, opts or {})
       
       -- Re-apply monorepo integration if enabled, but skip if workspace file transition already handled
-      if opts.monorepo and opts.monorepo.enabled and not opts._workspace_file_handled then
+      if opts.monorepo and not opts._workspace_file_handled then
         local monorepo = require("ecolog.monorepo")
         opts = monorepo.integrate_with_ecolog_config(opts)
       end
@@ -587,7 +587,11 @@ local function handle_env_file_selection(file, config)
     if state._env_module then
       state._env_module.update_env_vars()
     end
-    notify(string.format("Selected environment file: %s", fn.fnamemodify(file, ":t")), vim.log.levels.INFO)
+    
+    -- Use workspace context display name for notification
+    local utils = require("ecolog.utils")
+    local display_name = utils.get_env_file_display_name(file, opts)
+    notify(string.format("Selected environment file: %s", display_name), vim.log.levels.INFO)
   end)
 
   if not success then
@@ -1229,7 +1233,7 @@ function M.setup(opts)
     validate_config(config)
     
     -- Setup monorepo support if enabled
-    if config.monorepo and config.monorepo.enabled then
+    if config.monorepo then
       local monorepo = require("ecolog.monorepo")
       monorepo.setup(config.monorepo)
       config = monorepo.integrate_with_ecolog_config(config)
@@ -1441,7 +1445,7 @@ function M.get_config()
     local cached_config = vim.tbl_extend("force", {}, config)
     
     -- Apply monorepo integration if enabled
-    if cached_config.monorepo and cached_config.monorepo.enabled then
+    if cached_config.monorepo then
       local monorepo = require("ecolog.monorepo")
       cached_config = monorepo.integrate_with_ecolog_config(cached_config)
     end
@@ -1457,7 +1461,7 @@ function M.get_config()
     local default_config = vim.tbl_extend("force", {}, DEFAULT_CONFIG)
     
     -- Apply monorepo integration to default config if enabled
-    if default_config.monorepo and default_config.monorepo.enabled then
+    if default_config.monorepo then
       local monorepo = require("ecolog.monorepo")
       default_config = monorepo.integrate_with_ecolog_config(default_config)
     end

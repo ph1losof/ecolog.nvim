@@ -5,11 +5,8 @@ local fn = vim.fn
 
 ---@class MonorepoConfig
 ---@field enabled boolean Enable monorepo support
----@field detection MonorepoDetectionConfig Workspace detection configuration
----@field workspace_patterns string[] Patterns to identify workspace roots
----@field env_resolution EnvResolutionConfig Environment file resolution strategy
+---@field providers MonorepoProviderConfig[] List of monorepo provider configurations
 ---@field auto_switch boolean Automatically switch workspaces based on current file
----@field workspace_priority string[] Priority order for workspace selection
 
 ---@class MonorepoDetectionConfig
 ---@field strategies string[] Detection strategies: "file_markers", "package_managers", "git_submodules"
@@ -22,6 +19,14 @@ local fn = vim.fn
 ---@field strategy string Resolution strategy: "workspace_first", "root_first", "merge", "workspace_only"
 ---@field inheritance boolean Whether workspace envs inherit from root
 ---@field override_order string[] Order of environment file precedence
+
+---@class MonorepoProviderConfig
+---@field name string? Optional name for the provider
+---@field detection MonorepoDetectionConfig Detection configuration for this provider
+---@field workspace_patterns string[] Workspace patterns for this provider
+---@field env_resolution EnvResolutionConfig Environment resolution strategy for this provider
+---@field workspace_priority string[] Priority order for workspace selection within this provider
+---@field priority number? Priority for provider selection (lower = higher priority)
 
 -- Common monorepo detection patterns
 local MONOREPO_MARKERS = {
@@ -83,24 +88,141 @@ local _workspace_cache = {}
 local _cache_timestamps = {}
 local _current_workspace = nil
 
+-- Predefined monorepo providers
+local PREDEFINED_PROVIDERS = {
+  -- Turborepo
+  {
+    name = "turborepo",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "turbo.json" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = { "apps/*", "packages/*" },
+    workspace_priority = { "apps", "packages" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 1,
+  },
+  -- NX
+  {
+    name = "nx",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "nx.json", "workspace.json" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = { "apps/*", "libs/*", "tools/*", "e2e/*" },
+    workspace_priority = { "apps", "libs", "tools", "e2e" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 2,
+  },
+  -- Lerna
+  {
+    name = "lerna",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "lerna.json" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = { "packages/*" },
+    workspace_priority = { "packages" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 3,
+  },
+  -- Rush
+  {
+    name = "rush",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "rush.json" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = { "apps/*", "libraries/*", "tools/*" },
+    workspace_priority = { "apps", "libraries", "tools" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 4,
+  },
+  -- Yarn/npm workspaces
+  {
+    name = "yarn_workspaces",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "package.json" }, -- will check for workspaces field
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = { "packages/*", "apps/*", "services/*" },
+    workspace_priority = { "apps", "packages", "services" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 5,
+  },
+  -- Cargo workspaces
+  {
+    name = "cargo_workspaces",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "Cargo.toml" }, -- will check for workspace section
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = { "crates/*", "libs/*", "bins/*" },
+    workspace_priority = { "bins", "crates", "libs" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 6,
+  },
+  -- Generic/fallback
+  {
+    name = "generic",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { ".workspace", ".monorepo" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace_patterns = WORKSPACE_PATTERNS,
+    workspace_priority = { "apps", "packages", "services", "libs" },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 99,
+  }
+}
+
 -- Default configuration
 local DEFAULT_MONOREPO_CONFIG = {
-  enabled = true,
-  detection = {
-    strategies = { "file_markers", "package_managers" },
-    file_markers = MONOREPO_MARKERS,
-    package_managers = PACKAGE_MANAGERS,
-    max_depth = 4,
-    cache_duration = 300000, -- 5 minutes
-  },
-  workspace_patterns = WORKSPACE_PATTERNS,
-  env_resolution = {
-    strategy = "workspace_first", -- workspace_first, root_first, merge, workspace_only
-    inheritance = true,
-    override_order = { "workspace", "root" }
-  },
-  auto_switch = true,
-  workspace_priority = { "apps", "packages", "services", "libs" }
+  enabled = false, -- Disabled by default
+  providers = PREDEFINED_PROVIDERS,
+  auto_switch = true
 }
 
 ---Check if cache is valid for a given path
@@ -196,17 +318,65 @@ local function find_workspaces(root_path, patterns, max_depth)
   return workspaces
 end
 
+---Detect which provider matches the given path
+---@param path string Directory path to check
+---@param provider MonorepoProviderConfig Provider configuration
+---@return boolean matches Whether the provider matches
+---@return string[] found_markers List of found marker files
+local function detect_provider_match(path, provider)
+  return detect_monorepo_markers(path, provider.detection.file_markers)
+end
+
+---Find the best matching provider for a monorepo root
+---@param root_path string Path to the monorepo root
+---@param providers MonorepoProviderConfig[] List of providers to check
+---@return MonorepoProviderConfig|nil provider The best matching provider
+local function find_best_provider(root_path, providers)
+  local matches = {}
+  
+  for _, provider in ipairs(providers) do
+    local is_match, markers = detect_provider_match(root_path, provider)
+    if is_match then
+      table.insert(matches, {
+        provider = provider,
+        markers = markers,
+        priority = provider.priority or 50
+      })
+    end
+  end
+  
+  if #matches == 0 then
+    return nil
+  end
+  
+  -- Sort by priority (lower number = higher priority)
+  table.sort(matches, function(a, b)
+    return a.priority < b.priority
+  end)
+  
+  return matches[1].provider
+end
+
 ---Detect monorepo root from current working directory
 ---@param start_path string? Starting path (defaults to cwd)
----@param config MonorepoDetectionConfig Detection configuration
+---@param config MonorepoConfig? Monorepo configuration
 ---@return string|nil root_path Path to monorepo root if found
 ---@return table|nil info Additional information about detected monorepo
 function M.detect_monorepo_root(start_path, config)
   start_path = start_path or fn.getcwd()
-  config = config or DEFAULT_MONOREPO_CONFIG.detection
+  
+  -- If no config provided, return nil (disabled by default)
+  if not config then
+    return nil, nil
+  end
+  
+  config = config or DEFAULT_MONOREPO_CONFIG
+  
+  local providers = config.providers or PREDEFINED_PROVIDERS
+  local cache_duration = 300000 -- Default cache duration
   
   -- Check cache first
-  if is_cache_valid(start_path, config.cache_duration) then
+  if is_cache_valid(start_path, cache_duration) then
     local cached_result = _workspace_cache[start_path]
     if cached_result then
       return cached_result.root, cached_result
@@ -222,23 +392,25 @@ function M.detect_monorepo_root(start_path, config)
   while current_path ~= "/" and iteration < max_iterations do
     iteration = iteration + 1
     
-    -- Check for file markers
-    if vim.tbl_contains(config.strategies, "file_markers") then
-      local is_monorepo, markers = detect_monorepo_markers(current_path, config.file_markers)
-      if is_monorepo then
-        local result = {
-          root = current_path,
-          type = "file_markers",
-          markers = markers
-        }
-        
-        -- Cache result with root path
-        result.root = current_path
-        _workspace_cache[start_path] = result
-        _cache_timestamps[start_path] = vim.loop.now()
-        
-        return current_path, result
-      end
+    -- Find best matching provider for this path
+    local best_provider = find_best_provider(current_path, providers)
+    if best_provider then
+      local result = {
+        root = current_path,
+        type = "provider",
+        provider = best_provider,
+        markers = {} -- Will be populated by detect_provider_match
+      }
+      
+      -- Get the actual markers
+      local _, markers = detect_provider_match(current_path, best_provider)
+      result.markers = markers
+      
+      -- Cache result
+      _workspace_cache[start_path] = result
+      _cache_timestamps[start_path] = vim.loop.now()
+      
+      return current_path, result
     end
     
     -- Move up one directory
@@ -259,8 +431,9 @@ end
 ---Get all workspaces in a monorepo
 ---@param root_path string Root path of monorepo
 ---@param config table Monorepo configuration
+---@param detected_info table? Information from monorepo detection
 ---@return table workspaces List of workspace information
-function M.get_workspaces(root_path, config)
+function M.get_workspaces(root_path, config, detected_info)
   -- Validate inputs
   if not root_path or type(root_path) ~= "string" then
     vim.notify("Invalid root_path provided to get_workspaces. Type: " .. type(root_path) .. ", Value: " .. tostring(root_path), vim.log.levels.ERROR)
@@ -272,23 +445,41 @@ function M.get_workspaces(root_path, config)
   
   config = config or DEFAULT_MONOREPO_CONFIG
   
+  -- Use provider-specific configuration if available
+  local workspace_patterns = WORKSPACE_PATTERNS -- Default fallback
+  local cache_duration = 300000 -- Default 5 minutes
+  local max_depth = 4 -- Default
+  
+  if detected_info and detected_info.provider then
+    workspace_patterns = detected_info.provider.workspace_patterns
+    cache_duration = detected_info.provider.detection.cache_duration or 300000
+    max_depth = detected_info.provider.detection.max_depth or 4
+  end
+  
   local cache_key = root_path .. ":workspaces"
-  if is_cache_valid(cache_key, config.detection.cache_duration) then
+  if is_cache_valid(cache_key, cache_duration) then
     return _workspace_cache[cache_key] or {}
   end
   
   local workspaces = find_workspaces(
     root_path, 
-    config.workspace_patterns, 
-    config.detection.max_depth
+    workspace_patterns, 
+    max_depth
   )
   
-  -- Sort workspaces by priority
+  -- Sort workspaces by priority using provider's workspace_priority
   table.sort(workspaces, function(a, b)
-    local a_priority = vim.tbl_contains(config.workspace_priority, a.type) and 
-      vim.fn.index(config.workspace_priority, a.type) or 999
-    local b_priority = vim.tbl_contains(config.workspace_priority, b.type) and 
-      vim.fn.index(config.workspace_priority, b.type) or 999
+    local workspace_priority = { "apps", "packages", "services", "libs" } -- Default fallback
+    
+    -- Use provider-specific workspace priority if available
+    if detected_info and detected_info.provider and detected_info.provider.workspace_priority then
+      workspace_priority = detected_info.provider.workspace_priority
+    end
+    
+    local a_priority = vim.tbl_contains(workspace_priority, a.type) and 
+      vim.fn.index(workspace_priority, a.type) or 999
+    local b_priority = vim.tbl_contains(workspace_priority, b.type) and 
+      vim.fn.index(workspace_priority, b.type) or 999
       
     if a_priority ~= b_priority then
       return a_priority < b_priority
@@ -340,10 +531,17 @@ end
 ---@param root_path string Monorepo root path
 ---@param config table Environment resolution config
 ---@param env_file_patterns string[] Environment file patterns
----@param opts table|nil Additional options including preferred_environment and sorting functions
+---@param opts table|nil Additional options including preferred_environment, sorting functions, and detected_info
 ---@return string[] env_files List of environment files in resolution order
 function M.resolve_env_files(workspace, root_path, config, env_file_patterns, opts)
-  config = config or DEFAULT_MONOREPO_CONFIG.env_resolution
+  -- Determine the env resolution strategy based on provider or fallback to config
+  local env_resolution = config
+  if opts and opts.detected_info and opts.detected_info.provider then
+    env_resolution = opts.detected_info.provider.env_resolution
+  elseif not config then
+    env_resolution = DEFAULT_MONOREPO_CONFIG.env_resolution
+  end
+  
   env_file_patterns = env_file_patterns or { ".env", ".env.*" }
   
   local env_files = {}
@@ -368,30 +566,30 @@ function M.resolve_env_files(workspace, root_path, config, env_file_patterns, op
     return files
   end
   
-  if config.strategy == "workspace_only" and workspace then
+  if env_resolution.strategy == "workspace_only" and workspace then
     -- Only workspace env files
     env_files = find_env_files_in_path(workspace.path)
-  elseif config.strategy == "workspace_first" then
+  elseif env_resolution.strategy == "workspace_first" then
     -- Workspace files first, then root files
     if workspace then
       vim.list_extend(env_files, find_env_files_in_path(workspace.path))
     end
-    if config.inheritance then
+    if env_resolution.inheritance then
       vim.list_extend(env_files, find_env_files_in_path(root_path))
     end
-  elseif config.strategy == "root_first" then
+  elseif env_resolution.strategy == "root_first" then
     -- Root files first, then workspace files
     vim.list_extend(env_files, find_env_files_in_path(root_path))
     if workspace then
       vim.list_extend(env_files, find_env_files_in_path(workspace.path))
     end
-  elseif config.strategy == "merge" then
+  elseif env_resolution.strategy == "merge" then
     -- Merge strategy - collect all and sort by override order
     local root_files = find_env_files_in_path(root_path)
     local workspace_files = workspace and find_env_files_in_path(workspace.path) or {}
     
     -- Apply override order
-    for _, location in ipairs(config.override_order) do
+    for _, location in ipairs(env_resolution.override_order) do
       if location == "root" then
         vim.list_extend(env_files, root_files)
       elseif location == "workspace" then
@@ -463,8 +661,13 @@ function M.handle_env_file_transition(new_workspace, previous_workspace, ecolog)
   
   -- Get current config to determine resolution strategy
   local config = ecolog.get_config()
-  local monorepo_config = config.monorepo or {}
-  local env_resolution = monorepo_config.env_resolution or { strategy = "workspace_first" }
+  local env_resolution = { strategy = "workspace_first" }
+  
+  if type(config.monorepo) == "table" and config.monorepo.env_resolution then
+    env_resolution = config.monorepo.env_resolution
+  elseif config._detected_info and config._detected_info.provider and config._detected_info.provider.env_resolution then
+    env_resolution = config._detected_info.provider.env_resolution
+  end
   
   if not new_workspace then
     -- Switching to non-workspace mode, clear selection
@@ -507,7 +710,6 @@ function M.handle_env_file_transition(new_workspace, previous_workspace, ecolog)
   
   -- Select appropriate file for the new workspace
   local selected_file = nil
-  local message = ""
   
   if current_selected_file then
     -- Try to find equivalent file in new workspace
@@ -517,7 +719,6 @@ function M.handle_env_file_transition(new_workspace, previous_workspace, ecolog)
     for _, file in ipairs(available_files) do
       if fn.fnamemodify(file, ":t") == current_filename then
         selected_file = file
-        message = string.format("Switched to equivalent file: %s (%s)", current_filename, file)
         break
       end
     end
@@ -526,13 +727,6 @@ function M.handle_env_file_transition(new_workspace, previous_workspace, ecolog)
   if not selected_file then
     -- No equivalent file or no previous file, select first available
     selected_file = available_files[1]
-    local new_filename = fn.fnamemodify(selected_file, ":t")
-    if current_selected_file then
-      local old_filename = fn.fnamemodify(current_selected_file, ":t")
-      message = string.format("Selected new file: %s (%s) (was: %s)", new_filename, selected_file, old_filename)
-    else
-      message = string.format("Selected workspace file: %s (%s)", new_filename, selected_file)
-    end
   end
   
   -- Apply the selection
@@ -540,7 +734,12 @@ function M.handle_env_file_transition(new_workspace, previous_workspace, ecolog)
   state.env_vars = {} -- Clear cache to force reload
   state._env_line_cache = {} -- Clear line cache too
   state.cached_env_files = nil -- Clear file cache
-  vim.notify(message, vim.log.levels.INFO)
+  
+  -- Create workspace context display name
+  local utils = require("ecolog.utils")
+  local opts = { _monorepo_root = root_path }
+  local display_name = utils.get_env_file_display_name(selected_file, opts)
+  vim.notify(string.format("Selected environment file: %s", display_name), vim.log.levels.INFO)
   
   -- Return the selected file so it can be passed to refresh_env_vars
   return selected_file
@@ -562,17 +761,29 @@ end
 local _setup_config = nil
 
 ---Setup monorepo detection and auto-switching
----@param config table Monorepo configuration
+---@param config table|boolean Monorepo configuration
 function M.setup(config)
-  config = vim.tbl_deep_extend("force", DEFAULT_MONOREPO_CONFIG, config or {})
-  _setup_config = config
+  -- Handle different configuration types
+  local monorepo_config
+  if config == true then
+    -- Use default configuration when set to true
+    monorepo_config = vim.tbl_deep_extend("force", DEFAULT_MONOREPO_CONFIG, { enabled = true })
+  elseif type(config) == "table" then
+    -- Use provided configuration
+    monorepo_config = vim.tbl_deep_extend("force", DEFAULT_MONOREPO_CONFIG, config)
+  else
+    -- Monorepo is disabled (false, nil, or not set)
+    return
+  end
   
-  if not config.enabled then
+  _setup_config = monorepo_config
+  
+  if not monorepo_config.enabled then
     return
   end
   
   -- Set up auto-switching if enabled
-  if config.auto_switch then
+  if monorepo_config.auto_switch then
     local augroup = api.nvim_create_augroup("EcologMonorepo", { clear = true })
     
     api.nvim_create_autocmd({ "BufEnter", "DirChanged" }, {
@@ -580,7 +791,7 @@ function M.setup(config)
       callback = function()
         -- Add error handling to prevent autocmd errors
         local success, err = pcall(function()
-          local root_path, _ = M.detect_monorepo_root()
+          local root_path, detected_info = M.detect_monorepo_root(nil, _setup_config)
           if not root_path or type(root_path) ~= "string" then
             return
           end
@@ -589,15 +800,12 @@ function M.setup(config)
             return
           end
           
-          local workspaces = M.get_workspaces(root_path, _setup_config)
+          local workspaces = M.get_workspaces(root_path, _setup_config, detected_info)
           local current_workspace = M.find_current_workspace(nil, root_path, workspaces)
           
           if current_workspace and current_workspace ~= _current_workspace then
             M.set_current_workspace(current_workspace)
-            vim.notify(
-              string.format("Switched to workspace: %s (%s)", current_workspace.name, current_workspace.path),
-              vim.log.levels.INFO
-            )
+            -- Notification will be handled by handle_env_file_transition in set_current_workspace
           end
         end)
         
@@ -614,14 +822,30 @@ end
 ---@param ecolog_config table The main ecolog configuration
 ---@return table modified_config Modified configuration for monorepo support
 function M.integrate_with_ecolog_config(ecolog_config)
-  local root_path, _ = M.detect_monorepo_root()
+  -- Handle different monorepo configuration types
+  local monorepo_config
+  if ecolog_config.monorepo == true then
+    -- Use default configuration when set to true
+    monorepo_config = vim.tbl_deep_extend("force", DEFAULT_MONOREPO_CONFIG, { enabled = true })
+  elseif type(ecolog_config.monorepo) == "table" then
+    -- Use provided configuration
+    monorepo_config = vim.tbl_deep_extend("force", DEFAULT_MONOREPO_CONFIG, ecolog_config.monorepo)
+  else
+    -- Monorepo is disabled (false, nil, or not set)
+    return ecolog_config
+  end
+  
+  -- Only proceed if monorepo is enabled
+  if not monorepo_config.enabled then
+    return ecolog_config
+  end
+  
+  local root_path, detected_info = M.detect_monorepo_root(nil, monorepo_config)
   if not root_path then
     return ecolog_config
   end
   
-  -- Ensure monorepo config exists
-  local monorepo_config = ecolog_config.monorepo or DEFAULT_MONOREPO_CONFIG
-  local workspaces = M.get_workspaces(root_path, monorepo_config)
+  local workspaces = M.get_workspaces(root_path, monorepo_config, detected_info)
   local current_workspace = M.find_current_workspace(nil, root_path, workspaces)
   
   
@@ -638,6 +862,7 @@ function M.integrate_with_ecolog_config(ecolog_config)
       ecolog_config._is_monorepo_workspace = true
       ecolog_config._workspace_info = current_workspace
       ecolog_config._monorepo_root = root_path
+      ecolog_config._detected_info = detected_info
     end
   else
     -- Manual mode: always provide workspace info for manual selection
@@ -646,10 +871,14 @@ function M.integrate_with_ecolog_config(ecolog_config)
       ecolog_config._all_workspaces = workspaces
       ecolog_config._monorepo_root = root_path
       ecolog_config._current_workspace_info = current_workspace -- For reference only
+      ecolog_config._detected_info = detected_info
     end
   end
   
   return ecolog_config
 end
+
+-- Export for testing
+M.DEFAULT_MONOREPO_CONFIG = DEFAULT_MONOREPO_CONFIG
 
 return M

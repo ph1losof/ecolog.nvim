@@ -358,6 +358,59 @@ function M.find_env_files(opts)
   local path = normalize_path(opts.path, opts)
 
   local files = {}
+  
+  -- Handle monorepo workspace file discovery
+  if opts._is_monorepo_workspace and opts._monorepo_root then
+    local monorepo = require("ecolog.monorepo")
+    local workspace = opts._workspace_info
+    local root_path = opts._monorepo_root
+    local monorepo_config = opts.monorepo and opts.monorepo.env_resolution or {
+      strategy = "workspace_first",
+      inheritance = true
+    }
+    
+    -- Get files using monorepo resolution strategy
+    files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns)
+    
+    -- Sort and return
+    return M.sort_env_files(files, opts)
+  end
+  
+  -- Handle monorepo manual mode - collect files from all workspaces
+  if opts._is_monorepo_manual_mode and opts._all_workspaces then
+    local monorepo = require("ecolog.monorepo")
+    local root_path = opts._monorepo_root
+    local monorepo_config = opts.monorepo and opts.monorepo.env_resolution or {
+      strategy = "workspace_first",
+      inheritance = true
+    }
+    
+    local all_files = {}
+    
+    -- Iterate through all workspaces and collect environment files
+    for _, workspace in ipairs(opts._all_workspaces) do
+      local workspace_files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns)
+      vim.list_extend(all_files, workspace_files)
+    end
+    
+    -- Remove duplicates that might occur from overlapping workspace files
+    local unique_files = {}
+    local seen = {}
+    for i = 1, #all_files do
+      local file = all_files[i]
+      if not seen[file] then
+        seen[file] = true
+        unique_files[#unique_files + 1] = file
+      end
+    end
+    
+    files = unique_files
+    
+    -- Sort and return
+    return M.sort_env_files(files, opts)
+  end
+  
+  -- Regular (non-monorepo) file discovery
   if not opts.env_file_patterns then
     local env_files = {}
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do

@@ -56,7 +56,8 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
       value = transformed_value or value,
       type = type_name,
       raw_value = value,
-      source = fn.fnamemodify(file_path, ":t"),
+      source = file_path,
+      source_file = fn.fnamemodify(file_path, ":t"),
       comment = comment,
       quote_char = quote_char,
     },
@@ -283,28 +284,37 @@ end
 ---@return table<string, EnvVarInfo>
 function M.load_environment(opts, state, force)
   if force then
+    -- Preserve selected_env_file if workspace file transition was handled
+    local preserved_file = opts._workspace_selected_file or (opts._workspace_file_handled and state.selected_env_file or nil)
     state.env_vars = {}
     state._env_line_cache = {}
+    if preserved_file then
+      state.selected_env_file = preserved_file
+    end
   end
 
   if not force and next(state.env_vars) ~= nil then
     return state.env_vars
   end
 
-  if not state.selected_env_file then
+  -- Only auto-select first file if not handled by workspace transition
+  if not state.selected_env_file and not opts._workspace_file_handled then
     local env_files = utils.find_env_files(opts)
     if #env_files > 0 then
       state.selected_env_file = env_files[1]
     end
   end
 
-  if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
-    state.selected_env_file = nil
-    state.env_vars = {}
-    state._env_line_cache = {}
-    local env_files = utils.find_env_files(opts)
-    if #env_files > 0 then
-      state.selected_env_file = env_files[1]
+  -- Only check file readability and override if not handled by workspace transition
+  if not opts._workspace_file_handled then
+    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+      state.selected_env_file = nil
+      state.env_vars = {}
+      state._env_line_cache = {}
+      local env_files = utils.find_env_files(opts)
+      if #env_files > 0 then
+        state.selected_env_file = env_files[1]
+      end
     end
   end
 

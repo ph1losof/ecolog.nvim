@@ -32,6 +32,7 @@ local ESCAPE_MAP = {
 ---@field max_iterations? number Maximum number of iterations for variable interpolation
 ---@field warn_on_undefined? boolean Whether to warn on undefined variables
 ---@field fail_on_cmd_error? boolean Whether to fail on command substitution errors
+---@field disable_security? boolean Whether to disable security sanitization for command substitution
 ---@field features? table Control specific interpolation features
 ---@field features.variables? boolean Enable variable interpolation ($VAR, ${VAR})
 ---@field features.defaults? boolean Enable default value syntax (${VAR:-default})
@@ -81,7 +82,7 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
       _env_cache = {}
       _env_cache_timestamp = now
     end
-    
+
     if _env_cache[var_name] then
       var = _env_cache[var_name]
     else
@@ -92,7 +93,7 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
       else
         shell_value = vim.fn.getenv(var_name)
       end
-      
+
       if shell_value and shell_value ~= vim.NIL and shell_value ~= "" then
         var = { value = shell_value }
         _env_cache[var_name] = var
@@ -161,20 +162,22 @@ local function process_cmd_substitution(cmd, opts)
     vim.notify("Invalid command for substitution", vim.log.levels.WARN)
     return ""
   end
-  
-  -- Sanitize command to prevent injection attacks
-  local sanitized_cmd = cmd:gsub("[;&|`$()]", "")
-  if sanitized_cmd ~= cmd then
-    vim.notify("Command contains potentially dangerous characters, sanitizing: " .. cmd, vim.log.levels.WARN)
-    cmd = sanitized_cmd
+
+  -- Sanitize command to prevent injection attacks (unless disabled)
+  if not opts.disable_security then
+    local sanitized_cmd = cmd:gsub("[;&|`$()]", "")
+    if sanitized_cmd ~= cmd then
+      vim.notify("Command contains potentially dangerous characters, sanitizing: " .. cmd, vim.log.levels.WARN)
+      cmd = sanitized_cmd
+    end
   end
-  
+
   -- Use pcall to protect against system command errors
   local success, output = pcall(function()
     -- Use shell to properly handle pipes and complex commands
-    return vim.fn.system({"sh", "-c", cmd})
+    return vim.fn.system({ "sh", "-c", cmd })
   end)
-  
+
   if not success then
     local msg = string.format("Command substitution system call failed: %s", tostring(output))
     if opts.fail_on_cmd_error then
@@ -184,7 +187,7 @@ local function process_cmd_substitution(cmd, opts)
       return ""
     end
   end
-  
+
   local exit_code = vim.v.shell_error
 
   if exit_code ~= 0 then
@@ -202,7 +205,7 @@ local function process_cmd_substitution(cmd, opts)
   if output and type(output) == "string" then
     result = output:gsub("%s+$", "")
   end
-  
+
   return result
 end
 
@@ -220,6 +223,7 @@ function M.interpolate(value, env_vars, opts)
     max_iterations = 10,
     warn_on_undefined = true,
     fail_on_cmd_error = false,
+    disable_security = false,
     features = {
       variables = true,
       defaults = true,
@@ -264,7 +268,7 @@ function M.interpolate(value, env_vars, opts)
         local cmd_success, cmd_result = pcall(function()
           return process_cmd_substitution(cmd, opts)
         end)
-        
+
         if not cmd_success then
           if opts.fail_on_cmd_error then
             error(cmd_result)
@@ -273,7 +277,7 @@ function M.interpolate(value, env_vars, opts)
             return ""
           end
         end
-        
+
         return cmd_result
       end)
     end)

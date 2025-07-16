@@ -218,6 +218,42 @@ describe("interpolation", function()
     end)
   end)
 
+  describe("security options", function()
+    it("should sanitize dangerous characters by default", function()
+      local result = interpolation.interpolate("$(echo test; echo hacked)", env_vars)
+      assert.equals("test echo hacked", result)
+    end)
+
+    it("should allow dangerous characters when security is disabled", function()
+      local opts = { disable_security = true }
+      local result = interpolation.interpolate("$(echo test; echo hacked)", env_vars, opts)
+      assert.equals("test\nhacked", result)
+    end)
+
+    it("should sanitize pipe characters by default", function()
+      local result = interpolation.interpolate("$(echo test | cat)", env_vars)
+      assert.equals("test cat", result)
+    end)
+
+    it("should allow pipe characters when security is disabled", function()
+      local opts = { disable_security = true }
+      local result = interpolation.interpolate("$(echo test | cat)", env_vars, opts)
+      assert.equals("test", result)
+    end)
+
+    it("should sanitize backticks by default", function()
+      local result = interpolation.interpolate("$(echo `whoami`)", env_vars)
+      assert.equals("whoami", result)
+    end)
+
+    it("should allow backticks when security is disabled", function()
+      local opts = { disable_security = true }
+      local result = interpolation.interpolate("$(echo `whoami`)", env_vars, opts)
+      -- This would execute whoami command, but for test we just check it doesn't get sanitized
+      assert.is_string(result)
+    end)
+  end)
+
   describe("advanced variable operations", function()
     it("should handle alternate value if set and non-empty", function()
       assert.equals("has-value", interpolation.interpolate("${NAME:+has-value}", env_vars))

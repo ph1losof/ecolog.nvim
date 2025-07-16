@@ -41,6 +41,7 @@ local schedule = vim.schedule
 ---@field max_iterations number Maximum iterations for nested interpolation
 ---@field warn_on_undefined boolean Whether to warn about undefined variables
 ---@field fail_on_cmd_error boolean Whether to fail on command substitution errors
+---@field disable_security boolean Whether to disable security sanitization for command substitution
 ---@field features table Control specific interpolation features
 ---@field features.variables boolean Enable variable interpolation ($VAR, ${VAR})
 ---@field features.defaults boolean Enable default value syntax (${VAR:-default})
@@ -103,6 +104,7 @@ local DEFAULT_CONFIG = {
     max_iterations = 10,
     warn_on_undefined = true,
     fail_on_cmd_error = false,
+    disable_security = false,
     features = {
       variables = true,
       defaults = true,
@@ -1413,6 +1415,7 @@ function M.setup(opts)
         max_iterations = DEFAULT_CONFIG.interpolation.max_iterations,
         warn_on_undefined = DEFAULT_CONFIG.interpolation.warn_on_undefined,
         fail_on_cmd_error = DEFAULT_CONFIG.interpolation.fail_on_cmd_error,
+        disable_security = DEFAULT_CONFIG.interpolation.disable_security,
         features = vim.deepcopy(DEFAULT_CONFIG.interpolation.features),
       }
     elseif type(config.interpolation) == "table" then

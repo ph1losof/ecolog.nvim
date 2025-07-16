@@ -527,12 +527,14 @@ require('ecolog').setup({
 
 Ecolog provides comprehensive monorepo support for managing environment variables across multiple workspaces and projects. This feature automatically detects monorepo structures and provides intelligent workspace-aware environment variable management.
 
-### Configuration
+### Basic Configuration
 
 Enable monorepo support with default settings:
 
 ```lua
 require('ecolog').setup({
+  monorepo = true,  -- Enable with default configuration
+  -- or
   monorepo = {
     enabled = true,
     auto_switch = true,  -- Automatically switch to workspace based on current file
@@ -540,50 +542,183 @@ require('ecolog').setup({
 })
 ```
 
+### Advanced Configuration
+
+The new monorepo system supports advanced configuration with provider-based detection and performance optimization:
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    enabled = true,
+    auto_switch = true,
+    notify_on_switch = false,  -- Show notifications when switching workspaces
+
+    -- Provider configuration
+    providers = {
+      -- Built-in providers (loaded automatically)
+      builtin = {
+        "turborepo",
+        "nx",
+        "lerna",
+        "yarn_workspaces",
+        "cargo_workspaces"
+      },
+      -- Custom providers
+      custom = {
+        {
+          module = "my_custom_provider",
+          config = { custom_option = "value" }
+        }
+      }
+    },
+
+    -- Performance settings
+    performance = {
+      -- Cache configuration
+      cache = {
+        max_entries = 1000,
+        default_ttl = 300000,     -- 5 minutes
+        cleanup_interval = 60000  -- 1 minute
+      },
+
+      -- Auto-switch throttling
+      auto_switch_throttle = {
+        min_interval = 100,           -- Minimum ms between checks
+        debounce_delay = 250,         -- Debounce delay for rapid changes
+        same_file_skip = true,        -- Skip if same file
+        workspace_boundary_only = true, -- Only check when crossing boundaries
+        max_checks_per_second = 10    -- Rate limiting
+      }
+    }
+  }
+})
+```
+
+### Plugin System Configuration
+
+The new monorepo system supports a plugin architecture for extensibility:
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    enabled = true,
+
+    -- Plugin configuration
+    plugins = {
+      -- Load plugins from directory
+      directory = "/path/to/my/monorepo/plugins",
+
+      -- Or register plugins directly
+      list = {
+        {
+          name = "my_monorepo_plugin",
+          providers = {
+            {
+              type = "simple",
+              name = "my_simple_provider",
+              detection = {
+                file_markers = { "my-workspace.json" }
+              },
+              workspace = {
+                patterns = { "apps/*", "libs/*" }
+              }
+            }
+          },
+          hooks = {
+            before_detection = function(path)
+              print("Detecting monorepo at:", path)
+            end,
+            after_workspace_switch = function(new_workspace, old_workspace)
+              print("Switched to workspace:", new_workspace and new_workspace.name or "none")
+            end
+          }
+        }
+      }
+    }
+  }
+})
+```
+
 ### Workspace Detection
 
-Ecolog automatically detects monorepo structures using multiple strategies:
+The new system uses provider-specific detection instead of global constants:
 
-#### Detection Strategies
+#### Built-in Providers
 
-1. **File Markers**: Looks for common monorepo configuration files
-2. **Package Managers**: Detects workspace configurations in package manager files
+Each provider has its own detection logic and workspace patterns:
 
-#### Common Monorepo Markers
+| Provider             | Detection Files                        | Workspace Patterns                     |
+| -------------------- | -------------------------------------- | -------------------------------------- |
+| **Turborepo**        | `turbo.json`                           | `apps/*`, `packages/*`                 |
+| **NX**               | `nx.json`, `workspace.json`            | `apps/*`, `libs/*`, `tools/*`, `e2e/*` |
+| **Lerna**            | `lerna.json`                           | `packages/*`                           |
+| **Yarn Workspaces**  | `package.json` (with workspaces field) | `packages/*`, `apps/*`, `services/*`   |
+| **Cargo Workspaces** | `Cargo.toml` (with workspace section)  | `crates/*`, `libs/*`, `bins/*`         |
 
-Ecolog recognizes these monorepo indicators:
+#### Custom Provider Example
 
-| Tool/Framework | Marker Files |
-|----------------|-------------|
-| Turborepo | `turbo.json` |
-| Nx | `nx.json`, `workspace.json` |
-| Lerna | `lerna.json` |
-| Rush | `rush.json` |
-| Yarn/NPM Workspaces | `package.json` (with workspaces field) |
-| Bazel | `WORKSPACE`, `WORKSPACE.bazel` |
-| Cargo Workspaces | `Cargo.toml` (with workspace section) |
-| Gradle | `settings.gradle`, `settings.gradle.kts` |
-| Maven | `pom.xml` (with modules) |
-| Generic | `.workspace`, `.monorepo` |
+```lua
+-- File: lua/my_custom_provider.lua
+local BaseProvider = require("ecolog.monorepo.detection.providers.base")
 
-#### Default Workspace Patterns
+local MyCustomProvider = {}
+setmetatable(MyCustomProvider, { __index = BaseProvider })
 
-Ecolog looks for workspaces using these patterns:
+function MyCustomProvider.new(config)
+  local default_config = {
+    name = "my_custom_provider",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "my-monorepo.json" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace = {
+      patterns = { "workspaces/*", "projects/*" },
+      priority = { "workspaces", "projects" }
+    },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 50,
+  }
 
-- `apps/*` - Application packages
-- `packages/*` - Shared packages
-- `libs/*` - Library packages
-- `services/*` - Service packages
-- `modules/*` - Module packages
-- `components/*` - Component packages
-- `tools/*` - Tool packages
-- `internal/*` - Internal packages
-- `external/*` - External packages
-- `projects/*` - Project packages
+  local merged_config = config and vim.tbl_deep_extend("force", default_config, config) or default_config
+  local instance = BaseProvider.new(merged_config)
+  setmetatable(instance, { __index = MyCustomProvider })
+  return instance
+end
+
+return MyCustomProvider
+```
+
+### Factory-Based Provider Creation
+
+```lua
+-- Using the factory system for quick custom providers
+local Factory = require("ecolog.monorepo.detection.providers.factory")
+
+-- Create from template
+local my_provider = Factory.create_from_template("js_monorepo", {
+  name = "my_js_provider",
+  detection = {
+    file_markers = { "my-package.json" }
+  },
+  workspace = {
+    patterns = { "my-apps/*", "my-packages/*" }
+  }
+})
+
+-- Register the provider
+local monorepo = require("ecolog.monorepo")
+monorepo.register_provider(my_provider.new())
+```
 
 ### Environment File Resolution
 
-Ecolog provides flexible strategies for resolving environment files in monorepo workspaces:
+Each provider defines its own environment file resolution strategy:
 
 #### Resolution Strategies
 
@@ -592,27 +727,55 @@ Ecolog provides flexible strategies for resolving environment files in monorepo 
 3. **`workspace_only`**: Only load workspace environment files
 4. **`merge`**: Merge files based on override order
 
-#### Example Configuration
+#### Provider-Specific Resolution
+
+Each provider can define its own resolution strategy:
 
 ```lua
-require('ecolog').setup({
-  monorepo = {
-    enabled = true,
-    detection = {
-      strategies = { "file_markers", "package_managers" },
-      max_depth = 4,  -- Maximum directory depth to search
-      cache_duration = 300000,  -- Cache results for 5 minutes
-    },
-    workspace_patterns = {
-      "apps/*", "packages/*", "libs/*", "services/*"
-    },
+-- Example: Custom provider with specific resolution
+local MyProvider = {}
+setmetatable(MyProvider, { __index = BaseProvider })
+
+function MyProvider.new(config)
+  local default_config = {
+    name = "my_provider",
+    -- Provider-specific resolution strategy
     env_resolution = {
       strategy = "workspace_first",
-      inheritance = true,  -- Workspace inherits from root
+      inheritance = true,
       override_order = { "workspace", "root" }
     },
-    auto_switch = true,
-    workspace_priority = { "apps", "packages", "services", "libs" }
+    -- Provider-specific workspace patterns
+    workspace = {
+      patterns = { "my-apps/*", "my-packages/*" },
+      priority = { "my-apps", "my-packages" }
+    }
+  }
+
+  local merged_config = config and vim.tbl_deep_extend("force", default_config, config) or default_config
+  local instance = BaseProvider.new(merged_config)
+  setmetatable(instance, { __index = MyProvider })
+  return instance
+end
+
+return MyProvider
+```
+
+#### Available Templates
+
+The factory system provides pre-configured templates:
+
+```lua
+local Factory = require("ecolog.monorepo.detection.providers.factory")
+
+-- Available templates: "simple", "js_monorepo", "generic"
+local templates = Factory.get_available_templates()
+
+-- Create from template
+local provider = Factory.create_from_template("js_monorepo", {
+  name = "my_js_provider",
+  detection = {
+    file_markers = { "my-package.json" }
   }
 })
 ```
@@ -638,6 +801,7 @@ When `auto_switch = false`, use `:EcologSelect` to manually choose environment f
 ```
 
 This will show files with workspace context:
+
 ```
 1. .env.local (apps/frontend)
 2. .env (apps/frontend)
@@ -657,47 +821,86 @@ All ecolog integrations display workspace context for better identification:
 - **Peek Window**: Displays workspace context in source information
 - **Statusline**: Shows current workspace and environment file
 
-### Advanced Configuration
+### Performance
 
-#### Custom Workspace Patterns
+#### Caching System
 
 ```lua
 require('ecolog').setup({
   monorepo = {
-    workspace_patterns = {
-      "frontend/*",
-      "backend/*",
-      "microservices/*",
-      "shared/*/packages"
+    performance = {
+      cache = {
+        max_entries = 1000,        -- Maximum cache entries
+        default_ttl = 300000,      -- 5 minutes default TTL
+        cleanup_interval = 60000   -- 1 minute cleanup interval
+      }
     }
   }
 })
 ```
 
-#### Environment File Inheritance
+#### Auto-Switch Throttling
 
 ```lua
 require('ecolog').setup({
   monorepo = {
-    env_resolution = {
-      strategy = "workspace_first",
-      inheritance = true,
-      override_order = { "workspace", "root" }
+    performance = {
+      auto_switch_throttle = {
+        min_interval = 100,               -- Minimum ms between checks
+        debounce_delay = 250,             -- Debounce rapid changes
+        same_file_skip = true,            -- Skip if same file
+        workspace_boundary_only = true,   -- Only check at boundaries
+        max_checks_per_second = 10        -- Rate limiting
+      }
     }
   }
 })
 ```
 
-#### Workspace Priority Sorting
-
-Configure workspace type priorities for file sorting:
+### API Usage Examples
 
 ```lua
-require('ecolog').setup({
-  monorepo = {
-    workspace_priority = { "apps", "packages", "services", "libs" }
+local monorepo = require("ecolog.monorepo")
+
+-- Setup with custom configuration
+monorepo.setup({
+  enabled = true,
+  providers = {
+    builtin = { "turborepo", "nx" }
   }
 })
+
+-- Detection
+local root_path, provider, info = monorepo.detect_monorepo_root()
+if root_path then
+  print("Found monorepo at:", root_path)
+  print("Provider:", provider.name)
+end
+
+-- Get workspaces
+local workspaces = monorepo.get_workspaces(root_path, provider)
+for _, workspace in ipairs(workspaces) do
+  print("Workspace:", workspace.name, "at", workspace.path)
+end
+
+-- Manual workspace switching
+local current_workspace = monorepo.find_current_workspace(nil, workspaces)
+if current_workspace then
+  monorepo.set_current_workspace(current_workspace)
+end
+
+-- Register custom provider
+local custom_provider = Factory.create_simple_provider({
+  name = "my_provider",
+  detection = {
+    file_markers = { "my-config.json" }
+  }
+})
+monorepo.register_provider(custom_provider.new())
+
+-- Statistics and monitoring
+local stats = monorepo.get_stats()
+print("Monorepo stats:", vim.inspect(stats))
 ```
 
 ## 💡 vim.env Integration

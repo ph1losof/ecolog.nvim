@@ -84,6 +84,12 @@ function BaseProvider:get_cache_duration()
   return self.config.detection.cache_duration or 300000 -- 5 minutes default
 end
 
+---Get quick detection markers for performance optimization
+---@return string[] markers Quick detection markers
+function BaseProvider:get_quick_markers()
+  return self.config.detection.file_markers or {}
+end
+
 ---Get maximum search depth for this provider
 ---@return number depth Maximum search depth
 function BaseProvider:get_max_depth()

@@ -48,11 +48,22 @@ function AutoSwitch._setup_autocmds()
 
   _auto_switch_state.augroup = vim.api.nvim_create_augroup("EcologMonorepoAutoSwitch", { clear = true })
 
-  -- Buffer change events
-  vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
+  -- Buffer change events - use more specific events for better performance
+  vim.api.nvim_create_autocmd({ "BufEnter" }, {
     group = _auto_switch_state.augroup,
     callback = function()
       AutoSwitch._handle_buffer_change()
+    end,
+  })
+  
+  -- Only handle window events for non-temporary buffers
+  vim.api.nvim_create_autocmd({ "BufWinEnter" }, {
+    group = _auto_switch_state.augroup,
+    callback = function()
+      local bufname = vim.api.nvim_buf_get_name(0)
+      if bufname ~= "" and not bufname:match("^%w+://") then
+        AutoSwitch._handle_buffer_change()
+      end
     end,
   })
 
@@ -98,6 +109,12 @@ end
 ---@param force_check? boolean Whether to force check regardless of throttling
 function AutoSwitch._perform_workspace_check(file_path, force_check)
   local success, err = pcall(function()
+    -- Early exit if no providers are available
+    local providers = Detection.get_providers()
+    if not next(providers) then
+      return
+    end
+    
     -- Detect monorepo
     local root_path, provider, detection_info = Detection.detect_monorepo(file_path)
 

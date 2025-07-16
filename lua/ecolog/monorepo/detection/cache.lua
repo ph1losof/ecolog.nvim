@@ -35,6 +35,10 @@ local function is_cache_valid(key, ttl)
   return (now - timestamp) < ttl
 end
 
+-- Sorted list of cache entries by timestamp for efficient cleanup
+local _cache_entries_sorted = {}
+local _needs_resort = false
+
 ---Perform cache cleanup if needed
 local function maybe_cleanup_cache()
   local now = vim.loop.now()
@@ -45,48 +49,45 @@ local function maybe_cleanup_cache()
   CACHE_CONFIG.last_cleanup = now
 
   -- Count total cache entries
-  local total_entries = 0
-  for _ in pairs(_cache_timestamps) do
-    total_entries = total_entries + 1
-  end
-
+  local total_entries = #_cache_entries_sorted
+  
   -- Only cleanup if we exceed max entries
   if total_entries <= CACHE_CONFIG.max_entries then
     return
   end
 
-  -- Collect expired entries
-  local expired_keys = {}
-  for key, timestamp in pairs(_cache_timestamps) do
-    if (now - timestamp) > CACHE_CONFIG.default_ttl then
-      table.insert(expired_keys, key)
-    end
-  end
-
-  -- Remove expired entries
-  for _, key in ipairs(expired_keys) do
-    Cache.evict(key)
-    _cache_stats.evictions = _cache_stats.evictions + 1
-  end
-
-  -- If still over limit, remove oldest entries
-  if total_entries - #expired_keys > CACHE_CONFIG.max_entries then
-    local entries_to_remove = total_entries - #expired_keys - CACHE_CONFIG.max_entries
-    local oldest_keys = {}
-
-    for key, timestamp in pairs(_cache_timestamps) do
-      table.insert(oldest_keys, { key = key, timestamp = timestamp })
-    end
-
-    table.sort(oldest_keys, function(a, b)
+  -- Resort if needed
+  if _needs_resort then
+    table.sort(_cache_entries_sorted, function(a, b)
       return a.timestamp < b.timestamp
     end)
+    _needs_resort = false
+  end
 
-    for i = 1, math.min(entries_to_remove, #oldest_keys) do
-      Cache.evict(oldest_keys[i].key)
+  -- Remove expired and oldest entries in one pass
+  local entries_to_remove = math.max(0, total_entries - CACHE_CONFIG.max_entries)
+  local removed_count = 0
+  
+  for i = 1, #_cache_entries_sorted do
+    local entry = _cache_entries_sorted[i]
+    local expired = (now - entry.timestamp) > CACHE_CONFIG.default_ttl
+    
+    if expired or removed_count < entries_to_remove then
+      Cache.evict(entry.key)
       _cache_stats.evictions = _cache_stats.evictions + 1
+      removed_count = removed_count + 1
+      _cache_entries_sorted[i] = nil
     end
   end
+  
+  -- Compact the sorted list
+  local compacted = {}
+  for _, entry in ipairs(_cache_entries_sorted) do
+    if entry then
+      table.insert(compacted, entry)
+    end
+  end
+  _cache_entries_sorted = compacted
 end
 
 ---Store detection result in cache
@@ -95,8 +96,26 @@ end
 ---@param ttl? number Time to live in milliseconds
 function Cache.set_detection(key, result, ttl)
   maybe_cleanup_cache()
+  local now = vim.loop.now()
+  
+  -- If key already exists, update timestamp in sorted list
+  local existing_idx = nil
+  for i, entry in ipairs(_cache_entries_sorted) do
+    if entry.key == key then
+      existing_idx = i
+      break
+    end
+  end
+  
+  if existing_idx then
+    _cache_entries_sorted[existing_idx].timestamp = now
+    _needs_resort = true
+  else
+    table.insert(_cache_entries_sorted, { key = key, timestamp = now })
+  end
+  
   _detection_cache[key] = result
-  _cache_timestamps[key] = vim.loop.now()
+  _cache_timestamps[key] = now
 end
 
 ---Get detection result from cache
@@ -119,8 +138,26 @@ end
 ---@param ttl? number Time to live in milliseconds
 function Cache.set_workspaces(key, workspaces, ttl)
   maybe_cleanup_cache()
+  local now = vim.loop.now()
+  
+  -- If key already exists, update timestamp in sorted list
+  local existing_idx = nil
+  for i, entry in ipairs(_cache_entries_sorted) do
+    if entry.key == key then
+      existing_idx = i
+      break
+    end
+  end
+  
+  if existing_idx then
+    _cache_entries_sorted[existing_idx].timestamp = now
+    _needs_resort = true
+  else
+    table.insert(_cache_entries_sorted, { key = key, timestamp = now })
+  end
+  
   _workspace_cache[key] = workspaces
-  _cache_timestamps[key] = vim.loop.now()
+  _cache_timestamps[key] = now
 end
 
 ---Get workspace list from cache
@@ -143,8 +180,26 @@ end
 ---@param ttl? number Time to live in milliseconds
 function Cache.set_env_files(key, files, ttl)
   maybe_cleanup_cache()
+  local now = vim.loop.now()
+  
+  -- If key already exists, update timestamp in sorted list
+  local existing_idx = nil
+  for i, entry in ipairs(_cache_entries_sorted) do
+    if entry.key == key then
+      existing_idx = i
+      break
+    end
+  end
+  
+  if existing_idx then
+    _cache_entries_sorted[existing_idx].timestamp = now
+    _needs_resort = true
+  else
+    table.insert(_cache_entries_sorted, { key = key, timestamp = now })
+  end
+  
   _file_cache[key] = files
-  _cache_timestamps[key] = vim.loop.now()
+  _cache_timestamps[key] = now
 end
 
 ---Get environment file list from cache
@@ -168,6 +223,14 @@ function Cache.evict(key)
   _workspace_cache[key] = nil
   _file_cache[key] = nil
   _cache_timestamps[key] = nil
+  
+  -- Remove from sorted list
+  for i, entry in ipairs(_cache_entries_sorted) do
+    if entry.key == key then
+      table.remove(_cache_entries_sorted, i)
+      break
+    end
+  end
 end
 
 ---Evict all cache entries matching pattern
@@ -192,6 +255,8 @@ function Cache.clear_all()
   _workspace_cache = {}
   _file_cache = {}
   _cache_timestamps = {}
+  _cache_entries_sorted = {}
+  _needs_resort = false
   _cache_stats.evictions = 0
 end
 

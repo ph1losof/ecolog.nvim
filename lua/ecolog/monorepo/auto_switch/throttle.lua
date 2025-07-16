@@ -9,15 +9,18 @@ local _throttle_state = {
   pending_timer = nil,
   check_count = 0,
   skip_count = 0,
+  burst_count = 0,
+  last_burst_time = 0,
 }
 
 -- Throttle configuration
 local THROTTLE_CONFIG = {
-  min_interval = 100, -- Minimum milliseconds between checks
-  debounce_delay = 250, -- Debounce delay for rapid buffer changes
+  min_interval = 50, -- Reduced from 100ms for better responsiveness
+  debounce_delay = 150, -- Reduced from 250ms for faster switching
   same_file_skip = true, -- Skip check if file hasn't changed
   workspace_boundary_only = true, -- Only check when crossing workspace boundaries
-  max_checks_per_second = 10, -- Rate limiting
+  max_checks_per_second = 15, -- Increased from 10 for better responsiveness
+  burst_allowance = 3, -- Allow 3 rapid checks before throttling
 }
 
 ---Check if auto-switch should be throttled
@@ -27,35 +30,43 @@ local THROTTLE_CONFIG = {
 function Throttle.should_throttle(file_path)
   local now = vim.loop.now()
 
-  -- Rate limiting check
-  if _throttle_state.check_count > 0 and (now - _throttle_state.last_check_time) < 1000 then
-    if _throttle_state.check_count >= THROTTLE_CONFIG.max_checks_per_second then
-      _throttle_state.skip_count = _throttle_state.skip_count + 1
-      return true, "rate_limit_exceeded"
-    end
-  else
-    -- Reset count every second
+  -- Reset burst count if enough time has passed
+  if (now - _throttle_state.last_burst_time) > 1000 then
+    _throttle_state.burst_count = 0
     _throttle_state.check_count = 0
   end
 
-  -- Same file check
+  -- Same file check (highest priority)
   if THROTTLE_CONFIG.same_file_skip and file_path == _throttle_state.last_file_path then
     _throttle_state.skip_count = _throttle_state.skip_count + 1
     return true, "same_file"
+  end
+
+  -- Workspace boundary check (early exit for same workspace)
+  if THROTTLE_CONFIG.workspace_boundary_only and _throttle_state.last_workspace then
+    if Throttle._is_same_workspace_boundary(file_path, _throttle_state.last_workspace) then
+      _throttle_state.skip_count = _throttle_state.skip_count + 1
+      return true, "same_workspace_boundary"
+    end
+  end
+
+  -- Allow burst of rapid checks
+  if _throttle_state.burst_count < THROTTLE_CONFIG.burst_allowance then
+    _throttle_state.burst_count = _throttle_state.burst_count + 1
+    _throttle_state.last_burst_time = now
+    return false, "burst_allowed"
+  end
+
+  -- Rate limiting check after burst
+  if _throttle_state.check_count >= THROTTLE_CONFIG.max_checks_per_second then
+    _throttle_state.skip_count = _throttle_state.skip_count + 1
+    return true, "rate_limit_exceeded"
   end
 
   -- Minimum interval check
   if (now - _throttle_state.last_check_time) < THROTTLE_CONFIG.min_interval then
     _throttle_state.skip_count = _throttle_state.skip_count + 1
     return true, "min_interval"
-  end
-
-  -- Workspace boundary check (if enabled and we have workspace info)
-  if THROTTLE_CONFIG.workspace_boundary_only and _throttle_state.last_workspace then
-    if Throttle._is_same_workspace_boundary(file_path, _throttle_state.last_workspace) then
-      _throttle_state.skip_count = _throttle_state.skip_count + 1
-      return true, "same_workspace_boundary"
-    end
   end
 
   return false, "not_throttled"
@@ -165,6 +176,9 @@ function Throttle.configure(config)
   if config.max_checks_per_second then
     THROTTLE_CONFIG.max_checks_per_second = config.max_checks_per_second
   end
+  if config.burst_allowance then
+    THROTTLE_CONFIG.burst_allowance = config.burst_allowance
+  end
 end
 
 ---Reset throttle state
@@ -183,6 +197,8 @@ function Throttle.reset()
     pending_timer = nil,
     check_count = 0,
     skip_count = 0,
+    burst_count = 0,
+    last_burst_time = 0,
   }
 end
 

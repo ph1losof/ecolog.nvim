@@ -14,6 +14,12 @@ function WorkspaceFinder.find_workspaces(root_path, provider)
     return {}
   end
 
+  -- Early exit if provider has no workspace patterns
+  local patterns = provider:get_workspace_patterns()
+  if not patterns or #patterns == 0 then
+    return {}
+  end
+
   -- Check cache first
   local cache_key = provider:get_cache_key(root_path, "workspaces")
   local cached_workspaces = Cache.get_workspaces(cache_key, provider:get_cache_duration())
@@ -21,7 +27,6 @@ function WorkspaceFinder.find_workspaces(root_path, provider)
     return cached_workspaces
   end
 
-  local patterns = provider:get_workspace_patterns()
   local max_depth = provider:get_max_depth()
   local workspaces = {}
 
@@ -41,6 +46,29 @@ function WorkspaceFinder.find_workspaces(root_path, provider)
   return workspaces
 end
 
+-- Batch file system operations for better performance
+local _file_check_cache = {}
+local _file_check_cache_time = 0
+
+---Check if file is readable with caching
+---@param file_path string File path to check
+---@return boolean readable Whether file is readable
+local function is_file_readable_cached(file_path)
+  local now = vim.loop.now()
+  if (now - _file_check_cache_time) > 5000 then -- Clear cache every 5 seconds
+    _file_check_cache = {}
+    _file_check_cache_time = now
+  end
+  
+  if _file_check_cache[file_path] ~= nil then
+    return _file_check_cache[file_path]
+  end
+  
+  local readable = vim.fn.filereadable(file_path) == 1
+  _file_check_cache[file_path] = readable
+  return readable
+end
+
 ---Find workspaces for a specific pattern
 ---@param root_path string Root path of the monorepo
 ---@param pattern string Workspace pattern to search for
@@ -57,12 +85,19 @@ function WorkspaceFinder._find_workspaces_for_pattern(root_path, pattern, max_de
     found = { found }
   end
 
+  -- Batch directory checks
+  local valid_dirs = {}
   for _, workspace_path in ipairs(found) do
     if vim.fn.isdirectory(workspace_path) == 1 then
-      local workspace = WorkspaceFinder._create_workspace_info(workspace_path, root_path, provider)
-      if workspace and WorkspaceFinder._is_valid_workspace(workspace, max_depth) then
-        table.insert(workspaces, workspace)
-      end
+      table.insert(valid_dirs, workspace_path)
+    end
+  end
+
+  -- Process valid directories
+  for _, workspace_path in ipairs(valid_dirs) do
+    local workspace = WorkspaceFinder._create_workspace_info(workspace_path, root_path, provider)
+    if workspace and WorkspaceFinder._is_valid_workspace(workspace, max_depth) then
+      table.insert(workspaces, workspace)
     end
   end
 
@@ -121,8 +156,9 @@ function WorkspaceFinder._has_package_manager(dir_path, provider)
     package_managers = provider.config.detection.file_markers or {}
   end
 
+  -- Check all files in one batch to reduce system calls
   for _, pm_file in ipairs(package_managers) do
-    if vim.fn.filereadable(dir_path .. "/" .. pm_file) == 1 then
+    if is_file_readable_cached(dir_path .. "/" .. pm_file) then
       return true
     end
   end

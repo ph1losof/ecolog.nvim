@@ -21,20 +21,6 @@ function Detection.register_provider(provider)
   end
 
   _providers[provider.name] = provider
-
-  -- Sort providers by priority
-  local sorted_providers = {}
-  for _, p in pairs(_providers) do
-    table.insert(sorted_providers, p)
-  end
-  table.sort(sorted_providers, function(a, b)
-    return a.priority < b.priority
-  end)
-
-  _providers = {}
-  for _, p in ipairs(sorted_providers) do
-    _providers[p.name] = p
-  end
 end
 
 ---Unregister a provider
@@ -93,6 +79,11 @@ end
 ---@param MonorepoBaseProvider? provider Provider that detected the monorepo
 ---@param table? detection_info Additional detection information
 function Detection.detect_monorepo(path)
+  -- Early exit if no providers are registered
+  if not next(_providers) then
+    return nil, nil, nil
+  end
+
   path = path or vim.fn.getcwd()
   path = vim.fn.fnamemodify(path, ":p:h")
 
@@ -103,15 +94,42 @@ function Detection.detect_monorepo(path)
     return cached_result.root_path, cached_result.provider, cached_result.detection_info
   end
 
+  -- Early termination: check if we're already at filesystem root
+  if path == "/" or path == "" then
+    return nil, nil, nil
+  end
+
   local max_iterations = 10
   local current_path = path
   local iteration = 0
+  local checked_paths = {} -- Avoid re-checking same paths
 
   while current_path ~= "/" and iteration < max_iterations do
     iteration = iteration + 1
 
+    -- Skip if already checked this path
+    if checked_paths[current_path] then
+      break
+    end
+    checked_paths[current_path] = true
+
+    -- Get providers sorted by priority
+    local sorted_providers = {}
+    for _, provider in pairs(_providers) do
+      table.insert(sorted_providers, provider)
+    end
+    
+    -- Skip if no providers available
+    if #sorted_providers == 0 then
+      break
+    end
+    
+    table.sort(sorted_providers, function(a, b)
+      return a.priority < b.priority
+    end)
+
     -- Try each provider in priority order
-    for name, provider in pairs(_providers) do
+    for _, provider in ipairs(sorted_providers) do
       local can_detect, confidence, metadata = provider:detect(current_path)
 
       if can_detect and confidence > 0 then
@@ -125,8 +143,14 @@ function Detection.detect_monorepo(path)
           },
         }
 
-        -- Cache the result
-        Cache.set_detection(cache_key, result, provider:get_cache_duration())
+        -- Cache the result for original path and all checked paths
+        local cache_ttl = provider:get_cache_duration()
+        Cache.set_detection(cache_key, result, cache_ttl)
+        for checked_path in pairs(checked_paths) do
+          if checked_path ~= path then
+            Cache.set_detection("detection:" .. checked_path, result, cache_ttl)
+          end
+        end
 
         return result.root_path, result.provider, result.detection_info
       end
@@ -140,13 +164,19 @@ function Detection.detect_monorepo(path)
     current_path = parent
   end
 
-  -- Cache negative result with shorter TTL
+  -- Cache negative result with shorter TTL for all checked paths
   local negative_result = {
     root_path = nil,
     provider = nil,
     detection_info = nil,
   }
-  Cache.set_detection(cache_key, negative_result, 60000) -- 1 minute TTL for negative results
+  local negative_ttl = 60000 -- 1 minute TTL for negative results
+  Cache.set_detection(cache_key, negative_result, negative_ttl)
+  for checked_path in pairs(checked_paths) do
+    if checked_path ~= path then
+      Cache.set_detection("detection:" .. checked_path, negative_result, negative_ttl)
+    end
+  end
 
   return nil, nil, nil
 end
@@ -243,6 +273,50 @@ function Detection.configure(config)
   if config.cache then
     Cache.configure(config.cache)
   end
+end
+
+---Get applicable providers for a path using quick heuristics
+---@param path string Path to check
+---@return table[] applicable_providers Providers that might detect this path
+function Detection._get_applicable_providers(path)
+  local applicable = {}
+  
+  for name, provider in pairs(_providers) do
+    -- Quick heuristic: check if provider's detection markers exist
+    if provider.get_quick_markers then
+      local markers = provider:get_quick_markers()
+      if #markers == 0 then
+        -- No markers defined, include this provider
+        table.insert(applicable, provider)
+      else
+        local has_marker = false
+        for _, marker in ipairs(markers) do
+          if vim.fn.filereadable(path .. "/" .. marker) == 1 then
+            has_marker = true
+            break
+          end
+        end
+        if has_marker then
+          table.insert(applicable, provider)
+        end
+      end
+    else
+      -- Fallback: include all providers if no quick markers method available
+      table.insert(applicable, provider)
+    end
+  end
+  
+  -- If no applicable providers found, return empty list
+  if #applicable == 0 then
+    return {}
+  end
+  
+  -- Sort by priority
+  table.sort(applicable, function(a, b)
+    return a.priority < b.priority
+  end)
+  
+  return applicable
 end
 
 return Detection

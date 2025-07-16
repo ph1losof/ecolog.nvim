@@ -121,6 +121,15 @@ function M.setup(config)
     end
   end
 
+  -- Check if we have any providers after loading
+  local Detection = get_module("detection")
+  local providers = Detection.get_providers()
+  if not next(providers) then
+    vim.notify("No monorepo providers available. Disabling monorepo system.", vim.log.levels.WARN)
+    _state.enabled = false
+    return
+  end
+
   -- Setup auto-switching if enabled
   if config.auto_switch then
     local AutoSwitch = get_module("auto_switch")
@@ -179,6 +188,15 @@ function M.detect_monorepo_root(path)
   end
 
   local Detection = get_module("detection")
+  
+  -- Check if we have any providers registered
+  local providers = Detection.get_providers()
+  if not next(providers) then
+    vim.notify("No monorepo providers registered. Disabling monorepo detection.", vim.log.levels.WARN)
+    _state.enabled = false
+    return nil, nil, nil
+  end
+  
   return Detection.detect_monorepo(path)
 end
 

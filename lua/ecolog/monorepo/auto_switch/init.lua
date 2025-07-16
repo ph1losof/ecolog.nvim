@@ -135,11 +135,9 @@ function AutoSwitch._perform_workspace_check(file_path, force_check)
     if current_workspace and current_workspace ~= previous_workspace then
       WorkspaceManager.set_current(current_workspace)
       Throttle.update_workspace(current_workspace)
-
-      -- Notify about workspace change if configured
-      if _auto_switch_state.config.notify_on_switch then
-        AutoSwitch._notify_workspace_change(current_workspace, previous_workspace)
-      end
+      
+      -- Note: Notifications are now handled in the main ecolog module
+      -- after environment reloading is complete
     end
   end)
 
@@ -160,14 +158,47 @@ end
 ---@param current_workspace table Current workspace
 ---@param previous_workspace table? Previous workspace
 function AutoSwitch._notify_workspace_change(current_workspace, previous_workspace)
+  -- Get the selected environment file information
+  local selected_env_file = AutoSwitch._get_selected_env_file_info(current_workspace)
+  
   local message
-  if previous_workspace then
-    message = string.format("Switched workspace: %s → %s", previous_workspace.name, current_workspace.name)
+  if selected_env_file then
+    message = string.format("Selected environment file: %s (%s)", selected_env_file.name, selected_env_file.location)
   else
+    -- Fallback to workspace name if no env file is found
     message = string.format("Entered workspace: %s", current_workspace.name)
   end
 
   vim.notify(message, vim.log.levels.INFO)
+end
+
+---Get selected environment file information for a workspace
+---@param workspace table Workspace information
+---@return table? env_file_info Information about the selected environment file
+function AutoSwitch._get_selected_env_file_info(workspace)
+  if not workspace then
+    return nil
+  end
+  
+  -- Get the current ecolog state to find the selected environment file
+  local ecolog = require("ecolog")
+  local state = ecolog.get_state()
+  
+  if not state.selected_env_file then
+    return nil
+  end
+  
+  -- Extract the filename from the full path
+  local filename = vim.fn.fnamemodify(state.selected_env_file, ":t")
+  
+  -- Create a readable location string
+  local location = string.format("%s/%s", workspace.type, workspace.name)
+  
+  return {
+    name = filename,
+    location = location,
+    full_path = state.selected_env_file
+  }
 end
 
 ---Enable auto-switching

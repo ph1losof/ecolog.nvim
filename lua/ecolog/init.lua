@@ -988,8 +988,7 @@ local function create_commands(config)
         end
 
         local ecolog_config = M.get_config()
-        local Detection = require("ecolog.monorepo.detection")
-        local _, provider = Detection.detect_monorepo(root_path)
+        local provider = M._get_monorepo_provider(root_path)
         if not provider then
           notify("No monorepo provider found", vim.log.levels.WARN)
           return
@@ -1020,8 +1019,7 @@ local function create_commands(config)
         end
 
         local ecolog_config = M.get_config()
-        local Detection = require("ecolog.monorepo.detection")
-        local _, provider = Detection.detect_monorepo(root_path)
+        local provider = M._get_monorepo_provider(root_path)
         if not provider then
           notify("No monorepo provider found", vim.log.levels.WARN)
           return
@@ -1074,8 +1072,7 @@ local function create_commands(config)
         end
 
         local ecolog_config = M.get_config()
-        local Detection = require("ecolog.monorepo.detection")
-        local _, provider = Detection.detect_monorepo(root_path)
+        local provider = M._get_monorepo_provider(root_path)
         if not provider then
           notify("No monorepo provider found", vim.log.levels.WARN)
           return
@@ -1130,37 +1127,7 @@ local function create_commands(config)
     },
     EcologDebugState = {
       callback = function()
-        -- Wait for async setup to complete
-        vim.wait(500)
-        
-        local state = M.get_state()
-        local monorepo = require("ecolog.monorepo")
-        local current_workspace = monorepo.get_current_workspace()
-
-        print("=== Ecolog State Debug ===")
-        print("Selected env file:", state.selected_env_file)
-        print("Env vars count:", vim.tbl_count(state.env_vars))
-        print("Current workspace:", current_workspace and current_workspace.name or "none")
-        print("Workspace path:", current_workspace and current_workspace.path or "none")
-
-        if state.selected_env_file then
-          print("File exists:", vim.fn.filereadable(state.selected_env_file) == 1)
-        end
-
-        -- Show first few env vars
-        local count = 0
-        print("Environment variables:")
-        for key, var in pairs(state.env_vars) do
-          if count < 3 then
-            print(string.format("  %s = %s (from: %s)", key, var.value, var.source_file or var.source))
-            count = count + 1
-          else
-            break
-          end
-        end
-        if vim.tbl_count(state.env_vars) > 3 then
-          print(string.format("  ... and %d more", vim.tbl_count(state.env_vars) - 3))
-        end
+        M._debug_ecolog_state()
       end,
       desc = "Debug current ecolog state",
     },
@@ -1173,6 +1140,189 @@ local function create_commands(config)
       complete = cmd.complete,
     })
   end
+end
+
+---Handle workspace change events from monorepo system
+---@param new_workspace table? New workspace information
+---@param previous_workspace table? Previous workspace information
+function M._handle_workspace_change(new_workspace, previous_workspace)
+  -- Clear configuration cache to ensure fresh evaluation
+  _config_cache = {}
+  _config_cache_key = nil
+  
+  -- Schedule the environment reload to ensure workspace change is fully processed
+  vim.schedule(function()
+    -- Get fresh configuration with new workspace context
+    local new_config = M.get_config()
+    
+    -- Update state configuration
+    state.last_opts = new_config
+    
+    -- Clear environment cache to force reload
+    M._clear_environment_cache()
+    
+    -- Reload environment with new workspace context
+    M.refresh_env_vars(new_config)
+    
+    -- Notify about workspace change after environment is reloaded
+    -- Use another schedule to ensure the environment loading is complete
+    vim.schedule(function()
+      if new_config.monorepo and new_config.monorepo.notify_on_switch then
+        M._notify_workspace_change(new_workspace, previous_workspace)
+      end
+    end)
+  end)
+end
+
+---Clear environment-related cache
+function M._clear_environment_cache()
+  state.cached_env_files = nil
+  state.file_cache_opts = nil
+  state.selected_env_file = nil
+  state.env_vars = {}
+end
+
+---Generate cache key for configuration based on current context
+---@param config table Base configuration
+---@return string cache_key Generated cache key
+function M._generate_config_cache_key(config)
+  local current_file = vim.api.nvim_buf_get_name(0)
+  local current_dir = vim.fn.getcwd()
+  
+  -- Include monorepo-specific context if available
+  local monorepo_context = ""
+  if config.monorepo then
+    local monorepo = require("ecolog.monorepo")
+    local current_workspace = monorepo.get_current_workspace()
+    local monorepo_root = monorepo.detect_monorepo_root()
+    
+    monorepo_context = string.format("|monorepo:%s|workspace:%s", 
+      monorepo_root or "none",
+      current_workspace and current_workspace.name or "none"
+    )
+  end
+  
+  return vim.inspect(config) .. "|file:" .. current_file .. "|dir:" .. current_dir .. monorepo_context
+end
+
+---Setup monorepo integration
+---@param config table Configuration with monorepo settings
+---@return table config Updated configuration with monorepo integration
+function M._setup_monorepo_integration(config)
+  local monorepo = require("ecolog.monorepo")
+  
+  -- Initialize monorepo system
+  monorepo.setup(config.monorepo)
+  
+  -- Integrate monorepo context with ecolog configuration
+  local integrated_config = monorepo.integrate_with_ecolog_config(config)
+  
+  -- Set up workspace change listener for automatic environment reloading
+  monorepo.add_workspace_change_listener(function(new_workspace, previous_workspace)
+    if new_workspace ~= previous_workspace then
+      M._handle_workspace_change(new_workspace, previous_workspace)
+    end
+  end)
+  
+  return integrated_config
+end
+
+---Apply monorepo integration to configuration (for cached configs)
+---@param config table Configuration to integrate
+---@return table config Configuration with monorepo integration applied
+function M._apply_monorepo_integration(config)
+  local monorepo = require("ecolog.monorepo")
+  return monorepo.integrate_with_ecolog_config(config)
+end
+
+---Debug current ecolog state
+function M._debug_ecolog_state()
+  -- Wait for async setup to complete
+  vim.wait(500)
+  
+  local state = M.get_state()
+  local monorepo = require("ecolog.monorepo")
+  local current_workspace = monorepo.get_current_workspace()
+
+  print("=== Ecolog State Debug ===")
+  print("Selected env file:", state.selected_env_file)
+  print("Env vars count:", vim.tbl_count(state.env_vars))
+  print("Current workspace:", current_workspace and current_workspace.name or "none")
+  print("Workspace path:", current_workspace and current_workspace.path or "none")
+
+  if state.selected_env_file then
+    print("File exists:", vim.fn.filereadable(state.selected_env_file) == 1)
+  end
+
+  -- Show first few env vars
+  local count = 0
+  print("Environment variables:")
+  for key, var in pairs(state.env_vars) do
+    if count < 3 then
+      print(string.format("  %s = %s (from: %s)", key, var.value, var.source_file or var.source))
+      count = count + 1
+    else
+      break
+    end
+  end
+  if vim.tbl_count(state.env_vars) > 3 then
+    print(string.format("  ... and %d more", vim.tbl_count(state.env_vars) - 3))
+  end
+end
+
+---Get monorepo provider for given root path
+---@param root_path string Root path to detect provider for
+---@return table? provider Detected monorepo provider or nil
+function M._get_monorepo_provider(root_path)
+  local Detection = require("ecolog.monorepo.detection")
+  local _, provider = Detection.detect_monorepo(root_path)
+  return provider
+end
+
+---Notify about workspace change with environment file information
+---@param current_workspace table Current workspace
+---@param previous_workspace table? Previous workspace
+function M._notify_workspace_change(current_workspace, previous_workspace)
+  -- Get the selected environment file information
+  local selected_env_file = M._get_selected_env_file_info(current_workspace)
+  
+  local message
+  if selected_env_file then
+    message = string.format("Selected environment file: %s (%s)", selected_env_file.name, selected_env_file.location)
+  else
+    -- Fallback to workspace name if no env file is found
+    message = string.format("Entered workspace: %s", current_workspace.name)
+  end
+
+  vim.notify(message, vim.log.levels.INFO)
+end
+
+---Get selected environment file information for a workspace
+---@param workspace table Workspace information
+---@return table? env_file_info Information about the selected environment file
+function M._get_selected_env_file_info(workspace)
+  if not workspace then
+    return nil
+  end
+  
+  -- Get the current ecolog state to find the selected environment file
+  local current_state = M.get_state()
+  
+  if not current_state.selected_env_file then
+    return nil
+  end
+  
+  -- Extract the filename from the full path
+  local filename = vim.fn.fnamemodify(current_state.selected_env_file, ":t")
+  
+  -- Create a readable location string
+  local location = string.format("%s/%s", workspace.type, workspace.name)
+  
+  return {
+    name = filename,
+    location = location,
+    full_path = current_state.selected_env_file
+  }
 end
 
 ---@param config EcologConfig
@@ -1231,37 +1381,7 @@ function M.setup(opts)
 
     -- Setup monorepo support if enabled
     if config.monorepo then
-      local monorepo = require("ecolog.monorepo")
-      monorepo.setup(config.monorepo)
-      config = monorepo.integrate_with_ecolog_config(config)
-      
-      -- Set up workspace change listener to reload environment when workspace changes
-      monorepo.add_workspace_change_listener(function(new_workspace, previous_workspace)
-        -- Only reload if workspace actually changed
-        if new_workspace ~= previous_workspace then
-          -- Clear config cache to force re-evaluation
-          _config_cache = {}
-          _config_cache_key = nil
-          
-          -- Use vim.schedule to ensure the workspace change is fully processed
-          vim.schedule(function()
-            -- Get fresh config with new workspace context
-            local new_config = M.get_config()
-            
-            -- Update state.last_opts with new config
-            state.last_opts = new_config
-            
-            -- Clear all cached state
-            state.cached_env_files = nil
-            state.file_cache_opts = nil
-            state.selected_env_file = nil
-            state.env_vars = {}
-            
-            -- Reload environment with new workspace context
-            M.refresh_env_vars(new_config)
-          end)
-        end
-      end)
+      config = M._setup_monorepo_integration(config)
     end
 
     -- Set state.last_opts after monorepo integration
@@ -1464,10 +1584,8 @@ function M.get_config()
   -- Use lock-free read for config (read-only operation)
   local config = safe_read_state("last_opts")
   if config then
-    -- Generate cache key based on config content and current file/directory for monorepo awareness
-    local current_file = vim.api.nvim_buf_get_name(0)
-    local current_dir = vim.fn.getcwd()
-    local cache_key = vim.inspect(config) .. "|" .. current_file .. "|" .. current_dir
+    -- Generate cache key based on config content and current context for monorepo awareness
+    local cache_key = M._generate_config_cache_key(config)
 
     -- Check if we have a cached version
     if _config_cache_key == cache_key and _config_cache[cache_key] then
@@ -1479,8 +1597,7 @@ function M.get_config()
 
     -- Apply monorepo integration if enabled
     if cached_config.monorepo then
-      local monorepo = require("ecolog.monorepo")
-      cached_config = monorepo.integrate_with_ecolog_config(cached_config)
+      cached_config = M._apply_monorepo_integration(cached_config)
     end
 
     _config_cache[cache_key] = cached_config

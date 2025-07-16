@@ -112,6 +112,14 @@ function TurborepoProvider:get_workspace_patterns()
   return all_patterns
 end
 
+---Get package manager files for workspace validation
+---@return string[] package_managers List of package manager files
+function TurborepoProvider:get_package_managers()
+  -- For Turborepo, workspaces should have package.json files
+  -- The turbo.json file is only at the root level
+  return { "package.json" }
+end
+
 ---Get enhanced environment resolution for Turborepo
 ---@return ProviderEnvConfig env_config Enhanced environment configuration
 function TurborepoProvider:get_env_resolution()

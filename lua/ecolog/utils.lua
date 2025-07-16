@@ -390,20 +390,21 @@ function M.find_env_files(opts)
     local workspace = opts._workspace_info
     local root_path = opts._monorepo_root
     
-    -- Use provider-specific env_resolution if available, otherwise fall back to provider default
-    local monorepo_config = {
-      strategy = "workspace_first",
-      inheritance = true
-    }
-    
-    if type(opts.monorepo) == "table" and opts.monorepo.env_resolution then
-      monorepo_config = opts.monorepo.env_resolution
-    elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.env_resolution then
-      monorepo_config = opts._detected_info.provider.env_resolution
+    -- Get provider from detected info
+    local provider = opts._detected_info and opts._detected_info.provider
+    if not provider then
+      -- Fall back to detecting provider
+      local Detection = require("ecolog.monorepo.detection")
+      _, provider = Detection.detect_monorepo(root_path)
     end
     
-    -- Get files using monorepo resolution strategy
-    files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
+    if not provider then
+      -- No provider found, fall back to default files
+      files = M.find_env_files_in_path(opts.path, opts.env_file_patterns)
+    else
+      -- Get files using monorepo resolution strategy
+      files = monorepo.resolve_env_files(workspace, root_path, provider, opts.env_file_patterns, opts)
+    end
     
     -- Files are already sorted by resolve_env_files, just return them
     return files

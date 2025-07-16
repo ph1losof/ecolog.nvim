@@ -49,7 +49,7 @@ local schedule = vim.schedule
 ---@field features.escapes boolean Enable escape sequences (\n, \t, etc.)
 
 local DEFAULT_CONFIG = {
-  path = vim.fn.getcwd(),
+  path = nil, -- Set dynamically in setup()
   shelter = {
     configuration = {
       partial_mode = false,
@@ -988,8 +988,13 @@ local function create_commands(config)
         end
 
         local ecolog_config = M.get_config()
-        local monorepo_config = ecolog_config.monorepo or {}
-        local workspaces = monorepo.get_workspaces(root_path, monorepo_config)
+        local Detection = require("ecolog.monorepo.detection")
+        local _, provider = Detection.detect_monorepo(root_path)
+        if not provider then
+          notify("No monorepo provider found", vim.log.levels.WARN)
+          return
+        end
+        local workspaces = monorepo.get_workspaces(root_path, provider)
         local current_workspace = monorepo.get_current_workspace()
 
         if #workspaces == 0 then
@@ -1015,8 +1020,13 @@ local function create_commands(config)
         end
 
         local ecolog_config = M.get_config()
-        local monorepo_config = ecolog_config.monorepo or {}
-        local workspaces = monorepo.get_workspaces(root_path, monorepo_config)
+        local Detection = require("ecolog.monorepo.detection")
+        local _, provider = Detection.detect_monorepo(root_path)
+        if not provider then
+          notify("No monorepo provider found", vim.log.levels.WARN)
+          return
+        end
+        local workspaces = monorepo.get_workspaces(root_path, provider)
         local workspace_name = args.args
 
         if workspace_name == "" then
@@ -1064,8 +1074,13 @@ local function create_commands(config)
         end
 
         local ecolog_config = M.get_config()
-        local monorepo_config = ecolog_config.monorepo or {}
-        local workspaces = monorepo.get_workspaces(root_path, monorepo_config)
+        local Detection = require("ecolog.monorepo.detection")
+        local _, provider = Detection.detect_monorepo(root_path)
+        if not provider then
+          notify("No monorepo provider found", vim.log.levels.WARN)
+          return
+        end
+        local workspaces = monorepo.get_workspaces(root_path, provider)
         local names = {}
         for _, workspace in ipairs(workspaces) do
           if workspace.name:find(arglead, 1, true) then
@@ -1115,6 +1130,9 @@ local function create_commands(config)
     },
     EcologDebugState = {
       callback = function()
+        -- Wait for async setup to complete
+        vim.wait(500)
+        
         local state = M.get_state()
         local monorepo = require("ecolog.monorepo")
         local current_workspace = monorepo.get_current_workspace()
@@ -1203,6 +1221,12 @@ function M.setup(opts)
     _setup_done = true
 
     local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
+    
+    -- Set default path if not provided
+    if not config.path then
+      config.path = vim.fn.getcwd()
+    end
+    
     validate_config(config)
 
     -- Setup monorepo support if enabled
@@ -1210,7 +1234,42 @@ function M.setup(opts)
       local monorepo = require("ecolog.monorepo")
       monorepo.setup(config.monorepo)
       config = monorepo.integrate_with_ecolog_config(config)
+      
+      -- Set up workspace change listener to reload environment when workspace changes
+      monorepo.add_workspace_change_listener(function(new_workspace, previous_workspace)
+        -- Only reload if workspace actually changed
+        if new_workspace ~= previous_workspace then
+          -- Clear config cache to force re-evaluation
+          _config_cache = {}
+          _config_cache_key = nil
+          
+          -- Use vim.schedule to ensure the workspace change is fully processed
+          vim.schedule(function()
+            -- Get fresh config with new workspace context
+            local new_config = M.get_config()
+            
+            -- Update state.last_opts with new config
+            state.last_opts = new_config
+            
+            -- Clear all cached state
+            state.cached_env_files = nil
+            state.file_cache_opts = nil
+            state.selected_env_file = nil
+            state.env_vars = {}
+            
+            -- Reload environment with new workspace context
+            M.refresh_env_vars(new_config)
+          end)
+        end
+      end)
     end
+
+    -- Set state.last_opts after monorepo integration
+    state.last_opts = config
+    
+    -- Clear config cache to ensure fresh config is used
+    _config_cache = {}
+    _config_cache_key = nil
 
     if config.providers then
       local providers = require("ecolog.providers")
@@ -1243,7 +1302,7 @@ function M.setup(opts)
     end
 
     state.selected_env_file = nil
-    state.last_opts = config
+    -- Note: state.last_opts is set after monorepo integration
 
     if config.integrations.blink_cmp then
       config.integrations.nvim_cmp = false
@@ -1405,9 +1464,10 @@ function M.get_config()
   -- Use lock-free read for config (read-only operation)
   local config = safe_read_state("last_opts")
   if config then
-    -- Generate cache key based on config content and current file for monorepo awareness
+    -- Generate cache key based on config content and current file/directory for monorepo awareness
     local current_file = vim.api.nvim_buf_get_name(0)
-    local cache_key = vim.inspect(config) .. "|" .. current_file
+    local current_dir = vim.fn.getcwd()
+    local cache_key = vim.inspect(config) .. "|" .. current_file .. "|" .. current_dir
 
     -- Check if we have a cached version
     if _config_cache_key == cache_key and _config_cache[cache_key] then
@@ -1434,7 +1494,7 @@ function M.get_config()
     local default_config = vim.tbl_extend("force", {}, DEFAULT_CONFIG)
 
     -- Apply monorepo integration to default config if enabled
-    if default_config.monorepo then
+    if default_config.monorepo and not default_config._monorepo_root then
       local monorepo = require("ecolog.monorepo")
       default_config = monorepo.integrate_with_ecolog_config(default_config)
     end

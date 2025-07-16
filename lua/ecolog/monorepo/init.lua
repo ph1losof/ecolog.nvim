@@ -492,7 +492,12 @@ function M.integrate_with_ecolog_config(ecolog_config)
   end
 
   local workspaces = M.get_workspaces(root_path, provider)
-  local current_workspace = M.find_current_workspace(nil, workspaces)
+  -- Use current working directory as fallback if no file is specified
+  local current_file = vim.fn.expand("%:p")
+  if current_file == "" then
+    current_file = vim.fn.getcwd()
+  end
+  local current_workspace = M.find_current_workspace(current_file, workspaces)
 
   -- Add monorepo information to config
   ecolog_config._monorepo_root = root_path

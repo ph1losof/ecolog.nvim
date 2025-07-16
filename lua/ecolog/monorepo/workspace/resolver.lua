@@ -182,7 +182,7 @@ function EnvironmentResolver._generate_cache_key(workspace, root_path, provider,
     provider.name,
     root_path,
     workspace and workspace.path or "no_workspace",
-    table.concat(env_file_patterns, ","),
+    env_file_patterns and table.concat(env_file_patterns, ",") or "default_patterns",
     opts.preferred_environment or "no_pref",
   }
 

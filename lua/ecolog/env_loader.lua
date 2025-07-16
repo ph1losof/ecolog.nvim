@@ -5,6 +5,7 @@ local utils = require("ecolog.utils")
 local types = require("ecolog.types")
 local shell = require("ecolog.shell")
 local interpolation = require("ecolog.interpolation")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Lazy-loaded async loader for performance
 local AsyncEnvLoader = nil
@@ -257,6 +258,20 @@ local function merge_vars(target, source, override)
   return target
 end
 
+---Check and parse shell configuration
+---@param load_shell_config any Shell configuration (boolean or table)
+---@return boolean enabled Whether shell loading is enabled
+---@return boolean override Whether shell should override file vars
+local function parse_shell_config(load_shell_config)
+  local enabled = load_shell_config
+    and (
+      (type(load_shell_config) == "boolean" and load_shell_config)
+      or (type(load_shell_config) == "table" and load_shell_config.enabled)
+    )
+  local override = enabled and type(load_shell_config) == "table" and load_shell_config.override
+  return enabled, override
+end
+
 ---Load secrets from all configured secret managers
 ---@param opts table The configuration options
 ---@param env_vars table<string, EnvVarInfo> Current environment variables
@@ -294,7 +309,8 @@ end
 function M.load_environment(opts, state, force)
   if force then
     -- Preserve selected_env_file if workspace file transition was handled
-    local preserved_file = opts._workspace_selected_file or (opts._workspace_file_handled and state.selected_env_file or nil)
+    local preserved_file = opts._workspace_selected_file
+      or (opts._workspace_file_handled and state.selected_env_file or nil)
     state.env_vars = {}
     state._env_line_cache = {}
     if preserved_file then
@@ -332,11 +348,17 @@ function M.load_environment(opts, state, force)
         local utils = require("ecolog.utils")
         local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name), vim.log.levels.INFO)
+        vim.notify(
+          string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),
+          vim.log.levels.INFO
+        )
       else
         local utils = require("ecolog.utils")
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name), vim.log.levels.WARN)
+        vim.notify(
+          string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name),
+          vim.log.levels.WARN
+        )
       end
     end
   end
@@ -381,7 +403,7 @@ end
 ---@param force boolean? Whether to force reload environment variables
 function M.load_environment_async(opts, state, callback, force)
   if not callback or type(callback) ~= "function" then
-    vim.notify("Invalid callback provided to load_environment_async", vim.log.levels.ERROR)
+    NotificationManager.notify("Invalid callback provided to load_environment_async", vim.log.levels.ERROR)
     return
   end
 
@@ -417,11 +439,17 @@ function M.load_environment_async(opts, state, callback, force)
         local utils = require("ecolog.utils")
         local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name), vim.log.levels.INFO)
+        vim.notify(
+          string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),
+          vim.log.levels.INFO
+        )
       else
         local utils = require("ecolog.utils")
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name), vim.log.levels.WARN)
+        vim.notify(
+          string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name),
+          vim.log.levels.WARN
+        )
       end
     end
 
@@ -521,49 +549,44 @@ end
 function M.load_monorepo_environment(opts, state)
   -- Get all environment files using optimized discovery
   local env_files = utils.find_env_files(opts)
-  
+
   if #env_files == 0 then
     state.env_vars = {}
     return {}
   end
-  
+
   -- For monorepo environments, select only the FIRST file (highest priority)
   -- based on the provider's resolution strategy and priority rules
   local selected_file = env_files[1]
-  
+
   -- Update state with selected file for compatibility
   state.selected_env_file = selected_file
-  
+
   local env_vars = {}
-  local shell_enabled = opts.load_shell
-    and (
-      (type(opts.load_shell) == "boolean" and opts.load_shell)
-      or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
-    )
-  local shell_override = shell_enabled and type(opts.load_shell) == "table" and opts.load_shell.override
+  local shell_enabled, shell_override = parse_shell_config(opts.load_shell)
 
   if shell_override then
     -- Load shell variables first if override is enabled
     local shell_vars = shell.load_shell_vars(opts.load_shell)
     merge_vars(env_vars, shell_vars, true)
-    
+
     -- Then load file variables (won't override shell vars)
     local file_vars = load_env_file(selected_file, state._env_line_cache or {}, env_vars, opts)
     merge_vars(env_vars, file_vars, false)
   else
     -- Load file variables first
     env_vars = load_env_file(selected_file, state._env_line_cache or {}, env_vars, opts)
-    
+
     -- Then add shell variables if enabled (won't override file vars)
     if shell_enabled then
       local shell_vars = shell.load_shell_vars(opts.load_shell)
       merge_vars(env_vars, shell_vars, false)
     end
   end
-  
+
   -- Apply secrets from secret managers
   env_vars = load_secrets(opts, env_vars)
-  
+
   state.env_vars = env_vars
   return env_vars
 end

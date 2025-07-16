@@ -293,6 +293,36 @@ TIMESTAMP=$(date +%Y%m%d)
 DATABASE_URL="postgres://${DB_USER:-postgres}:${DB_PASS}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME}"
 ```
 
+### Security
+
+By default, Ecolog sanitizes potentially dangerous characters in command substitutions to prevent command injection attacks. Characters like `;`, `|`, `` ` ``, `$`, `()` are removed from commands before execution.
+
+For example:
+
+```sh
+# This dangerous command:
+HACK=$(echo hello; rm -rf /)
+
+# Gets sanitized to:
+HACK=$(echo hello rm -rf /)
+```
+
+#### Disabling Security (Advanced)
+
+In trusted environments where you need complex shell commands, you can disable security sanitization:
+
+```lua
+require('ecolog').setup({
+  interpolation = {
+    enabled = true,
+    disable_security = true,  -- ⚠️ Use with caution!
+    -- ... other options
+  }
+})
+```
+
+**⚠️ Warning**: Only disable security in trusted environments. When `disable_security = true`, all shell command characters are allowed, which can be dangerous if environment files contain malicious commands.
+
 ### Configuration Options
 
 You can customize the interpolation behavior through the plugin's configuration:
@@ -311,6 +341,7 @@ require('ecolog').setup({
     max_iterations = 10,         -- Maximum iterations for nested interpolation
     warn_on_undefined = true,    -- Warn about undefined variables
     fail_on_cmd_error = false,  -- How to handle command substitution errors
+    disable_security = false,    -- Disable security sanitization for command substitution
     features = {
       variables = true,         -- Enable variable interpolation ($VAR, ${VAR})
       defaults = true,         -- Enable default value syntax (${VAR:-default})
@@ -330,6 +361,7 @@ The configuration options are:
 | max_iterations      | number  | 10      | Maximum iterations for nested variable interpolation      |
 | warn_on_undefined   | boolean | true    | Whether to warn when undefined variables are referenced   |
 | fail_on_cmd_error   | boolean | false   | Whether to error or warn on command substitution failures |
+| disable_security    | boolean | false   | Disable security sanitization for command substitution    |
 | features            | table   | -       | Control specific interpolation features                   |
 | features.variables  | boolean | true    | Enable variable interpolation ($VAR, ${VAR})              |
 | features.defaults   | boolean | true    | Enable default value syntax (${VAR:-default})             |
@@ -347,6 +379,7 @@ The configuration options are:
 - **Quote Handling**: Proper handling of single and double quotes
 - **Default Values**: Support for default and alternate value syntax
 - **Safety Limits**: Prevention of infinite recursion with iteration limits
+- **Security Sanitization**: Built-in protection against command injection attacks
 
 ### Best Practices
 
@@ -360,6 +393,10 @@ The configuration options are:
    - Disable `alternates` and `defaults` if not needed
    - Keep `variables` enabled for basic interpolation
    - Consider disabling `escapes` if not using special characters
+7. Use security settings appropriately:
+   - Keep `disable_security = false` (default) in untrusted environments
+   - Only set `disable_security = true` in trusted environments where you need complex shell commands
+   - Be aware that disabling security allows potentially dangerous characters like `;`, `|`, `` ` ``, `$`, `()` in command substitutions
 
 ## 🌍 Supported Languages
 
@@ -1771,7 +1808,7 @@ Add to your lualine config:
 require('lualine').setup({
   sections = {
     lualine_x = {
-      require('ecolog').get_lualine,
+      require('ecolog.integrations.statusline').lualine(),
     }
   }
 })
@@ -2597,12 +2634,12 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
 > **Note**: Additional setup is required for [blink-cmp](#blink-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
-{
+  {
     'ssstba/ecolog.nvim',
     keys = {
+      { '<leader>e', '', desc = '+ecolog', mode = { 'n', 'v' } },
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
       { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
-      { '<leader>ei', '<Cmd>EcologInterpolationToggle<cr>', desc = 'Toggle shell variables' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
@@ -2612,6 +2649,11 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
     opts = {
       preferred_environment = 'local',
       types = true,
+      monorepo = {
+        enabled = true,
+        auto_switch = true,
+        notify_on_switch = true,
+      },
       providers = {
         {
           pattern = '{{[%w_]+}}?$',
@@ -2646,6 +2688,7 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
         blink_cmp = true,
         statusline = {
           hidden_mode = true,
+          icons = { enabled = true, env = 'E', shelter = 'S' },
           highlights = {
             env_file = 'Directory',
             vars_count = 'Number',
@@ -2655,6 +2698,9 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
       },
       shelter = {
         configuration = {
+          patterns = {
+            ['DATABASE_URL'] = 'full',
+          },
           sources = {
             ['.env.example'] = 'none',
           },

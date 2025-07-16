@@ -322,12 +322,21 @@ function M.load_environment(opts, state, force)
   -- Only check file readability and override if not handled by workspace transition
   if not opts._workspace_file_handled then
     if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+      local deleted_file = state.selected_env_file
       state.selected_env_file = nil
       state.env_vars = {}
       state._env_line_cache = {}
       local env_files = utils.find_env_files(opts)
       if #env_files > 0 then
         state.selected_env_file = env_files[1]
+        local utils = require("ecolog.utils")
+        local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
+        local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
+        vim.notify(string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name), vim.log.levels.INFO)
+      else
+        local utils = require("ecolog.utils")
+        local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
+        vim.notify(string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name), vim.log.levels.WARN)
       end
     end
   end
@@ -398,12 +407,21 @@ function M.load_environment_async(opts, state, callback, force)
     end
 
     if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+      local deleted_file = state.selected_env_file
       state.selected_env_file = nil
       state.env_vars = {}
       state._env_line_cache = {}
       local env_files = utils.find_env_files(opts)
       if #env_files > 0 then
         state.selected_env_file = env_files[1]
+        local utils = require("ecolog.utils")
+        local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
+        local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
+        vim.notify(string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name), vim.log.levels.INFO)
+      else
+        local utils = require("ecolog.utils")
+        local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
+        vim.notify(string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name), vim.log.levels.WARN)
       end
     end
 

@@ -511,10 +511,23 @@ function M.get_env_vars()
   local result = {}
   local success, err = pcall(function()
     if state.selected_env_file and vim.fn.filereadable(state.selected_env_file) == 0 then
+      local deleted_file = state.selected_env_file
       state.selected_env_file = nil
       state.env_vars = {}
       state._env_line_cache = {}
       env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state, true)
+      
+      -- Notify about file deletion and automatic switching after env loading
+      if state.selected_env_file then
+        local utils = require("ecolog.utils")
+        local new_display_name = utils.get_env_file_display_name(state.selected_env_file, state.last_opts or DEFAULT_CONFIG)
+        local deleted_display_name = utils.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
+        vim.notify(string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name), vim.log.levels.INFO)
+      else
+        local utils = require("ecolog.utils")
+        local deleted_display_name = utils.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
+        vim.notify(string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name), vim.log.levels.WARN)
+      end
     end
 
     if next(state.env_vars) == nil then

@@ -2,6 +2,11 @@ local assert = require("luassert")
 
 describe("monorepo provider system", function()
   local monorepo = require("ecolog.monorepo")
+  
+  before_each(function()
+    -- Clear providers before each test to avoid interference
+    monorepo.clear_providers()
+  end)
 
   local function create_test_monorepo(path, provider_type, files)
     vim.fn.mkdir(path, "p")

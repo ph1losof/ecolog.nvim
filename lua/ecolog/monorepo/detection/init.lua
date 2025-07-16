@@ -30,6 +30,12 @@ function Detection.unregister_provider(name)
   _provider_modules[name] = nil
 end
 
+---Clear all registered providers
+function Detection.clear_providers()
+  _providers = {}
+  _provider_modules = {}
+end
+
 ---Get registered provider by name
 ---@param name string Provider name
 ---@return MonorepoBaseProvider? provider Provider instance or nil

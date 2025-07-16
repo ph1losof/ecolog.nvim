@@ -220,6 +220,13 @@ function NxProvider.validate_config(config)
   return true, nil
 end
 
+---Get package manager files for workspace detection
+---@return string[] package_managers List of package manager files
+function NxProvider:get_package_managers()
+  -- For workspace detection, look for package.json files
+  return { "package.json" }
+end
+
 ---Get provider-specific metadata
 ---@return table metadata Provider information and capabilities
 function NxProvider:get_metadata()

@@ -171,7 +171,8 @@ local function process_cmd_substitution(cmd, opts)
   
   -- Use pcall to protect against system command errors
   local success, output = pcall(function()
-    return vim.fn.system(cmd)
+    -- Use shell to properly handle pipes and complex commands
+    return vim.fn.system({"sh", "-c", cmd})
   end)
   
   if not success then

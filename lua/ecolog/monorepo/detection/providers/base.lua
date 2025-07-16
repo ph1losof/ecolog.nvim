@@ -36,6 +36,11 @@ function BaseProvider.new(config)
   instance.priority = config.priority or 50
   instance.cache_key_prefix = "provider:" .. config.name .. ":"
   instance.config = config
+  
+  -- Add convenience properties for backward compatibility
+  instance.workspace_patterns = config.workspace and config.workspace.patterns or {}
+  instance.workspace_priority = config.workspace and config.workspace.priority or {}
+  
   return instance
 end
 

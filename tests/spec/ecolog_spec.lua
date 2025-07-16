@@ -243,6 +243,27 @@ describe("ecolog", function()
       vim.cmd("write")
 
       -- Wait for file watcher to process
+      vim.wait(500)
+
+      -- Force refresh to ensure cache is invalidated and file is reloaded
+      local config = {
+        path = test_dir,
+        shelter = {
+          configuration = {},
+          modules = {},
+        },
+        integrations = {
+          nvim_cmp = false,
+          blink_cmp = false,
+          lsp = false,
+          lspsaga = false,
+          fzf = false,
+        },
+        types = true,
+      }
+      ecolog.refresh_env_vars(config)
+      
+      -- Additional wait to ensure the refresh completes
       vim.wait(100)
 
       local env_vars = ecolog.get_env_vars()

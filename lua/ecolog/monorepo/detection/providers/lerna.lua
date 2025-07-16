@@ -178,6 +178,13 @@ function LernaProvider.validate_config(config)
   return true, nil
 end
 
+---Get package manager files for workspace detection
+---@return string[] package_managers List of package manager files
+function LernaProvider:get_package_managers()
+  -- For workspace detection, look for package.json files
+  return { "package.json" }
+end
+
 ---Get provider-specific metadata
 ---@return table metadata Provider information and capabilities
 function LernaProvider:get_metadata()

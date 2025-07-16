@@ -6,6 +6,15 @@ local types = require("ecolog.types")
 local shell = require("ecolog.shell")
 local interpolation = require("ecolog.interpolation")
 
+-- Lazy-loaded async loader for performance
+local AsyncEnvLoader = nil
+local function get_async_loader()
+  if not AsyncEnvLoader then
+    AsyncEnvLoader = require("ecolog.env_loader_async")
+  end
+  return AsyncEnvLoader
+end
+
 ---@class EnvVarInfo
 ---@field value any The processed value of the environment variable
 ---@field type string The detected type of the variable
@@ -297,6 +306,11 @@ function M.load_environment(opts, state, force)
     return state.env_vars
   end
 
+  -- Optimized monorepo environment loading
+  if opts._is_monorepo_workspace or opts._is_monorepo_manual_mode then
+    return M.load_monorepo_environment(opts, state)
+  end
+
   -- Only auto-select first file if not handled by workspace transition
   if not state.selected_env_file and not opts._workspace_file_handled then
     local env_files = utils.find_env_files(opts)
@@ -480,6 +494,60 @@ function M.load_environment_async(opts, state, callback, force)
       end
     end
   end, 0)
+end
+
+---Optimized monorepo environment loading with single-file selection
+---@param opts table Configuration options
+---@param state LoaderState Current loader state
+---@return table<string, EnvVarInfo> env_vars
+function M.load_monorepo_environment(opts, state)
+  -- Get all environment files using optimized discovery
+  local env_files = utils.find_env_files(opts)
+  
+  if #env_files == 0 then
+    state.env_vars = {}
+    return {}
+  end
+  
+  -- For monorepo environments, select only the FIRST file (highest priority)
+  -- based on the provider's resolution strategy and priority rules
+  local selected_file = env_files[1]
+  
+  -- Update state with selected file for compatibility
+  state.selected_env_file = selected_file
+  
+  local env_vars = {}
+  local shell_enabled = opts.load_shell
+    and (
+      (type(opts.load_shell) == "boolean" and opts.load_shell)
+      or (type(opts.load_shell) == "table" and opts.load_shell.enabled)
+    )
+  local shell_override = shell_enabled and type(opts.load_shell) == "table" and opts.load_shell.override
+
+  if shell_override then
+    -- Load shell variables first if override is enabled
+    local shell_vars = shell.load_shell_vars(opts.load_shell)
+    merge_vars(env_vars, shell_vars, true)
+    
+    -- Then load file variables (won't override shell vars)
+    local file_vars = load_env_file(selected_file, state._env_line_cache or {}, env_vars, opts)
+    merge_vars(env_vars, file_vars, false)
+  else
+    -- Load file variables first
+    env_vars = load_env_file(selected_file, state._env_line_cache or {}, env_vars, opts)
+    
+    -- Then add shell variables if enabled (won't override file vars)
+    if shell_enabled then
+      local shell_vars = shell.load_shell_vars(opts.load_shell)
+      merge_vars(env_vars, shell_vars, false)
+    end
+  end
+  
+  -- Apply secrets from secret managers
+  env_vars = load_secrets(opts, env_vars)
+  
+  state.env_vars = env_vars
+  return env_vars
 end
 
 return M

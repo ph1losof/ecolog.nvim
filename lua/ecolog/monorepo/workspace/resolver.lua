@@ -2,6 +2,7 @@
 local EnvironmentResolver = {}
 
 local Cache = require("ecolog.monorepo.detection.cache")
+local BulkResolver = require("ecolog.monorepo.workspace.bulk_resolver")
 
 -- Default environment file patterns
 local DEFAULT_ENV_PATTERNS = {
@@ -10,7 +11,7 @@ local DEFAULT_ENV_PATTERNS = {
   ".env.*",
 }
 
----Resolve environment files for a workspace
+---Resolve environment files for a workspace (optimized)
 ---@param workspace table? Workspace information
 ---@param root_path string Monorepo root path
 ---@param provider MonorepoBaseProvider Provider that manages this workspace
@@ -31,37 +32,52 @@ function EnvironmentResolver.resolve_env_files(workspace, root_path, provider, e
   end
 
   local env_resolution = provider:get_env_resolution()
-  local env_files = {}
-
+  local paths_to_resolve = {}
+  
+  -- Collect paths based on resolution strategy
   if env_resolution.strategy == "workspace_only" and workspace then
-    -- Only workspace env files
-    env_files = EnvironmentResolver._find_env_files_in_path(workspace.path, env_file_patterns)
+    table.insert(paths_to_resolve, {path = workspace.path, workspace_info = workspace})
   elseif env_resolution.strategy == "workspace_first" then
-    -- Workspace files first, then root files
     if workspace then
-      vim.list_extend(env_files, EnvironmentResolver._find_env_files_in_path(workspace.path, env_file_patterns))
+      table.insert(paths_to_resolve, {path = workspace.path, workspace_info = workspace})
     end
     if env_resolution.inheritance then
-      vim.list_extend(env_files, EnvironmentResolver._find_env_files_in_path(root_path, env_file_patterns))
+      table.insert(paths_to_resolve, {path = root_path, workspace_info = nil})
     end
   elseif env_resolution.strategy == "root_first" then
-    -- Root files first, then workspace files
-    vim.list_extend(env_files, EnvironmentResolver._find_env_files_in_path(root_path, env_file_patterns))
+    table.insert(paths_to_resolve, {path = root_path, workspace_info = nil})
     if workspace then
-      vim.list_extend(env_files, EnvironmentResolver._find_env_files_in_path(workspace.path, env_file_patterns))
+      table.insert(paths_to_resolve, {path = workspace.path, workspace_info = workspace})
     end
   elseif env_resolution.strategy == "merge" then
-    -- Merge strategy - collect all and sort by override order
-    local root_files = EnvironmentResolver._find_env_files_in_path(root_path, env_file_patterns)
-    local workspace_files = workspace and EnvironmentResolver._find_env_files_in_path(workspace.path, env_file_patterns)
-      or {}
-
-    -- Apply override order
+    -- Collect all paths for merge strategy
+    table.insert(paths_to_resolve, {path = root_path, workspace_info = nil})
+    if workspace then
+      table.insert(paths_to_resolve, {path = workspace.path, workspace_info = workspace})
+    end
+  end
+  
+  -- Use bulk resolver for high performance
+  local bulk_results = BulkResolver.bulk_resolve_env_files(paths_to_resolve, env_file_patterns, provider, opts)
+  
+  -- Merge results according to strategy
+  local env_files = {}
+  
+  if env_resolution.strategy == "merge" then
+    -- Apply override order for merge strategy
     for _, location in ipairs(env_resolution.override_order) do
-      if location == "root" then
-        vim.list_extend(env_files, root_files)
-      elseif location == "workspace" then
-        vim.list_extend(env_files, workspace_files)
+      if location == "root" and bulk_results[root_path] then
+        vim.list_extend(env_files, bulk_results[root_path])
+      elseif location == "workspace" and workspace and bulk_results[workspace.path] then
+        vim.list_extend(env_files, bulk_results[workspace.path])
+      end
+    end
+  else
+    -- Sequential strategy
+    for _, path_info in ipairs(paths_to_resolve) do
+      local path = path_info.path
+      if bulk_results[path] then
+        vim.list_extend(env_files, bulk_results[path])
       end
     end
   end
@@ -189,7 +205,7 @@ function EnvironmentResolver._generate_cache_key(workspace, root_path, provider,
   return table.concat(key_parts, ":")
 end
 
----Resolve environment files for all workspaces in manual mode
+---Resolve environment files for all workspaces in manual mode (optimized)
 ---@param workspaces table[] List of all workspaces
 ---@param root_path string Monorepo root path
 ---@param provider MonorepoBaseProvider Provider that manages these workspaces
@@ -197,13 +213,35 @@ end
 ---@param opts table? Additional options
 ---@return string[] env_files Merged list of environment files from all workspaces
 function EnvironmentResolver.resolve_all_workspace_files(workspaces, root_path, provider, env_file_patterns, opts)
-  local all_files = {}
-
-  -- Get files from each workspace
+  env_file_patterns = env_file_patterns or DEFAULT_ENV_PATTERNS
+  
+  -- Collect all workspace paths for bulk resolution
+  local all_paths = {}
+  
+  -- Add root path
+  table.insert(all_paths, {path = root_path, workspace_info = nil})
+  
+  -- Add all workspace paths
   for _, workspace in ipairs(workspaces) do
-    local workspace_files =
-      EnvironmentResolver.resolve_env_files(workspace, root_path, provider, env_file_patterns, opts)
-    vim.list_extend(all_files, workspace_files)
+    table.insert(all_paths, {path = workspace.path, workspace_info = workspace})
+  end
+  
+  -- Use bulk resolver for maximum performance
+  local bulk_results = BulkResolver.bulk_resolve_env_files(all_paths, env_file_patterns, provider, opts)
+  
+  -- Merge all results
+  local all_files = {}
+  
+  -- Add root files first
+  if bulk_results[root_path] then
+    vim.list_extend(all_files, bulk_results[root_path])
+  end
+  
+  -- Add workspace files
+  for _, workspace in ipairs(workspaces) do
+    if bulk_results[workspace.path] then
+      vim.list_extend(all_files, bulk_results[workspace.path])
+    end
   end
 
   -- Remove duplicates and sort

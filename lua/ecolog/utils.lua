@@ -989,4 +989,74 @@ function M.get_var_word_under_cursor(providers)
   return line:sub(word_start, word_end)
 end
 
+---Optimized bulk file discovery for single path
+---@param path string Directory path
+---@param patterns string[] File patterns
+---@return string[] files Found files
+function M.find_env_files_in_path_bulk(path, patterns)
+  if not patterns or #patterns == 0 then
+    return {}
+  end
+  
+  -- Use multiple glob operations but minimize them
+  local all_files = {}
+  
+  -- Process patterns in batches to avoid vim.fn.glob issues
+  for _, pattern in ipairs(patterns) do
+    local search_pattern = path .. "/" .. pattern
+    local found = vim.fn.glob(search_pattern, false, true)
+    
+    if type(found) == "string" then
+      found = { found }
+    end
+    
+    if found and #found > 0 then
+      vim.list_extend(all_files, found)
+    end
+  end
+  
+  -- Remove duplicates efficiently
+  local unique_files = {}
+  local seen = {}
+  for _, file in ipairs(all_files) do
+    if not seen[file] then
+      seen[file] = true
+      table.insert(unique_files, file)
+    end
+  end
+  
+  return unique_files
+end
+
+---Optimized bulk file discovery for multiple workspaces
+---@param workspaces table[] List of workspaces
+---@param patterns string[] File patterns
+---@return string[] files Found files
+function M.find_env_files_bulk_workspaces(workspaces, patterns)
+  if not workspaces or #workspaces == 0 or not patterns or #patterns == 0 then
+    return {}
+  end
+  
+  -- Collect all files from all workspaces
+  local all_files = {}
+  
+  for _, workspace in ipairs(workspaces) do
+    local workspace_path = workspace.path
+    local workspace_files = M.find_env_files_in_path_bulk(workspace_path, patterns)
+    vim.list_extend(all_files, workspace_files)
+  end
+  
+  -- Remove duplicates efficiently
+  local unique_files = {}
+  local seen = {}
+  for _, file in ipairs(all_files) do
+    if not seen[file] then
+      seen[file] = true
+      table.insert(unique_files, file)
+    end
+  end
+  
+  return unique_files
+end
+
 return M

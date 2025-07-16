@@ -1280,9 +1280,15 @@ function M._get_monorepo_provider(root_path)
 end
 
 ---Notify about workspace change with environment file information
----@param current_workspace table Current workspace
+---@param current_workspace table? Current workspace
 ---@param previous_workspace table? Previous workspace
 function M._notify_workspace_change(current_workspace, previous_workspace)
+  -- Guard against nil workspace
+  if not current_workspace then
+    vim.notify("Workspace change detected", vim.log.levels.INFO)
+    return
+  end
+  
   -- Get the selected environment file information
   local selected_env_file = M._get_selected_env_file_info(current_workspace)
   
@@ -1291,7 +1297,8 @@ function M._notify_workspace_change(current_workspace, previous_workspace)
     message = string.format("Selected environment file: %s (%s)", selected_env_file.name, selected_env_file.location)
   else
     -- Fallback to workspace name if no env file is found
-    message = string.format("Entered workspace: %s", current_workspace.name)
+    local workspace_name = current_workspace.name or "unknown"
+    message = string.format("Entered workspace: %s", workspace_name)
   end
 
   vim.notify(message, vim.log.levels.INFO)

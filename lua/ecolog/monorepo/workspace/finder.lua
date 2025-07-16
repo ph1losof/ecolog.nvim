@@ -21,13 +21,25 @@ function WorkspaceFinder.find_workspaces(root_path, provider)
   end
 
   -- Check cache first
-  local cache_key = provider:get_cache_key(root_path, "workspaces")
-  local cached_workspaces = Cache.get_workspaces(cache_key, provider:get_cache_duration())
+  local cache_key = (provider and type(provider.get_cache_key) == "function") 
+    and provider:get_cache_key(root_path, "workspaces") 
+    or ("workspaces:" .. root_path)
+    
+  local cache_duration = 300000 -- Default 5 minutes
+  if provider and type(provider.get_cache_duration) == "function" then
+    cache_duration = provider:get_cache_duration()
+  end
+  
+  local cached_workspaces = Cache.get_workspaces(cache_key, cache_duration)
   if cached_workspaces then
     return cached_workspaces
   end
 
-  local max_depth = provider:get_max_depth()
+  local max_depth = 4 -- Default depth
+  if provider and type(provider.get_max_depth) == "function" then
+    max_depth = provider:get_max_depth()
+  end
+  
   local workspaces = {}
 
   -- Search for workspaces using glob patterns
@@ -38,10 +50,15 @@ function WorkspaceFinder.find_workspaces(root_path, provider)
 
   -- Remove duplicates and sort by priority
   workspaces = WorkspaceFinder._deduplicate_workspaces(workspaces)
-  workspaces = WorkspaceFinder._sort_workspaces(workspaces, provider:get_workspace_priority())
+  
+  local workspace_priority = {}
+  if provider and type(provider.get_workspace_priority) == "function" then
+    workspace_priority = provider:get_workspace_priority()
+  end
+  workspaces = WorkspaceFinder._sort_workspaces(workspaces, workspace_priority)
 
   -- Cache the results
-  Cache.set_workspaces(cache_key, workspaces, provider:get_cache_duration())
+  Cache.set_workspaces(cache_key, workspaces, cache_duration)
 
   return workspaces
 end

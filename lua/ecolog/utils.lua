@@ -351,6 +351,23 @@ function M.get_watch_patterns(config)
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
       table.insert(watch_patterns, combine_path_pattern(path, pattern, config))
     end
+    
+    -- Add monorepo workspace patterns if in monorepo mode
+    if config._monorepo_root then
+      local monorepo_patterns = {}
+      
+      -- Add patterns for monorepo root and all workspaces
+      for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
+        table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
+        table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
+      end
+      
+      -- Extend existing patterns with monorepo patterns
+      for _, pattern in ipairs(monorepo_patterns) do
+        table.insert(watch_patterns, pattern)
+      end
+    end
+    
     return watch_patterns
   end
 
@@ -363,6 +380,25 @@ function M.get_watch_patterns(config)
     if type(pattern) == "string" then
       local pattern_results = process_pattern(pattern, path, config, collect_fn)
       vim.list_extend(watch_patterns, pattern_results)
+    end
+  end
+
+  -- Add monorepo workspace patterns if in monorepo mode
+  if config._monorepo_root then
+    local monorepo_patterns = {}
+    local base_patterns = patterns or DEFAULT_ENV_PATTERNS
+    
+    -- Add patterns for monorepo root and all workspaces
+    for _, pattern in ipairs(base_patterns) do
+      if type(pattern) == "string" then
+        table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
+        table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
+      end
+    end
+    
+    -- Extend existing patterns with monorepo patterns
+    for _, pattern in ipairs(monorepo_patterns) do
+      table.insert(watch_patterns, pattern)
     end
   end
 

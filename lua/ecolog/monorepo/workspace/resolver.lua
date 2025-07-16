@@ -26,12 +26,26 @@ function EnvironmentResolver.resolve_env_files(workspace, root_path, provider, e
   local cache_key = EnvironmentResolver._generate_cache_key(workspace, root_path, provider, env_file_patterns, opts)
 
   -- Check cache first
-  local cached_files = Cache.get_env_files(cache_key, provider:get_cache_duration())
+  local cache_duration = 300000 -- Default 5 minutes
+  if provider and type(provider.get_cache_duration) == "function" then
+    cache_duration = provider:get_cache_duration()
+  end
+  
+  local cached_files = Cache.get_env_files(cache_key, cache_duration)
   if cached_files then
     return cached_files
   end
 
-  local env_resolution = provider:get_env_resolution()
+  local env_resolution = {
+    strategy = "workspace_first",
+    inheritance = true,
+    override_order = { "workspace", "root" }
+  }
+  
+  if provider and type(provider.get_env_resolution) == "function" then
+    env_resolution = provider:get_env_resolution()
+  end
+  
   local paths_to_resolve = {}
   
   -- Collect paths based on resolution strategy
@@ -91,7 +105,7 @@ function EnvironmentResolver.resolve_env_files(workspace, root_path, provider, e
   end
 
   -- Cache the result
-  Cache.set_env_files(cache_key, env_files, provider:get_cache_duration())
+  Cache.set_env_files(cache_key, env_files, cache_duration)
 
   return env_files
 end

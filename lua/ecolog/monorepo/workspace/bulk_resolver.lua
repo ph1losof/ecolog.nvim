@@ -67,13 +67,26 @@ function BulkResolver.bulk_resolve_env_files(paths, patterns, provider, opts)
   for path, files in pairs(results) do
     local workspace = path_to_workspace[path]
     if workspace and provider then
-      local env_resolution = provider:get_env_resolution()
+      local env_resolution = {
+        strategy = "workspace_first",
+        inheritance = true,
+        override_order = { "workspace", "root" }
+      }
+      
+      if type(provider.get_env_resolution) == "function" then
+        env_resolution = provider:get_env_resolution()
+      end
+      
       results[path] = BulkResolver._apply_resolution_strategy(files, env_resolution, workspace, opts)
     end
   end
   
   -- Cache the bulk result
-  Cache.set_env_files(cache_key, results, provider:get_cache_duration())
+  local cache_duration = 300000 -- Default 5 minutes
+  if provider and type(provider.get_cache_duration) == "function" then
+    cache_duration = provider:get_cache_duration()
+  end
+  Cache.set_env_files(cache_key, results, cache_duration)
   
   return results
 end

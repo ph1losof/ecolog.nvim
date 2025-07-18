@@ -243,18 +243,18 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     final_mask = quote_char .. final_mask .. quote_char
   end
   
-  -- Construct first line efficiently
-  local before_eq = first_line:sub(1, eq_pos)
-  local masked_first_line = before_eq .. final_mask
-  local first_line_len = #first_line
-  local masked_len = #masked_first_line
+  -- Construct first line efficiently - only the value part after equals sign
+  local original_value_part = first_line:sub(eq_pos + 1)
+  local original_value_len = #original_value_part
+  local masked_len = #final_mask
   
-  if masked_len > first_line_len then
-    distributed_masks[var_info.start_line] = masked_first_line:sub(1, first_line_len)
-  elseif masked_len < first_line_len then
-    distributed_masks[var_info.start_line] = masked_first_line .. string.rep(SPACE, first_line_len - masked_len)
+  -- Create mask that matches the original value length with padding if needed
+  if masked_len > original_value_len then
+    distributed_masks[var_info.start_line] = final_mask:sub(1, original_value_len)
+  elseif masked_len < original_value_len then
+    distributed_masks[var_info.start_line] = final_mask .. string.rep(SPACE, original_value_len - masked_len)
   else
-    distributed_masks[var_info.start_line] = masked_first_line
+    distributed_masks[var_info.start_line] = final_mask
   end
   
   -- Fill subsequent lines efficiently
@@ -436,9 +436,13 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
             strict = base_extmark_opts.strict,
           }
           
+          -- For mask_length scenarios, position extmark after the equals sign on first line, 
+          -- at column 0 for subsequent lines
+          local col_pos = (line_idx == var_info.start_line) and var_info.eq_pos or 0
+          
           table.insert(extmarks, {
             line = line_idx - 1, -- 0-based
-            col = 0,  -- Always start from beginning of line for mask_length mode
+            col = col_pos,
             opts = extmark_opts,
           })
         end

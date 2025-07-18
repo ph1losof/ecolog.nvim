@@ -658,22 +658,54 @@ end
 
 --[[ Environment File Parsing ]]
 
----Extract parts from an environment file line
+---@class MultiLineState
+---@field in_multi_line boolean Whether we're parsing a multi-line value
+---@field key string The key being parsed
+---@field value_lines string[] Lines accumulated for multi-line value
+---@field quote_char string The quote character for multi-line parsing
+---@field is_triple_quoted boolean Whether using triple-quoted syntax
+---@field continuation_type string Type of continuation: 'quoted', 'backslash'
+
+---Extract parts from an environment file line with multi-line support
 ---@param line string The line to parse
+---@param state MultiLineState? Optional state for multi-line parsing
 ---@return string|nil key The environment variable key
 ---@return string|nil value The environment variable value
 ---@return string|nil comment Any inline comment
 ---@return string|nil quote_char The quote character used (if any)
-function M.extract_line_parts(line)
+---@return MultiLineState|nil state Updated multi-line state
+function M.extract_line_parts(line, state)
+  state = state or {}
+  
+  -- Handle multi-line continuation
+  if state.in_multi_line then
+    return M.handle_multi_line_continuation(line, state)
+  end
+  
+  -- Skip empty lines and comments
   if line:match("^%s*#") or line:match("^%s*$") then
-    return nil
+    return nil, nil, nil, nil, state
   end
 
   local key, value = line:match("^%s*([^=]+)%s*=%s*(.-)%s*$")
   if not key or not value then
-    return nil
+    return nil, nil, nil, nil, state
   end
 
+
+  -- Check for backslash continuation
+  if value:match("\\%s*$") then
+    local clean_value = value:match("^(.-)\\%s*$")
+    state.in_multi_line = true
+    state.key = key
+    state.value_lines = { clean_value }
+    state.quote_char = nil
+    state.is_triple_quoted = false
+    state.continuation_type = 'backslash'
+    return nil, nil, nil, nil, state
+  end
+
+  -- Handle single-line quoted values
   local first_char = value:sub(1, 1)
   if first_char == '"' or first_char == "'" then
     local end_quote_pos = nil
@@ -695,20 +727,114 @@ function M.extract_line_parts(line)
           return key, quoted_value, comment, first_char
         end
       end
-      return key, quoted_value, nil, first_char
+      return key, quoted_value, nil, first_char, state
+    else
+      -- Unclosed quote - start multi-line parsing
+      state.in_multi_line = true
+      state.key = key
+      state.value_lines = { value:sub(2) }
+      state.quote_char = first_char
+      state.is_triple_quoted = false
+      state.continuation_type = 'quoted'
+      return nil, nil, nil, nil, state
     end
   end
 
+  -- Handle unquoted values with comments
   local hash_pos = value:find("#")
   if hash_pos then
     if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
       local comment = value:sub(hash_pos + 1):match("^%s*(.-)%s*$")
       value = value:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
-      return key, value, comment, nil
+      return key, value, comment, nil, state
     end
   end
 
-  return key, value, nil, nil
+  return key, value, nil, nil, state
+end
+
+---Handle multi-line continuation parsing
+---@param line string The current line
+---@param state MultiLineState The current multi-line state
+---@return string|nil key The environment variable key if complete
+---@return string|nil value The environment variable value if complete
+---@return string|nil comment Any inline comment
+---@return string|nil quote_char The quote character used (if any)
+---@return MultiLineState|nil state Updated multi-line state
+function M.handle_multi_line_continuation(line, state)
+  if state.continuation_type == 'backslash' then
+    -- Handle backslash continuation
+    if line:match("\\%s*$") then
+      -- Continue on next line
+      local clean_line = line:match("^(.-)\\%s*$")
+      table.insert(state.value_lines, clean_line)
+      return nil, nil, nil, nil, state
+    else
+      -- End of continuation
+      table.insert(state.value_lines, line)
+      local final_value = table.concat(state.value_lines, "")
+      
+      local key = state.key
+      
+      -- Reset state
+      state.in_multi_line = false
+      state.key = nil
+      state.value_lines = nil
+      state.quote_char = nil
+      state.is_triple_quoted = false
+      state.continuation_type = nil
+      
+      return key, final_value, nil, nil, state
+    end
+    
+  elseif state.continuation_type == 'quoted' then
+    -- Handle quoted multi-line
+    local end_quote_pos = line:find(state.quote_char)
+    if end_quote_pos then
+      -- Check if quote is escaped
+      local escaped = false
+      if end_quote_pos > 1 then
+        local escape_count = 0
+        for i = end_quote_pos - 1, 1, -1 do
+          if line:sub(i, i) == "\\" then
+            escape_count = escape_count + 1
+          else
+            break
+          end
+        end
+        escaped = escape_count % 2 == 1
+      end
+      
+      if not escaped then
+        -- End of quoted multi-line
+        local final_line = line:sub(1, end_quote_pos - 1)
+        table.insert(state.value_lines, final_line)
+        local final_value = table.concat(state.value_lines, "\n")
+        
+        local rest = line:sub(end_quote_pos + 1)
+        local comment = rest:match("^%s*#%s*(.-)%s*$")
+        
+        local key = state.key
+        local quote_char = state.quote_char
+        
+        -- Reset state
+        state.in_multi_line = false
+        state.key = nil
+        state.value_lines = nil
+        state.quote_char = nil
+        state.is_triple_quoted = false
+        state.continuation_type = nil
+        
+        return key, final_value, comment, quote_char, state
+      end
+    end
+    
+    -- Continue accumulating lines
+    table.insert(state.value_lines, line)
+    return nil, nil, nil, nil, state
+  end
+  
+  return nil, nil, nil, nil, state
 end
 
 ---Parse a line from an environment file

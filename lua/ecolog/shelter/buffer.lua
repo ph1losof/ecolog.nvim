@@ -51,19 +51,21 @@ M.NAMESPACE = NAMESPACE
 
 ---@param text string
 ---@param start_pos number?
+---@param multi_line_state table? Multi-line parsing state
 ---@return KeyValueResult?
-M.find_next_key_value = function(text, start_pos)
+---@return table? multi_line_state Updated multi-line state
+M.find_next_key_value = function(text, start_pos, multi_line_state)
   vim.validate("text", text, "string")
   vim.validate("start_pos", start_pos, "number", true)
 
   start_pos = start_pos or 1
   if start_pos > #text then
-    return nil
+    return nil, multi_line_state
   end
 
   local eq_pos = string_find(text, "=", start_pos)
   if not eq_pos then
-    return nil
+    return nil, multi_line_state
   end
 
   -- Find the key by scanning backwards from equals sign
@@ -78,8 +80,11 @@ M.find_next_key_value = function(text, start_pos)
 
   local key = string_match(string_sub(text, key_start, eq_pos - 1), KEY_PATTERN)
   if not key or #key == 0 then
-    return M.find_next_key_value(text, eq_pos + 1)
+    return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
   end
+
+  local value_part = text:sub(eq_pos + 1)
+  
 
   -- Handle quoted values
   local pos = eq_pos + 1
@@ -102,7 +107,7 @@ M.find_next_key_value = function(text, start_pos)
       value = text:sub(eq_pos + 2, value_end - 1)
       pos = value_end + 1
     else
-      return M.find_next_key_value(text, eq_pos + 1)
+      return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
     end
   else
     -- Handle unquoted values
@@ -117,7 +122,7 @@ M.find_next_key_value = function(text, start_pos)
   end
 
   if not value or #value == 0 then
-    return M.find_next_key_value(text, eq_pos + 1)
+    return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
   end
 
   return {
@@ -126,12 +131,14 @@ M.find_next_key_value = function(text, start_pos)
     quote_char = in_quotes and quote_char or nil,
     eq_pos = eq_pos,
     next_pos = pos,
-  }
+  }, multi_line_state
 end
 
 ---@param line string
+---@param multi_line_state table? Multi-line parsing state
 ---@return ProcessedItem[]
-function M.process_line(line)
+---@return table? multi_line_state Updated multi-line state
+function M.process_line(line, multi_line_state)
   vim.validate("line", line, "string")
 
   local results = {}
@@ -139,7 +146,7 @@ function M.process_line(line)
   local is_comment_line = comment_start == 1
 
   if not is_comment_line then
-    local kv = M.find_next_key_value(line)
+    local kv, updated_state = M.find_next_key_value(line, nil, multi_line_state)
     if kv and (not comment_start or kv.eq_pos < comment_start) then
       table_insert(results, {
         key = kv.key,
@@ -149,6 +156,7 @@ function M.process_line(line)
         is_comment = false,
       })
     end
+    multi_line_state = updated_state
   end
 
   if comment_start then
@@ -156,7 +164,7 @@ function M.process_line(line)
     local pos = 1
 
     while true do
-      local kv = M.find_next_key_value(comment_text, pos)
+      local kv, updated_state = M.find_next_key_value(comment_text, pos, multi_line_state)
       if not kv then
         break
       end
@@ -170,10 +178,11 @@ function M.process_line(line)
       })
 
       pos = kv.next_pos
+      multi_line_state = updated_state
     end
   end
 
-  return results
+  return results, multi_line_state
 end
 
 ---@param line string
@@ -293,7 +302,7 @@ end
 ---@param config table
 ---@param bufname string
 ---@param line_num number
----@return table?
+---@return table|table[]? extmark(s) Single extmark or array of extmarks for multi-line values
 function M.create_extmark(value, item, config, bufname, line_num)
   local is_revealed = state.is_line_revealed(line_num)
   local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
@@ -311,6 +320,12 @@ function M.create_extmark(value, item, config, bufname, line_num)
   end
 
   local mask_length = state.get_config().mask_length
+  
+  -- Check if this is a multi-line value
+  local is_multi_line = masked_value:find("\n") ~= nil
+  if is_multi_line then
+    return M.create_multi_line_extmarks(raw_value, masked_value, item, config, line_num)
+  end
 
   local extmark_opts = {
     virt_text = {
@@ -334,6 +349,46 @@ function M.create_extmark(value, item, config, bufname, line_num)
     item.eq_pos,
     extmark_opts,
   }
+end
+
+---Create extmarks for multi-line values
+---@param raw_value string The original raw value
+---@param masked_value string The masked value
+---@param item ProcessedItem The processed item
+---@param config table Configuration
+---@param start_line_num number The starting line number
+---@return table[] extmarks Array of extmarks for each line
+function M.create_multi_line_extmarks(raw_value, masked_value, item, config, start_line_num)
+  local raw_lines = vim.split(raw_value, "\n", { plain = true })
+  local masked_lines = vim.split(masked_value, "\n", { plain = true })
+  local extmarks = {}
+  
+  for i, masked_line in ipairs(masked_lines) do
+    local line_num = start_line_num + i - 1
+    local is_revealed = state.is_line_revealed(line_num)
+    local display_value = is_revealed and (raw_lines[i] or "") or masked_line
+    
+    local extmark_opts = {
+      virt_text = {
+        { display_value, (is_revealed or display_value == (raw_lines[i] or "")) and "String" or config.highlight_group },
+      },
+      virt_text_pos = "overlay",
+      hl_mode = "combine",
+      priority = item.is_comment and 10000 or 9999,
+      strict = false,
+    }
+    
+    -- For the first line, use the equals position; for subsequent lines, start at column 0
+    local col_pos = i == 1 and item.eq_pos or 0
+    
+    table.insert(extmarks, {
+      line_num - 1,
+      col_pos,
+      extmark_opts,
+    })
+  end
+  
+  return extmarks
 end
 
 ---@param bufnr number
@@ -376,53 +431,252 @@ function M.shelter_buffer()
   local config_partial_mode = state.get_config().partial_mode
   local config_highlight_group = state.get_config().highlight_group
   local skip_comments = state.get_config().skip_comments
+  
+  -- Read all lines at once for proper multi-line parsing
+  local ok, all_lines = pcall(api.nvim_buf_get_lines, bufnr, 0, -1, false)
+  if not ok then
+    vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
+    return
+  end
 
-  for chunk_start = 0, line_count - 1, CHUNK_SIZE do
-    local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
-    local ok, lines = pcall(api.nvim_buf_get_lines, bufnr, chunk_start, chunk_end + 1, false)
-
-    if not ok then
-      vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
-      return
+  -- Parse the buffer content using the multi-line parser
+  local utils = require("ecolog.utils")
+  local types = require("ecolog.types")
+  local multi_line_state = {}
+  local parsed_vars = {}
+  local current_line_idx = 1
+  
+  -- Parse all lines sequentially to handle multi-line values correctly
+  local line_start_positions = {}  -- Track where each variable starts
+  local line_spans = {}  -- Track line spans for multi-line values
+  
+  while current_line_idx <= #all_lines do
+    local line = all_lines[current_line_idx]
+    
+    local is_comment_line = string_find(line, COMMENT_PATTERN)
+    if is_comment_line and skip_comments then
+      current_line_idx = current_line_idx + 1
+      goto continue
     end
 
-    for i, line in ipairs(lines) do
-      local line_num = chunk_start + i
-      local is_comment_line = string_find(line, COMMENT_PATTERN)
-
-      if is_comment_line and skip_comments then
-        goto continue
+    local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, multi_line_state)
+    
+    -- Track the start of a new variable BEFORE we enter multi-line mode
+    if not multi_line_state.in_multi_line and line:find("=") then
+      local potential_key = line:match("^%s*([^=]+)%s*=")
+      if potential_key then
+        line_start_positions[potential_key] = current_line_idx
       end
-
-      local cached_data = get_cached_line(line, line_num, bufname)
-      if cached_data and cached_data.extmarks and not state.is_line_revealed(line_num) then
-        for _, extmark in ipairs(cached_data.extmarks) do
-          table_insert(extmarks, extmark)
-        end
-        goto continue
+    end
+    
+    -- If we're entering multi-line mode, track the key start position
+    if updated_state and updated_state.in_multi_line and updated_state.key and not line_start_positions[updated_state.key] then
+      line_start_positions[updated_state.key] = current_line_idx
+    end
+    
+    -- Update multi-line state after tracking start position
+    multi_line_state = updated_state or multi_line_state
+    
+    if key and value then
+      -- This is a complete key-value pair
+      local start_line = line_start_positions[key] or current_line_idx
+      local end_line = current_line_idx
+      
+      parsed_vars[key] = {
+        key = key,
+        value = value,
+        quote_char = quote_char,
+        comment = comment,
+        start_line = start_line,
+        end_line = end_line,
+        eq_pos = all_lines[start_line]:find("=") or 1,
+        is_comment = false,
+      }
+      
+      -- Store line span for multi-line values
+      if start_line < end_line then
+        line_spans[key] = {
+          start_line = start_line,
+          end_line = end_line,
+        }
       end
+      
+      -- Reset multi-line state after processing
+      multi_line_state = {}
+    end
+    
+    current_line_idx = current_line_idx + 1
+    ::continue::
+  end
+  
+  -- Create extmarks for all variables
+  for _, var_info in pairs(parsed_vars) do
+    if skip_comments and var_info.is_comment then
+      goto continue_var
+    end
 
-      local processed_items = M.process_line(line)
-      for _, item in ipairs(processed_items) do
-        if skip_comments and item.is_comment then
-          goto continue_item
-        end
-
-        if item.value and #item.value > 0 then
-          local extmark = M.create_extmark(item.value, item, {
-            partial_mode = config_partial_mode,
-            highlight_group = config_highlight_group,
-          }, bufname, line_num)
-
-          if extmark then
-            table_insert(extmarks, extmark)
-            cache_line(line, line_num, bufname, extmark)
+    if var_info.value and #var_info.value > 0 then
+      -- Check if this is a multi-line value that spans multiple buffer lines
+      local is_multi_line_span = var_info.start_line < var_info.end_line
+      -- Check if the value contains newlines (quoted multi-line)
+      local has_newlines = var_info.value:find("\n") ~= nil
+      
+      if is_multi_line_span or has_newlines then
+        -- Handle both backslash continuation and quoted multi-line - mask entire value, then distribute across buffer lines
+        -- For multi-line values, we need to mask the entire value as a single unit, not per line
+        local clean_value = has_newlines and var_info.value:gsub("\n", "") or var_info.value
+        local entire_masked_value = shelter_utils.determine_masked_value(clean_value, {
+          partial_mode = config_partial_mode,
+          key = var_info.key,
+          source = bufname,
+          quote_char = var_info.quote_char,
+        })
+        
+        if entire_masked_value then
+          if is_multi_line_span and not has_newlines then
+            -- Backslash continuation - distribute mask based on actual parsed content including spaces
+            local consumed_chars = 0
+            for line_idx = var_info.start_line, var_info.end_line do
+              local buffer_line = all_lines[line_idx]
+              local is_first_line = line_idx == var_info.start_line
+              local is_last_line = line_idx == var_info.end_line
+              
+              -- Get the actual content on this line as it appears in the parsed value
+              local parsed_content_part
+              if is_first_line then
+                local eq_pos = buffer_line:find("=")
+                if eq_pos then
+                  -- For first line, remove trailing backslash and spaces but keep the content as parsed
+                  parsed_content_part = buffer_line:sub(eq_pos + 1):gsub("\\%s*$", "")
+                else
+                  parsed_content_part = ""
+                end
+              elseif is_last_line then
+                -- Last line: keep as is
+                parsed_content_part = buffer_line
+              else
+                -- Middle lines: remove trailing backslash and spaces 
+                parsed_content_part = buffer_line:gsub("\\%s*$", "")
+              end
+              
+              local parsed_length = #parsed_content_part
+              
+              if parsed_length > 0 then
+                -- Get the mask portion for this parsed content
+                local mask_for_parsed = entire_masked_value:sub(consumed_chars + 1, consumed_chars + parsed_length)
+                consumed_chars = consumed_chars + parsed_length
+                
+                if is_first_line then
+                  local eq_pos = buffer_line:find("=")
+                  if eq_pos then
+                    -- For first line, preserve the backslash if it exists
+                    local has_backslash = buffer_line:match("\\%s*$")
+                    local display_mask = mask_for_parsed .. (has_backslash and "\\" or "")
+                    
+                    local extmark_opts = {
+                      virt_text = { { display_mask, config_highlight_group } },
+                      virt_text_pos = "overlay",
+                      hl_mode = "combine",
+                      priority = 9999,
+                      strict = false,
+                    }
+                    table_insert(extmarks, { line_idx - 1, eq_pos, extmark_opts })
+                  end
+                else
+                  -- For other lines, preserve the backslash if it exists
+                  local has_backslash = buffer_line:match("\\%s*$")
+                  local display_mask = mask_for_parsed .. (has_backslash and "\\" or "")
+                  
+                  local extmark_opts = {
+                    virt_text = { { display_mask, config_highlight_group } },
+                    virt_text_pos = "overlay",
+                    hl_mode = "combine",
+                    priority = 9999,
+                    strict = false,
+                  }
+                  table_insert(extmarks, { line_idx - 1, 0, extmark_opts })
+                end
+              end
+            end
+            
+          elseif has_newlines then
+            -- Quoted multi-line - distribute based on actual buffer content
+            local raw_lines = vim.split(var_info.value, "\n", { plain = true })
+            
+            -- Remove quotes from the masked value for distribution
+            local content_only_mask = entire_masked_value
+            if var_info.quote_char and entire_masked_value:sub(1, 1) == var_info.quote_char then
+              content_only_mask = entire_masked_value:sub(2, -2)  -- Remove first and last quote
+            end
+            
+            local consumed_chars = 0
+            
+            for line_idx = var_info.start_line, var_info.end_line do
+              local array_idx = line_idx - var_info.start_line + 1
+              local buffer_line = all_lines[line_idx]
+              local is_first_line = line_idx == var_info.start_line
+              local is_last_line = line_idx == var_info.end_line
+              local raw_line = raw_lines[array_idx] or ""
+              local raw_length = #raw_line
+              
+              if raw_length > 0 then
+                local mask_for_line = content_only_mask:sub(consumed_chars + 1, consumed_chars + raw_length)
+                consumed_chars = consumed_chars + raw_length
+                
+                if is_first_line then
+                  local eq_pos = buffer_line:find("=")
+                  if eq_pos then
+                    -- For first line, include the opening quote
+                    local display_mask = (var_info.quote_char or "") .. mask_for_line
+                    
+                    local extmark_opts = {
+                      virt_text = { { display_mask, config_highlight_group } },
+                      virt_text_pos = "overlay",
+                      hl_mode = "combine",
+                      priority = 9999,
+                      strict = false,
+                    }
+                    table_insert(extmarks, { line_idx - 1, eq_pos, extmark_opts })
+                  end
+                else
+                  -- For other lines, check if it's the last line for closing quote
+                  local display_mask = mask_for_line .. (is_last_line and (var_info.quote_char or "") or "")
+                  
+                  local extmark_opts = {
+                    virt_text = { { display_mask, config_highlight_group } },
+                    virt_text_pos = "overlay",
+                    hl_mode = "combine",
+                    priority = 9999,
+                    strict = false,
+                  }
+                  table_insert(extmarks, { line_idx - 1, 0, extmark_opts })
+                end
+              end
+            end
           end
         end
-        ::continue_item::
+      else
+        -- Single line value - use existing logic
+        local extmark_result = M.create_extmark(var_info.value, var_info, {
+          partial_mode = config_partial_mode,
+          highlight_group = config_highlight_group,
+        }, bufname, var_info.start_line)
+
+        if extmark_result then
+          -- Handle both single extmarks and arrays of extmarks (multi-line)
+          if type(extmark_result[1]) == "table" and extmark_result[1][1] then
+            -- Array of extmarks (multi-line)
+            for _, extmark in ipairs(extmark_result) do
+              table_insert(extmarks, extmark)
+            end
+          else
+            -- Single extmark
+            table_insert(extmarks, extmark_result)
+          end
+        end
       end
-      ::continue::
     end
+    ::continue_var::
   end
 
   apply_extmarks(bufnr, extmarks)

@@ -34,28 +34,34 @@ end
 ---@param _env_line_cache table Cache for parsed lines
 ---@param env_vars table<string, EnvVarInfo> Current environment variables
 ---@param opts table Configuration options
+---@param state table? Multi-line parsing state
 ---@return string? key The environment variable key if found
 ---@return EnvVarInfo? var_info The environment variable info if found
-local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
+---@return table? state Updated multi-line parsing state
+local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts, state)
   if not opts then
     opts = {}
   end
 
   local cache_key = { line = line, path = file_path }
   local cache_entry = _env_line_cache[cache_key]
-  if cache_entry then
+  if cache_entry and not state then
     return unpack(cache_entry)
   end
 
   if line:match("^%s*$") or line:match("^%s*#") then
-    _env_line_cache[cache_key] = { nil }
-    return nil
+    if not state or not state.in_multi_line then
+      _env_line_cache[cache_key] = { nil }
+      return nil, nil, state
+    end
   end
 
-  local key, value, comment, quote_char = utils.extract_line_parts(line)
+  local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, state)
   if not key or not value then
-    _env_line_cache[cache_key] = { nil }
-    return nil
+    if not updated_state or not updated_state.in_multi_line then
+      _env_line_cache[cache_key] = { nil }
+    end
+    return nil, nil, updated_state
   end
 
   local type_name, transformed_value = types.detect_type(value)
@@ -73,7 +79,7 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts)
     },
   }
   _env_line_cache[cache_key] = result
-  return unpack(result)
+  return key, result[2], updated_state
 end
 
 ---@param file_path string Path to the env file
@@ -116,12 +122,14 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
 
   -- Use pcall to protect against file reading errors
   local success, err = pcall(function()
+    local multi_line_state = {}
     for line in env_file:lines() do
       local initial_opts = vim.tbl_deep_extend("force", {}, opts)
-      local key, var_info = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts)
+      local key, var_info, updated_state = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts, multi_line_state)
       if key then
         env_vars_result[key] = var_info
       end
+      multi_line_state = updated_state or multi_line_state
     end
   end)
 
@@ -205,13 +213,15 @@ local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, c
     end
 
     -- Process lines
+    local multi_line_state = {}
     for i = 1, #lines do
       local line = lines[i]
       local initial_opts = vim.tbl_deep_extend("force", {}, opts or {})
-      local key, var_info = parse_env_line(line, file_path, _env_line_cache or {}, env_vars or {}, initial_opts)
+      local key, var_info, updated_state = parse_env_line(line, file_path, _env_line_cache or {}, env_vars or {}, initial_opts, multi_line_state)
       if key then
         env_vars_result[key] = var_info
       end
+      multi_line_state = updated_state or multi_line_state
     end
 
     -- Apply interpolation if enabled

@@ -115,6 +115,13 @@ function M.determine_masked_value(value, settings)
     local global_config = require("ecolog").get_config()
     mask_length = global_config and global_config.mask_length
   end
+  
+  -- Handle multi-line values
+  local is_multi_line = value:find("\n") ~= nil
+  if is_multi_line then
+    return M.mask_multi_line_value(value, settings, conf, mode, mask_length)
+  end
+  
   mask_length = mask_length or #value
 
   if mode == "full" or not conf.partial_mode then
@@ -164,6 +171,81 @@ function M.determine_masked_value(value, settings)
     .. string_sub(value, -show_end)
 
   value_cache:put(cache_key, result)
+  if settings.quote_char then
+    return settings.quote_char .. result .. settings.quote_char
+  end
+  return result
+end
+
+---Mask multi-line values while preserving newlines
+---@param value string The multi-line value
+---@param settings table Masking settings
+---@param conf table Shelter configuration
+---@param mode string Masking mode
+---@param mask_length number? Optional mask length
+---@return string masked_value The masked multi-line value
+function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
+  local lines = vim.split(value, "\n", { plain = true })
+  local masked_lines = {}
+  
+  if mode == "full" or not conf.partial_mode then
+    -- Full masking - mask each line completely
+    for i, line in ipairs(lines) do
+      local line_mask_length = mask_length or #line
+      if line_mask_length > 0 then
+        masked_lines[i] = string_rep(conf.mask_char, line_mask_length)
+      else
+        masked_lines[i] = ""
+      end
+    end
+  else
+    -- Partial masking - handle first and last lines specially
+    local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+      or {
+        show_start = 3,
+        show_end = 3,
+        min_mask = 3,
+      }
+    
+    local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
+    local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
+    local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
+    
+    for i, line in ipairs(lines) do
+      if i == 1 and #lines > 1 then
+        -- First line - show start, mask end
+        if #line <= show_start then
+          masked_lines[i] = line
+        else
+          local mask_part = math.max(min_mask, #line - show_start)
+          masked_lines[i] = string_sub(line, 1, show_start) .. string_rep(conf.mask_char, mask_part)
+        end
+      elseif i == #lines and #lines > 1 then
+        -- Last line - mask start, show end
+        if #line <= show_end then
+          masked_lines[i] = line
+        else
+          local mask_part = math.max(min_mask, #line - show_end)
+          masked_lines[i] = string_rep(conf.mask_char, mask_part) .. string_sub(line, -show_end)
+        end
+      else
+        -- Middle lines or single line - apply standard partial masking
+        if #line <= (show_start + show_end) or #line < (show_start + show_end + min_mask) then
+          masked_lines[i] = string_rep(conf.mask_char, #line)
+        else
+          local available_mask_space = #line - show_start - show_end
+          local effective_mask_length = math.max(math.min(mask_length or available_mask_space, available_mask_space), min_mask)
+          masked_lines[i] = string_sub(line, 1, show_start)
+            .. string_rep(conf.mask_char, effective_mask_length)
+            .. string_sub(line, -show_end)
+        end
+      end
+    end
+  end
+  
+  local result = table.concat(masked_lines, "\n")
+  value_cache:put(get_value_cache_key(value, settings), result)
+  
   if settings.quote_char then
     return settings.quote_char .. result .. settings.quote_char
   end
@@ -228,9 +310,10 @@ function M.mask_comment(comment_value, source, shelter, feature)
   local buffer = require("ecolog.shelter.buffer")
   local pos = 1
   local result = comment_value
+  local multi_line_state = {}
 
   while true do
-    local kv = buffer.find_next_key_value(result, pos)
+    local kv, updated_state = buffer.find_next_key_value(result, pos, multi_line_state)
     if not kv then
       break
     end
@@ -240,6 +323,7 @@ function M.mask_comment(comment_value, source, shelter, feature)
     result = result:sub(1, kv.eq_pos) .. masked .. result:sub(kv.next_pos)
 
     pos = kv.eq_pos + #masked + 1
+    multi_line_state = updated_state or multi_line_state
   end
 
   return result

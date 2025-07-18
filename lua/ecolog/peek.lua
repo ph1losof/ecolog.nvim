@@ -79,7 +79,18 @@ local function create_peek_content(var_name, var_info, types, config)
   lines[1] = "Name    : " .. var_name
   lines[2] = "Type    : " .. display_type
   lines[3] = "Source  : " .. source_display
-  lines[4] = "Value   : " .. display_value
+  
+  -- Handle multi-line values properly
+  local is_multiline = display_value:find('\n') ~= nil
+  if is_multiline then
+    lines[4] = "Value   : (multi-line)"
+    local value_lines = vim.split(display_value, '\n', { plain = true })
+    for i, line in ipairs(value_lines) do
+      lines[4 + i] = "          " .. line
+    end
+  else
+    lines[4] = "Value   : " .. display_value
+  end
 
   highlights[1] = { "EcologVariable", 0, PATTERNS.label_width, PATTERNS.label_width + #var_name }
   highlights[2] = { "EcologType", 1, PATTERNS.label_width, PATTERNS.label_width + #display_type }
@@ -97,12 +108,31 @@ local function create_peek_content(var_name, var_info, types, config)
     end
   end
   
-  highlights[4] = {
-    highlight_group,
-    3,
-    PATTERNS.label_width,
-    PATTERNS.label_width + #display_value,
-  }
+  -- Handle multi-line value highlights
+  if is_multiline then
+    highlights[4] = {
+      "Comment",
+      3,
+      PATTERNS.label_width,
+      PATTERNS.label_width + #"(multi-line)",
+    }
+    local value_lines = vim.split(display_value, '\n', { plain = true })
+    for i, line in ipairs(value_lines) do
+      highlights[4 + i] = {
+        highlight_group,
+        3 + i,
+        PATTERNS.label_width,
+        PATTERNS.label_width + #line,
+      }
+    end
+  else
+    highlights[4] = {
+      highlight_group,
+      3,
+      PATTERNS.label_width,
+      PATTERNS.label_width + #display_value,
+    }
+  end
 
   if var_info.comment and type(var_info.comment) == "string" then
     local comment_value = var_info.comment
@@ -124,8 +154,10 @@ local function create_peek_content(var_name, var_info, types, config)
       end
     end
     
-    lines[5] = "Comment : " .. tostring(comment_value)
-    highlights[5] = { "Comment", 4, PATTERNS.label_width, -1 }
+    -- Calculate correct line position for comment (after multi-line values)
+    local comment_line_pos = is_multiline and (#vim.split(display_value, '\n', { plain = true }) + 4) or 5
+    lines[comment_line_pos] = "Comment : " .. tostring(comment_value)
+    highlights[comment_line_pos] = { "Comment", comment_line_pos - 1, PATTERNS.label_width, -1 }
   end
 
   return {

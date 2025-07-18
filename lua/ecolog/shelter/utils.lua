@@ -186,14 +186,82 @@ end
 ---@return string masked_value The masked multi-line value
 function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
   local lines = vim.split(value, "\n", { plain = true })
+  
+  -- When mask_length is specified, treat the entire multi-line value as a single unit
+  if mask_length then
+    if mode == "full" or not conf.partial_mode then
+      -- Full masking with fixed length - distribute evenly across lines
+      local total_chars_to_mask = mask_length
+      local chars_per_line = math.floor(total_chars_to_mask / #lines)
+      local extra_chars = total_chars_to_mask % #lines
+      
+      local masked_lines = {}
+      for i, line in ipairs(lines) do
+        local line_mask_length = chars_per_line + (i <= extra_chars and 1 or 0)
+        if line_mask_length > 0 then
+          masked_lines[i] = string_rep(conf.mask_char, line_mask_length)
+        else
+          masked_lines[i] = ""
+        end
+      end
+      
+      local result = table.concat(masked_lines, "\n")
+      value_cache:put(get_value_cache_key(value, settings), result)
+      
+      if settings.quote_char then
+        return settings.quote_char .. result .. settings.quote_char
+      end
+      return result
+    else
+      -- Partial masking with fixed length - show first/last chars of entire value
+      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+        or {
+          show_start = 3,
+          show_end = 3,
+          min_mask = 3,
+        }
+      
+      local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
+      local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
+      
+      -- Get the first and last characters from the entire value (without newlines)
+      local value_without_newlines = value:gsub("\n", "")
+      local total_value_length = #value_without_newlines
+      
+      if total_value_length <= (show_start + show_end) then
+        -- Value too short for partial mode, just show fixed mask length
+        local result = string_rep(conf.mask_char, mask_length)
+        value_cache:put(get_value_cache_key(value, settings), result)
+        
+        if settings.quote_char then
+          return settings.quote_char .. result .. settings.quote_char
+        end
+        return result
+      end
+      
+      -- Extract start and end characters from the actual content
+      local start_chars = string_sub(value_without_newlines, 1, show_start)
+      local end_chars = string_sub(value_without_newlines, -show_end)
+      
+      -- Create the masked representation with fixed length
+      local result = start_chars .. string_rep(conf.mask_char, mask_length) .. end_chars
+      value_cache:put(get_value_cache_key(value, settings), result)
+      
+      if settings.quote_char then
+        return settings.quote_char .. result .. settings.quote_char
+      end
+      return result
+    end
+  end
+  
+  -- Default behavior when mask_length is not specified
   local masked_lines = {}
   
   if mode == "full" or not conf.partial_mode then
     -- Full masking - mask each line completely
     for i, line in ipairs(lines) do
-      local line_mask_length = mask_length or #line
-      if line_mask_length > 0 then
-        masked_lines[i] = string_rep(conf.mask_char, line_mask_length)
+      if #line > 0 then
+        masked_lines[i] = string_rep(conf.mask_char, #line)
       else
         masked_lines[i] = ""
       end
@@ -234,7 +302,7 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
           masked_lines[i] = string_rep(conf.mask_char, #line)
         else
           local available_mask_space = #line - show_start - show_end
-          local effective_mask_length = math.max(math.min(mask_length or available_mask_space, available_mask_space), min_mask)
+          local effective_mask_length = math.max(math.min(available_mask_space, available_mask_space), min_mask)
           masked_lines[i] = string_sub(line, 1, show_start)
             .. string_rep(conf.mask_char, effective_mask_length)
             .. string_sub(line, -show_end)

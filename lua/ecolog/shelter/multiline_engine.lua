@@ -134,8 +134,8 @@ end
 ---@param source_filename string Source filename for masking
 ---@return string[] distributed_masks Array of masks for each line
 function M.generate_multiline_masks(var_info, lines, config, source_filename)
-  local clean_value = var_info.has_newlines and var_info.value:gsub(string_pool.newline, string_pool.empty) or var_info.value
-  local entire_masked_value = shelter_utils.determine_masked_value(clean_value, {
+  -- Use the enhanced multi-line masking that respects mask_length
+  local entire_masked_value = shelter_utils.determine_masked_value(var_info.value, {
     partial_mode = config.partial_mode,
     key = var_info.key,
     source = source_filename,
@@ -149,72 +149,55 @@ function M.generate_multiline_masks(var_info, lines, config, source_filename)
   local distributed_masks = {}
   
   if var_info.is_multi_line and not var_info.has_newlines then
-    -- Backslash continuation - optimized processing
-    local consumed_chars = 0
+    -- Backslash continuation - create spaces for masked content
     for line_idx = var_info.start_line, var_info.end_line do
       local buffer_line = lines[line_idx]
       local is_first_line = line_idx == var_info.start_line
-      local is_last_line = line_idx == var_info.end_line
       
-      -- Extract content efficiently
-      local parsed_content_part
       if is_first_line then
+        -- First line: show the masked value after equals sign, pad to cover original line
         local eq_pos = buffer_line:find(PATTERNS.equals)
         if eq_pos then
-          parsed_content_part = buffer_line:sub(eq_pos + 1):gsub(PATTERNS.backslash_end, string_pool.empty)
-        else
-          parsed_content_part = string_pool.empty
+          local prefix = buffer_line:sub(1, eq_pos)
+          local masked_content = entire_masked_value
+          -- Pad with spaces to cover the entire original line length
+          local original_after_equals = buffer_line:sub(eq_pos + 1)
+          local padding_needed = math.max(0, #original_after_equals - #masked_content)
+          local padded_mask = masked_content .. string.rep(string_pool.space, padding_needed)
+          distributed_masks[line_idx] = prefix .. padded_mask
         end
-      elseif is_last_line then
-        parsed_content_part = buffer_line
       else
-        parsed_content_part = buffer_line:gsub(PATTERNS.backslash_end, string_pool.empty)
-      end
-      
-      local parsed_length = #parsed_content_part
-      if parsed_length > 0 then
-        local mask_for_parsed = entire_masked_value:sub(consumed_chars + 1, consumed_chars + parsed_length)
-        consumed_chars = consumed_chars + parsed_length
-        
-        -- Add backslash if present
-        local has_backslash = buffer_line:match(PATTERNS.backslash_end)
-        local final_mask = mask_for_parsed .. (has_backslash and string_pool.backslash or string_pool.empty)
-        
-        distributed_masks[line_idx] = final_mask
+        -- Subsequent lines: replace entirely with spaces to hide content
+        local spaces_for_line = string.rep(string_pool.space, #buffer_line)
+        distributed_masks[line_idx] = spaces_for_line
       end
     end
     
   elseif var_info.has_newlines then
-    -- Quoted multi-line - optimized processing
-    local raw_lines = vim.split(var_info.value, string_pool.newline, { plain = true })
-    local content_only_mask = entire_masked_value
+    -- Quoted multi-line - create spaces for masked content
+    local masked_lines = vim.split(entire_masked_value, string_pool.newline, { plain = true })
     
-    -- Remove quotes from mask if present
-    if var_info.quote_char and entire_masked_value:sub(1, 1) == var_info.quote_char then
-      content_only_mask = entire_masked_value:sub(2, -2)
-    end
-    
-    local consumed_chars = 0
     for line_idx = var_info.start_line, var_info.end_line do
-      local array_idx = line_idx - var_info.start_line + 1
+      local buffer_line = lines[line_idx]
       local is_first_line = line_idx == var_info.start_line
-      local is_last_line = line_idx == var_info.end_line
-      local raw_line = raw_lines[array_idx] or string_pool.empty
-      local raw_length = #raw_line
+      local array_idx = line_idx - var_info.start_line + 1
       
-      if raw_length > 0 then
-        local mask_for_line = content_only_mask:sub(consumed_chars + 1, consumed_chars + raw_length)
-        consumed_chars = consumed_chars + raw_length
-        
-        -- Add quotes appropriately
-        local display_mask = mask_for_line
-        if is_first_line then
-          display_mask = (var_info.quote_char or string_pool.empty) .. mask_for_line
-        elseif is_last_line then
-          display_mask = mask_for_line .. (var_info.quote_char or string_pool.empty)
+      if is_first_line then
+        -- First line: show the masked value after equals sign, pad to cover original line
+        local eq_pos = buffer_line:find(PATTERNS.equals)
+        if eq_pos then
+          local prefix = buffer_line:sub(1, eq_pos)
+          local masked_line = masked_lines[array_idx] or string_pool.empty
+          -- Pad with spaces to cover the entire original line length
+          local original_after_equals = buffer_line:sub(eq_pos + 1)
+          local padding_needed = math.max(0, #original_after_equals - #masked_line)
+          local padded_mask = masked_line .. string.rep(string_pool.space, padding_needed)
+          distributed_masks[line_idx] = prefix .. padded_mask
         end
-        
-        distributed_masks[line_idx] = display_mask
+      else
+        -- Subsequent lines: replace entirely with spaces to hide content
+        local spaces_for_line = string.rep(string_pool.space, #buffer_line)
+        distributed_masks[line_idx] = spaces_for_line
       end
     end
   end
@@ -257,9 +240,6 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
         local distributed_masks = M.generate_multiline_masks(var_info, lines, config, source_filename)
         
         for line_idx, mask in pairs(distributed_masks) do
-          local is_first_line = line_idx == var_info.start_line
-          local col_pos = is_first_line and var_info.eq_pos or 0
-          
           local extmark_opts = {
             virt_text = { { mask, config.highlight_group } },
             virt_text_pos = "overlay",
@@ -270,7 +250,7 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
           
           table.insert(extmarks, {
             line = line_idx - 1, -- 0-based
-            col = col_pos,
+            col = 0, -- Always start from beginning of line since mask includes full line content
             opts = extmark_opts,
           })
         end

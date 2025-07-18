@@ -115,13 +115,13 @@ function M.determine_masked_value(value, settings)
     local global_config = require("ecolog").get_config()
     mask_length = global_config and global_config.mask_length
   end
-  
+
   -- Handle multi-line values
   local is_multi_line = value:find("\n") ~= nil
   if is_multi_line then
     return M.mask_multi_line_value(value, settings, conf, mode, mask_length)
   end
-  
+
   mask_length = mask_length or #value
 
   if mode == "full" or not conf.partial_mode then
@@ -186,134 +186,150 @@ end
 ---@return string masked_value The masked multi-line value
 function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
   local lines = vim.split(value, "\n", { plain = true })
-  
-  -- When mask_length is specified, treat the entire multi-line value as a single unit
+  local masked_lines = {}
+
+  -- When mask_length is specified, use single-line masking approach
   if mask_length then
+    -- Convert multi-line to single line for length calculation
+    local single_line_value = table.concat(lines, "")
+    local actual_length = #single_line_value
+
+    -- Create the first line based on masking mode
+    local first_line_mask
     if mode == "full" or not conf.partial_mode then
-      -- Full masking with fixed length - distribute evenly across lines
-      local total_chars_to_mask = mask_length
-      local chars_per_line = math.floor(total_chars_to_mask / #lines)
-      local extra_chars = total_chars_to_mask % #lines
-      
-      local masked_lines = {}
-      for i, line in ipairs(lines) do
-        local line_mask_length = chars_per_line + (i <= extra_chars and 1 or 0)
-        if line_mask_length > 0 then
-          masked_lines[i] = string_rep(conf.mask_char, line_mask_length)
-        else
-          masked_lines[i] = ""
-        end
+      -- Full masking with length consideration
+      if mask_length < actual_length then
+        -- Mask is shorter than actual value - pad with spaces
+        first_line_mask = string_rep(conf.mask_char, mask_length) .. string_rep(" ", actual_length - mask_length)
+      elseif mask_length > actual_length then
+        -- Mask is longer than actual value - extend with mask characters
+        first_line_mask = string_rep(conf.mask_char, mask_length)
+      else
+        -- Mask length equals actual length
+        first_line_mask = string_rep(conf.mask_char, mask_length)
       end
-      
-      local result = table.concat(masked_lines, "\n")
-      value_cache:put(get_value_cache_key(value, settings), result)
-      
-      if settings.quote_char then
-        return settings.quote_char .. result .. settings.quote_char
-      end
-      return result
     else
-      -- Partial masking with fixed length - show first/last chars of entire value
+      -- Partial masking with length consideration
       local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
         or {
           show_start = 3,
           show_end = 3,
           min_mask = 3,
         }
-      
+
       local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
       local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
-      
-      -- Get the first and last characters from the entire value (without newlines)
-      local value_without_newlines = value:gsub("\n", "")
-      local total_value_length = #value_without_newlines
-      
-      if total_value_length <= (show_start + show_end) then
-        -- Value too short for partial mode, just show fixed mask length
-        local result = string_rep(conf.mask_char, mask_length)
-        value_cache:put(get_value_cache_key(value, settings), result)
-        
-        if settings.quote_char then
-          return settings.quote_char .. result .. settings.quote_char
+      local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
+
+      if actual_length <= (show_start + show_end) or actual_length < (show_start + show_end + min_mask) then
+        -- Too short for partial masking, do full masking
+        if mask_length < actual_length then
+          first_line_mask = string_rep(conf.mask_char, mask_length) .. string_rep(" ", actual_length - mask_length)
+        elseif mask_length > actual_length then
+          first_line_mask = string_rep(conf.mask_char, mask_length)
+        else
+          first_line_mask = string_rep(conf.mask_char, mask_length)
         end
-        return result
-      end
-      
-      -- Extract start and end characters from the actual content
-      local start_chars = string_sub(value_without_newlines, 1, show_start)
-      local end_chars = string_sub(value_without_newlines, -show_end)
-      
-      -- Create the masked representation with fixed length
-      local result = start_chars .. string_rep(conf.mask_char, mask_length) .. end_chars
-      value_cache:put(get_value_cache_key(value, settings), result)
-      
-      if settings.quote_char then
-        return settings.quote_char .. result .. settings.quote_char
-      end
-      return result
-    end
-  end
-  
-  -- Default behavior when mask_length is not specified
-  local masked_lines = {}
-  
-  if mode == "full" or not conf.partial_mode then
-    -- Full masking - mask each line completely
-    for i, line in ipairs(lines) do
-      if #line > 0 then
-        masked_lines[i] = string_rep(conf.mask_char, #line)
       else
-        masked_lines[i] = ""
+        -- Apply partial masking
+        local start_part = string_sub(single_line_value, 1, show_start)
+        local end_part = string_sub(single_line_value, -show_end)
+
+        local available_mask_space = actual_length - show_start - show_end
+        local effective_mask_length =
+          math.max(math.min(mask_length - show_start - show_end, available_mask_space), min_mask)
+
+        if mask_length < actual_length then
+          -- Mask is shorter - use spaces for padding
+          local total_mask_space = mask_length - show_start - show_end
+          if total_mask_space > 0 then
+            first_line_mask = start_part
+              .. string_rep(conf.mask_char, total_mask_space)
+              .. end_part
+              .. string_rep(" ", actual_length - mask_length)
+          else
+            first_line_mask = string_sub(start_part, 1, mask_length) .. string_rep(" ", actual_length - mask_length)
+          end
+        elseif mask_length > actual_length then
+          -- Mask is longer - extend with mask characters
+          local extra_mask = mask_length - actual_length
+          first_line_mask = start_part .. string_rep(conf.mask_char, effective_mask_length + extra_mask) .. end_part
+        else
+          -- Mask length equals actual length
+          first_line_mask = start_part .. string_rep(conf.mask_char, effective_mask_length) .. end_part
+        end
       end
+    end
+
+    -- Set the first line mask (quotes will be handled at the end)
+    masked_lines[1] = first_line_mask
+
+    -- Add empty space lines for the remaining lines
+    for i = 2, #lines do
+      masked_lines[i] = string_rep(" ", #lines[i])
     end
   else
-    -- Partial masking - handle first and last lines specially
-    local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
-      or {
-        show_start = 3,
-        show_end = 3,
-        min_mask = 3,
-      }
-    
-    local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
-    local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
-    local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
-    
-    for i, line in ipairs(lines) do
-      if i == 1 and #lines > 1 then
-        -- First line - show start, mask end
-        if #line <= show_start then
-          masked_lines[i] = line
+    -- Original behavior when mask_length is not specified
+    if mode == "full" or not conf.partial_mode then
+      -- Full masking - mask each line completely
+      for i, line in ipairs(lines) do
+        local line_mask_length = mask_length or #line
+        if line_mask_length > 0 then
+          masked_lines[i] = string_rep(conf.mask_char, line_mask_length)
         else
-          local mask_part = math.max(min_mask, #line - show_start)
-          masked_lines[i] = string_sub(line, 1, show_start) .. string_rep(conf.mask_char, mask_part)
+          masked_lines[i] = ""
         end
-      elseif i == #lines and #lines > 1 then
-        -- Last line - mask start, show end
-        if #line <= show_end then
-          masked_lines[i] = line
+      end
+    else
+      -- Partial masking - handle first and last lines specially
+      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+        or {
+          show_start = 3,
+          show_end = 3,
+          min_mask = 3,
+        }
+
+      local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
+      local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
+      local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
+
+      for i, line in ipairs(lines) do
+        if i == 1 and #lines > 1 then
+          -- First line - show start, mask end
+          if #line <= show_start then
+            masked_lines[i] = line
+          else
+            local mask_part = math.max(min_mask, #line - show_start)
+            masked_lines[i] = string_sub(line, 1, show_start) .. string_rep(conf.mask_char, mask_part)
+          end
+        elseif i == #lines and #lines > 1 then
+          -- Last line - mask start, show end
+          if #line <= show_end then
+            masked_lines[i] = line
+          else
+            local mask_part = math.max(min_mask, #line - show_end)
+            masked_lines[i] = string_rep(conf.mask_char, mask_part) .. string_sub(line, -show_end)
+          end
         else
-          local mask_part = math.max(min_mask, #line - show_end)
-          masked_lines[i] = string_rep(conf.mask_char, mask_part) .. string_sub(line, -show_end)
-        end
-      else
-        -- Middle lines or single line - apply standard partial masking
-        if #line <= (show_start + show_end) or #line < (show_start + show_end + min_mask) then
-          masked_lines[i] = string_rep(conf.mask_char, #line)
-        else
-          local available_mask_space = #line - show_start - show_end
-          local effective_mask_length = math.max(math.min(available_mask_space, available_mask_space), min_mask)
-          masked_lines[i] = string_sub(line, 1, show_start)
-            .. string_rep(conf.mask_char, effective_mask_length)
-            .. string_sub(line, -show_end)
+          -- Middle lines or single line - apply standard partial masking
+          if #line <= (show_start + show_end) or #line < (show_start + show_end + min_mask) then
+            masked_lines[i] = string_rep(conf.mask_char, #line)
+          else
+            local available_mask_space = #line - show_start - show_end
+            local effective_mask_length =
+              math.max(math.min(mask_length or available_mask_space, available_mask_space), min_mask)
+            masked_lines[i] = string_sub(line, 1, show_start)
+              .. string_rep(conf.mask_char, effective_mask_length)
+              .. string_sub(line, -show_end)
+          end
         end
       end
     end
   end
-  
+
   local result = table.concat(masked_lines, "\n")
   value_cache:put(get_value_cache_key(value, settings), result)
-  
+
   if settings.quote_char then
     return settings.quote_char .. result .. settings.quote_char
   end

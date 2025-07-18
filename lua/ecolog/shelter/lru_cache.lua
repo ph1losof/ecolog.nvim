@@ -37,21 +37,41 @@ end
 
 ---Estimate memory usage of a value
 ---@param value any
+---@param depth? number Current recursion depth (for circular reference protection)
 ---@return number
-local function estimate_memory_usage(value)
+local function estimate_memory_usage(value, depth)
+  depth = depth or 0
+  
+  -- Prevent infinite recursion from circular references
+  if depth > 10 then
+    return 0
+  end
+  
   local t = type(value)
   if t == "string" then
     return #value
   elseif t == "table" then
     local size = 0
+    local seen = {}
+    
     for k, v in pairs(value) do
-      size = size + estimate_memory_usage(k) + estimate_memory_usage(v)
+      -- Prevent processing the same table multiple times
+      if seen[v] then
+        size = size + 4 -- Just add a small penalty for references
+      else
+        seen[v] = true
+        size = size + estimate_memory_usage(k, depth + 1) + estimate_memory_usage(v, depth + 1)
+      end
     end
     return size
   elseif t == "number" then
     return 8
   elseif t == "boolean" then
     return 1
+  elseif t == "function" then
+    return 100 -- Rough estimate for function overhead
+  elseif t == "userdata" then
+    return 50 -- Rough estimate for userdata
   end
   return 0
 end
@@ -98,47 +118,98 @@ function LRUCache:remove_lru()
   end
 
   local lru_node = self.tail.prev
-  if lru_node == self.head then
+  if lru_node == self.head or not lru_node then
     return
   end
 
-  self:remove_node(lru_node)
-  self.cache[lru_node.key] = nil
-  self.size = self.size - 1
-
-  if self.memory_limit then
-    self.current_memory = self.current_memory - estimate_memory_usage(lru_node.value)
+  -- Calculate memory usage before removing to avoid errors
+  local memory_to_remove = 0
+  if self.memory_limit and lru_node.value then
+    local success, mem_usage = pcall(estimate_memory_usage, lru_node.value)
+    if success then
+      memory_to_remove = mem_usage
+    end
   end
 
+  self:remove_node(lru_node)
+  
+  -- Safely remove from cache
+  if lru_node.key then
+    self.cache[lru_node.key] = nil
+  end
+  
+  self.size = math.max(0, self.size - 1)
+
+  if self.memory_limit then
+    self.current_memory = math.max(0, self.current_memory - memory_to_remove)
+  end
+
+  -- Clear node references to prevent memory leaks
   lru_node.key = nil
   lru_node.value = nil
+  lru_node.prev = nil
+  lru_node.next = nil
 end
 
 ---Put a value in the cache
 ---@param key any
 ---@param value any
 function LRUCache:put(key, value)
+  -- Validate inputs
+  if key == nil then
+    return
+  end
+  
   local node = self.cache[key]
 
-  local value_memory = self.memory_limit and estimate_memory_usage(value) or 0
+  -- Calculate memory usage safely
+  local value_memory = 0
+  if self.memory_limit then
+    local success, mem_usage = pcall(estimate_memory_usage, value)
+    if success then
+      value_memory = mem_usage
+    end
+  end
 
   if node then
+    -- Update existing node
+    local old_memory = 0
+    if self.memory_limit and node.value then
+      local success, mem_usage = pcall(estimate_memory_usage, node.value)
+      if success then
+        old_memory = mem_usage
+      end
+    end
+    
     if self.memory_limit then
-      self.current_memory = self.current_memory - estimate_memory_usage(node.value) + value_memory
+      self.current_memory = self.current_memory - old_memory + value_memory
     end
     node.value = value
     self:move_to_front(node)
   else
+    -- Create new node
     node = { key = key, value = value }
     self.cache[key] = node
     self:add_node(node)
     self.size = self.size + 1
+    
     if self.memory_limit then
       self.current_memory = self.current_memory + value_memory
     end
 
-    while (self.size > self.capacity) or (self.memory_limit and self.current_memory > self.memory_limit) do
+    -- Evict items if necessary
+    local eviction_count = 0
+    local max_evictions = self.capacity -- Prevent infinite loops
+    
+    while ((self.size > self.capacity) or (self.memory_limit and self.current_memory > self.memory_limit)) 
+          and eviction_count < max_evictions do
       self:remove_lru()
+      eviction_count = eviction_count + 1
+    end
+    
+    if eviction_count >= max_evictions then
+      -- Emergency cleanup if we hit the limit
+      self:clear()
     end
   end
 end
@@ -158,17 +229,34 @@ end
 ---Remove a key from the cache
 ---@param key any
 function LRUCache:remove(key)
+  if key == nil then
+    return
+  end
+  
   local node = self.cache[key]
   if node then
-    if self.memory_limit then
-      self.current_memory = self.current_memory - estimate_memory_usage(node.value)
+    -- Calculate memory usage before removing
+    local memory_to_remove = 0
+    if self.memory_limit and node.value then
+      local success, mem_usage = pcall(estimate_memory_usage, node.value)
+      if success then
+        memory_to_remove = mem_usage
+      end
     end
+    
     self:remove_node(node)
     self.cache[key] = nil
-    self.size = self.size - 1
+    self.size = math.max(0, self.size - 1)
 
+    if self.memory_limit then
+      self.current_memory = math.max(0, self.current_memory - memory_to_remove)
+    end
+
+    -- Clear node references to prevent memory leaks
     node.key = nil
     node.value = nil
+    node.prev = nil
+    node.next = nil
   end
 end
 
@@ -207,11 +295,68 @@ end
 function LRUCache:keys()
   local keys = {}
   local node = self.head.next
-  while node ~= self.tail do
-    table.insert(keys, node.key)
+  local count = 0
+  
+  while node ~= self.tail and count < self.capacity * 2 do -- Prevent infinite loops
+    if node.key then
+      table.insert(keys, node.key)
+    end
+    node = node.next
+    count = count + 1
+  end
+  
+  return keys
+end
+
+---Health check to detect and fix cache corruption
+---@return boolean is_healthy
+---@return string|nil error_message
+function LRUCache:health_check()
+  local errors = {}
+  
+  -- Check if head and tail are properly connected
+  if self.head.next == nil or self.tail.prev == nil then
+    table.insert(errors, "Head or tail connections are broken")
+  end
+  
+  -- Count nodes in linked list
+  local linked_count = 0
+  local node = self.head.next
+  local visited = {}
+  
+  while node ~= self.tail and linked_count < self.capacity * 2 do
+    if visited[node] then
+      table.insert(errors, "Circular reference detected in linked list")
+      break
+    end
+    visited[node] = true
+    linked_count = linked_count + 1
     node = node.next
   end
-  return keys
+  
+  -- Check if linked list count matches cache size
+  if linked_count ~= self.size then
+    table.insert(errors, string.format("Linked list count (%d) doesn't match cache size (%d)", linked_count, self.size))
+  end
+  
+  -- Check if cache table count matches size
+  local cache_count = 0
+  for _ in pairs(self.cache) do
+    cache_count = cache_count + 1
+  end
+  
+  if cache_count ~= self.size then
+    table.insert(errors, string.format("Cache table count (%d) doesn't match cache size (%d)", cache_count, self.size))
+  end
+  
+  -- If we found errors, try to fix them
+  if #errors > 0 then
+    vim.notify("LRU Cache corruption detected, attempting to fix: " .. table.concat(errors, ", "), vim.log.levels.WARN)
+    self:clear()
+    return false, table.concat(errors, ", ")
+  end
+  
+  return true, nil
 end
 
 return {

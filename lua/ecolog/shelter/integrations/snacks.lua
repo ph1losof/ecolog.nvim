@@ -36,8 +36,41 @@ function M.setup_snacks_shelter()
   end
 
   preview.file = function(ctx)
-    state._original_snacks_preview(ctx)
-    custom_file_previewer(ctx)
+    -- Check if this is an env file and modify preview config before calling original
+    local filename = ctx.item and ctx.item.file and vim.fn.fnamemodify(ctx.item.file, ":t")
+    local config = require("ecolog").get_config and require("ecolog").get_config() or {}
+    
+    if filename and shelter_utils.match_env_file(filename, config) then
+      -- Temporarily store original config and modify it for env files
+      local original_max_line_length = ctx.picker and ctx.picker.opts 
+        and ctx.picker.opts.previewers 
+        and ctx.picker.opts.previewers.file 
+        and ctx.picker.opts.previewers.file.max_line_length
+      
+      -- Modify the picker context to disable truncation
+      if ctx.picker then
+        ctx.picker.opts = ctx.picker.opts or {}
+        ctx.picker.opts.previewers = ctx.picker.opts.previewers or {}
+        ctx.picker.opts.previewers.file = ctx.picker.opts.previewers.file or {}
+        ctx.picker.opts.previewers.file.max_line_length = 999999
+      end
+      
+      -- Call original preview function
+      state._original_snacks_preview(ctx)
+      custom_file_previewer(ctx)
+      
+      -- Restore original configuration
+      if ctx.picker and ctx.picker.opts and ctx.picker.opts.previewers and ctx.picker.opts.previewers.file then
+        if original_max_line_length ~= nil then
+          ctx.picker.opts.previewers.file.max_line_length = original_max_line_length
+        else
+          ctx.picker.opts.previewers.file.max_line_length = nil
+        end
+      end
+    else
+      state._original_snacks_preview(ctx)
+      custom_file_previewer(ctx)
+    end
   end
 end
 

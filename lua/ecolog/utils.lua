@@ -42,6 +42,31 @@ function M.convert_to_lua_pattern(pattern)
   return escaped:gsub("%*", ".*")
 end
 
+---Generate display name for environment file with workspace context
+---@param file_path string Full path to the environment file
+---@param opts table Configuration options (should contain monorepo info)
+---@return string display_name The display name with workspace context
+function M.get_env_file_display_name(file_path, opts)
+  local display_name = vim.fn.fnamemodify(file_path, ":t")
+  
+  -- Show workspace context for any monorepo setup (both manual and auto modes)
+  if opts and opts._monorepo_root then
+    local relative_path = file_path:sub(#opts._monorepo_root + 2) -- Remove root path + "/"
+    local workspace_parts = vim.split(relative_path, "/")
+    
+    if #workspace_parts >= 2 then
+      -- Show workspace type and name (e.g., "apps/api")
+      local workspace_context = workspace_parts[1] .. "/" .. workspace_parts[2]
+      display_name = string.format("%s (%s)", display_name, workspace_context)
+    elseif #workspace_parts == 1 then
+      -- Root level file
+      display_name = string.format("%s (root)", display_name)
+    end
+  end
+  
+  return display_name
+end
+
 -- Path handling utilities
 ---Get the project root based on configuration
 ---@param config table The configuration containing path and project_root settings
@@ -111,9 +136,15 @@ function M.filter_env_files(files, patterns)
     return {}
   end
 
-  files = vim.tbl_filter(function(f)
-    return f ~= nil
-  end, files)
+  -- Filter out nil values more efficiently
+  local valid_files = {}
+  for i = 1, #files do
+    local file = files[i]
+    if file then
+      valid_files[#valid_files + 1] = file
+    end
+  end
+  files = valid_files
 
   if not patterns or type(patterns) ~= "table" then
     patterns = DEFAULT_ENV_PATTERNS
@@ -123,18 +154,21 @@ function M.filter_env_files(files, patterns)
     return files
   end
 
-  return vim.tbl_filter(function(file)
-    if not file then
-      return false
-    end
-    local filename = vim.fn.fnamemodify(file, ":t")
-    for _, pattern in ipairs(patterns) do
-      if type(pattern) == "string" and vim.fn.match(filename, vim.fn.glob2regpat(pattern)) >= 0 then
-        return true
+  local filtered_files = {}
+  for i = 1, #files do
+    local file = files[i]
+    if file then
+      local filename = vim.fn.fnamemodify(file, ":t")
+      for j = 1, #patterns do
+        local pattern = patterns[j]
+        if type(pattern) == "string" and vim.fn.match(filename, vim.fn.glob2regpat(pattern)) >= 0 then
+          filtered_files[#filtered_files + 1] = file
+          break
+        end
       end
     end
-    return false
-  end, files)
+  end
+  return filtered_files
 end
 
 ---Detect pattern type based on its content
@@ -317,6 +351,23 @@ function M.get_watch_patterns(config)
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
       table.insert(watch_patterns, combine_path_pattern(path, pattern, config))
     end
+    
+    -- Add monorepo workspace patterns if in monorepo mode
+    if config._monorepo_root then
+      local monorepo_patterns = {}
+      
+      -- Add patterns for monorepo root and all workspaces
+      for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
+        table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
+        table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
+      end
+      
+      -- Extend existing patterns with monorepo patterns
+      for _, pattern in ipairs(monorepo_patterns) do
+        table.insert(watch_patterns, pattern)
+      end
+    end
+    
     return watch_patterns
   end
 
@@ -329,6 +380,25 @@ function M.get_watch_patterns(config)
     if type(pattern) == "string" then
       local pattern_results = process_pattern(pattern, path, config, collect_fn)
       vim.list_extend(watch_patterns, pattern_results)
+    end
+  end
+
+  -- Add monorepo workspace patterns if in monorepo mode
+  if config._monorepo_root then
+    local monorepo_patterns = {}
+    local base_patterns = patterns or DEFAULT_ENV_PATTERNS
+    
+    -- Add patterns for monorepo root and all workspaces
+    for _, pattern in ipairs(base_patterns) do
+      if type(pattern) == "string" then
+        table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
+        table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
+      end
+    end
+    
+    -- Extend existing patterns with monorepo patterns
+    for _, pattern in ipairs(monorepo_patterns) do
+      table.insert(watch_patterns, pattern)
     end
   end
 
@@ -349,6 +419,76 @@ function M.find_env_files(opts)
   local path = normalize_path(opts.path, opts)
 
   local files = {}
+  
+  -- Handle monorepo workspace file discovery
+  if opts._is_monorepo_workspace and opts._monorepo_root then
+    local monorepo = require("ecolog.monorepo")
+    local workspace = opts._workspace_info
+    local root_path = opts._monorepo_root
+    
+    -- Get provider from detected info
+    local provider = opts._detected_info and opts._detected_info.provider
+    if not provider then
+      -- Fall back to detecting provider
+      local Detection = require("ecolog.monorepo.detection")
+      _, provider = Detection.detect_monorepo(root_path)
+    end
+    
+    if not provider then
+      -- No provider found, fall back to default files
+      files = M.find_env_files_in_path(opts.path, opts.env_file_patterns)
+    else
+      -- Get files using monorepo resolution strategy
+      files = monorepo.resolve_env_files(workspace, root_path, provider, opts.env_file_patterns, opts)
+    end
+    
+    -- Files are already sorted by resolve_env_files, just return them
+    return files
+  end
+  
+  -- Handle monorepo manual mode - collect files from all workspaces
+  if opts._is_monorepo_manual_mode and opts._all_workspaces then
+    local monorepo = require("ecolog.monorepo")
+    local root_path = opts._monorepo_root
+    
+    -- Use provider-specific env_resolution if available, otherwise fall back to provider default
+    local monorepo_config = {
+      strategy = "workspace_first",
+      inheritance = true
+    }
+    
+    if type(opts.monorepo) == "table" and opts.monorepo.env_resolution then
+      monorepo_config = opts.monorepo.env_resolution
+    elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.env_resolution then
+      monorepo_config = opts._detected_info.provider.env_resolution
+    end
+    
+    local all_files = {}
+    
+    -- Iterate through all workspaces and collect environment files
+    for _, workspace in ipairs(opts._all_workspaces) do
+      local workspace_files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
+      vim.list_extend(all_files, workspace_files)
+    end
+    
+    -- Remove duplicates that might occur from overlapping workspace files
+    local unique_files = {}
+    local seen = {}
+    for i = 1, #all_files do
+      local file = all_files[i]
+      if not seen[file] then
+        seen[file] = true
+        unique_files[#unique_files + 1] = file
+      end
+    end
+    
+    files = unique_files
+    
+    -- Sort and return
+    return M.sort_env_files(files, opts)
+  end
+  
+  -- Regular (non-monorepo) file discovery
   if not opts.env_file_patterns then
     local env_files = {}
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
@@ -368,7 +508,8 @@ function M.find_env_files(opts)
 
     local all_files = {}
     local collect_fn = function(results, items)
-      for _, item in ipairs(items) do
+      for i = 1, #items do
+        local item = items[i]
         local found = vim.fn.glob(item, false, true)
         if type(found) == "string" then
           found = { found }
@@ -391,10 +532,11 @@ function M.find_env_files(opts)
   -- Remove duplicates that might occur from overlapping patterns
   local unique_files = {}
   local seen = {}
-  for _, file in ipairs(files) do
+  for i = 1, #files do
+    local file = files[i]
     if not seen[file] then
       seen[file] = true
-      table.insert(unique_files, file)
+      unique_files[#unique_files + 1] = file
     end
   end
 
@@ -404,13 +546,14 @@ end
 ---Default sorting function for environment files
 ---@param a string First file path
 ---@param b string Second file path
----@param opts table Options containing preferred_environment
+---@param opts table Options containing preferred_environment and monorepo context
 ---@return boolean Whether a should come before b
 local function default_sort_file_fn(a, b, opts)
   if not a or not b then
     return false
   end
 
+  -- Preferred environment sorting (highest priority - same as non-monorepo)
   if opts and opts.preferred_environment and opts.preferred_environment ~= "" then
     local pref_pattern = "%." .. vim.pesc(opts.preferred_environment) .. "$"
     local a_is_preferred = a:match(pref_pattern) ~= nil
@@ -420,10 +563,59 @@ local function default_sort_file_fn(a, b, opts)
     end
   end
 
+  -- Standard .env file priority (second priority - same as non-monorepo)
   local a_is_env = a:match(M.PATTERNS.env_file_combined) ~= nil
   local b_is_env = b:match(M.PATTERNS.env_file_combined) ~= nil
   if a_is_env ~= b_is_env then
     return a_is_env
+  end
+
+  -- Monorepo workspace-aware sorting (applied after preferred environment)
+  if opts and opts._monorepo_root and opts._current_workspace_info then
+    local current_workspace = opts._current_workspace_info
+    local workspace_path = current_workspace.path
+    
+    local a_in_current = a:find(workspace_path, 1, true) == 1
+    local b_in_current = b:find(workspace_path, 1, true) == 1
+    
+    -- Prioritize files from current workspace in manual mode
+    if opts._is_monorepo_manual_mode and a_in_current ~= b_in_current then
+      return a_in_current
+    end
+    
+    -- In auto mode or when both files are from same workspace level,
+    -- apply workspace type priority if configured
+    local workspace_priority = nil
+    if type(opts.monorepo) == "table" and opts.monorepo.workspace_priority then
+      workspace_priority = opts.monorepo.workspace_priority
+    elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.workspace_priority then
+      workspace_priority = opts._detected_info.provider.workspace_priority
+    end
+    
+    if workspace_priority then
+      local function get_workspace_priority(file_path)
+        if not opts._monorepo_root then return 999 end
+        
+        local relative_path = file_path:sub(#opts._monorepo_root + 2)
+        local workspace_parts = vim.split(relative_path, "/")
+        
+        if #workspace_parts >= 1 then
+          local workspace_type = workspace_parts[1]
+          for i, priority_type in ipairs(workspace_priority) do
+            if workspace_type == priority_type then
+              return i
+            end
+          end
+        end
+        return 999
+      end
+      
+      local a_priority = get_workspace_priority(a)
+      local b_priority = get_workspace_priority(b)
+      if a_priority ~= b_priority then
+        return a_priority < b_priority
+      end
+    end
   end
 
   return a < b
@@ -440,16 +632,22 @@ function M.sort_env_files(files, opts)
 
   opts = opts or {}
   local sort_file_fn = opts.sort_file_fn
-  
+
   if not sort_file_fn and opts.sort_fn then
     sort_file_fn = opts.sort_fn
   end
-  
+
   sort_file_fn = sort_file_fn or default_sort_file_fn
 
-  files = vim.tbl_filter(function(f)
-    return f ~= nil
-  end, files)
+  -- Filter out nil values more efficiently
+  local valid_files = {}
+  for i = 1, #files do
+    local file = files[i]
+    if file then
+      valid_files[#valid_files + 1] = file
+    end
+  end
+  files = valid_files
 
   table.sort(files, function(a, b)
     return sort_file_fn(a, b, opts)
@@ -629,36 +827,90 @@ end
 ---@param env_file string Path to the source .env file
 ---@return boolean success Whether the file was generated successfully
 function M.generate_example_file(env_file)
+  -- Validate input
+  if not env_file or type(env_file) ~= "string" then
+    vim.notify("Invalid environment file path provided", vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check file readability
+  if vim.fn.filereadable(env_file) == 0 then
+    vim.notify("Environment file is not readable: " .. env_file, vim.log.levels.ERROR)
+    return false
+  end
+
   local f = io.open(env_file, "r")
   if not f then
-    vim.notify("Could not open .env file", vim.log.levels.ERROR)
+    vim.notify("Could not open .env file: " .. env_file, vim.log.levels.ERROR)
     return false
   end
 
   local example_content = {}
-  for line in f:lines() do
-    if line:match("^%s*$") or line:match("^%s*#") then
-      table.insert(example_content, line)
-    else
-      local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
-      if name then
-        name = name:gsub("^%s*(.-)%s*$", "%1")
-        comment = comment:gsub("^%s*(.-)%s*$", "%1")
-        table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+
+  -- Use pcall to protect against file reading errors
+  local read_success, read_err = pcall(function()
+    for line in f:lines() do
+      if line:match("^%s*$") or line:match("^%s*#") then
+        table.insert(example_content, line)
+      else
+        local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
+        if name then
+          name = name:gsub("^%s*(.-)%s*$", "%1")
+          comment = comment:gsub("^%s*(.-)%s*$", "%1")
+          table.insert(example_content, name .. "=your_" .. name:lower() .. "_here " .. comment)
+        end
       end
     end
-  end
-  f:close()
+  end)
 
-  local example_file = env_file:gsub("%.env$", "") .. ".env.example"
-  local out = io.open(example_file, "w")
-  if not out then
-    vim.notify("Could not create .env.example file", vim.log.levels.ERROR)
+  -- Ensure input file is always closed
+  local close_success, close_err = pcall(function()
+    f:close()
+  end)
+
+  if not read_success then
+    vim.notify("Error reading environment file: " .. tostring(read_err), vim.log.levels.ERROR)
     return false
   end
 
-  out:write(table.concat(example_content, "\n"))
-  out:close()
+  if not close_success then
+    vim.notify("Error closing environment file: " .. tostring(close_err), vim.log.levels.WARN)
+  end
+
+  local example_file = env_file:gsub("%.env$", "") .. ".env.example"
+
+  -- Check if we can write to the directory
+  local dir = vim.fn.fnamemodify(example_file, ":h")
+  if vim.fn.isdirectory(dir) == 0 then
+    vim.notify("Directory does not exist: " .. dir, vim.log.levels.ERROR)
+    return false
+  end
+
+  local out = io.open(example_file, "w")
+  if not out then
+    vim.notify("Could not create .env.example file: " .. example_file, vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Use pcall to protect against file writing errors
+  local write_success, write_err = pcall(function()
+    out:write(table.concat(example_content, "\n"))
+  end)
+
+  -- Ensure output file is always closed
+  local out_close_success, out_close_err = pcall(function()
+    out:close()
+  end)
+
+  if not write_success then
+    vim.notify("Error writing to example file: " .. tostring(write_err), vim.log.levels.ERROR)
+    return false
+  end
+
+  if not out_close_success then
+    vim.notify("Error closing example file: " .. tostring(out_close_err), vim.log.levels.WARN)
+  end
+
   vim.notify("Generated " .. example_file, vim.log.levels.INFO)
   return true
 end
@@ -771,6 +1023,76 @@ function M.get_var_word_under_cursor(providers)
   end
 
   return line:sub(word_start, word_end)
+end
+
+---Optimized bulk file discovery for single path
+---@param path string Directory path
+---@param patterns string[] File patterns
+---@return string[] files Found files
+function M.find_env_files_in_path_bulk(path, patterns)
+  if not patterns or #patterns == 0 then
+    return {}
+  end
+  
+  -- Use multiple glob operations but minimize them
+  local all_files = {}
+  
+  -- Process patterns in batches to avoid vim.fn.glob issues
+  for _, pattern in ipairs(patterns) do
+    local search_pattern = path .. "/" .. pattern
+    local found = vim.fn.glob(search_pattern, false, true)
+    
+    if type(found) == "string" then
+      found = { found }
+    end
+    
+    if found and #found > 0 then
+      vim.list_extend(all_files, found)
+    end
+  end
+  
+  -- Remove duplicates efficiently
+  local unique_files = {}
+  local seen = {}
+  for _, file in ipairs(all_files) do
+    if not seen[file] then
+      seen[file] = true
+      table.insert(unique_files, file)
+    end
+  end
+  
+  return unique_files
+end
+
+---Optimized bulk file discovery for multiple workspaces
+---@param workspaces table[] List of workspaces
+---@param patterns string[] File patterns
+---@return string[] files Found files
+function M.find_env_files_bulk_workspaces(workspaces, patterns)
+  if not workspaces or #workspaces == 0 or not patterns or #patterns == 0 then
+    return {}
+  end
+  
+  -- Collect all files from all workspaces
+  local all_files = {}
+  
+  for _, workspace in ipairs(workspaces) do
+    local workspace_path = workspace.path
+    local workspace_files = M.find_env_files_in_path_bulk(workspace_path, patterns)
+    vim.list_extend(all_files, workspace_files)
+  end
+  
+  -- Remove duplicates efficiently
+  local unique_files = {}
+  local seen = {}
+  for _, file in ipairs(all_files) do
+    if not seen[file] then
+      seen[file] = true
+      table.insert(unique_files, file)
+    end
+  end
+  
+  return unique_files
 end
 
 return M

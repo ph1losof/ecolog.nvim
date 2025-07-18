@@ -26,6 +26,13 @@ describe("vim.env integration", function()
         API_KEY = { value = "secret123", source = ".env" },
       }
     end
+    
+    -- Mock ecolog.get_config to enable vim_env
+    ecolog.get_config = function()
+      return {
+        vim_env = true,
+      }
+    end
   end)
 
   after_each(function()

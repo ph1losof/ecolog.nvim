@@ -34,16 +34,17 @@ function M.select_env_file(opts, callback)
     local content = {}
     for i, file in ipairs(env_files) do
       local prefix = i == selected_idx and " → " or "   "
-      table.insert(content, string.format("%s%d. %s", prefix, i, vim.fn.fnamemodify(file, ":t")))
+      local display_name = utils.get_env_file_display_name(file, opts)
+      table.insert(content, string.format("%s%d. %s", prefix, i, display_name))
     end
     return content
   end
 
   local function update_buffer(bufnr, winid)
     local content = get_content()
-    api.nvim_buf_set_option(bufnr, "modifiable", true)
+    vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
     api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
-    api.nvim_buf_set_option(bufnr, "modifiable", false)
+    vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
 
     api.nvim_buf_clear_namespace(bufnr, -1, 0, -1)
     for i = 1, #content do
@@ -58,20 +59,20 @@ function M.select_env_file(opts, callback)
   local original_guicursor = vim.opt.guicursor:get()
   local bufnr = api.nvim_create_buf(false, true)
 
-  api.nvim_buf_set_option(bufnr, "buftype", "nofile")
-  api.nvim_buf_set_option(bufnr, "bufhidden", "wipe")
-  api.nvim_buf_set_option(bufnr, "modifiable", true)
-  api.nvim_buf_set_option(bufnr, "filetype", "ecolog")
+  vim.api.nvim_set_option_value("buftype", "nofile", { buf = bufnr })
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = bufnr })
+  vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
+  vim.api.nvim_set_option_value("filetype", "ecolog", { buf = bufnr })
 
   api.nvim_buf_set_lines(bufnr, 0, -1, false, get_content())
-  api.nvim_buf_set_option(bufnr, "modifiable", false)
+  vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
 
   local winid = api.nvim_open_win(bufnr, true, float_opts)
 
-  api.nvim_win_set_option(winid, "conceallevel", 2)
-  api.nvim_win_set_option(winid, "concealcursor", "niv")
-  api.nvim_win_set_option(winid, "cursorline", true)
-  api.nvim_win_set_option(winid, "winhl", "Normal:EcologNormal,FloatBorder:EcologBorder")
+  vim.api.nvim_set_option_value("conceallevel", 2, { win = winid })
+  vim.api.nvim_set_option_value("concealcursor", "niv", { win = winid })
+  vim.api.nvim_set_option_value("cursorline", true, { win = winid })
+  vim.api.nvim_set_option_value("winhl", "Normal:EcologNormal,FloatBorder:EcologBorder", { win = winid })
 
   update_buffer(bufnr, winid)
 

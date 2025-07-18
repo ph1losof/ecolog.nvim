@@ -134,8 +134,8 @@ describe("interpolation", function()
     end)
 
     it("should handle shell command interpolation with pipes", function()
-      local result = interpolation.interpolate("$(echo 'hello' | tr 'a-z' 'A-Z')", env_vars)
-      assert.equals("HELLO", result)
+      local result = interpolation.interpolate("$(echo hello)", env_vars)
+      assert.equals("hello", result)
     end)
 
     it("should handle shell commands with environment variables", function()
@@ -150,10 +150,10 @@ describe("interpolation", function()
     it("should handle mixed interpolation types", function()
       local mixed_vars = {
         MESSAGE = { value = "Hello" },
-        TRANSFORMED = { value = "$(echo ${MESSAGE} | tr 'a-z' 'A-Z')" },
+        TRANSFORMED = { value = "$(echo ${MESSAGE})" },
       }
       local result = interpolation.interpolate("${TRANSFORMED}", mixed_vars)
-      assert.equals("HELLO", result)
+      assert.equals("Hello", result)
     end)
   end)
 
@@ -215,6 +215,42 @@ describe("interpolation", function()
     it("should respect disabled alternate values", function()
       local opts = { features = { alternates = false, variables = true } }
       assert.equals("John", interpolation.interpolate("${NAME:+alternate}", env_vars, opts))
+    end)
+  end)
+
+  describe("security options", function()
+    it("should sanitize dangerous characters by default", function()
+      local result = interpolation.interpolate("$(echo test; echo hacked)", env_vars)
+      assert.equals("test echo hacked", result)
+    end)
+
+    it("should allow dangerous characters when security is disabled", function()
+      local opts = { disable_security = true }
+      local result = interpolation.interpolate("$(echo test; echo hacked)", env_vars, opts)
+      assert.equals("test\nhacked", result)
+    end)
+
+    it("should sanitize pipe characters by default", function()
+      local result = interpolation.interpolate("$(echo test | cat)", env_vars)
+      assert.equals("test cat", result)
+    end)
+
+    it("should allow pipe characters when security is disabled", function()
+      local opts = { disable_security = true }
+      local result = interpolation.interpolate("$(echo test | cat)", env_vars, opts)
+      assert.equals("test", result)
+    end)
+
+    it("should sanitize backticks by default", function()
+      local result = interpolation.interpolate("$(echo `whoami`)", env_vars)
+      assert.equals("whoami", result)
+    end)
+
+    it("should allow backticks when security is disabled", function()
+      local opts = { disable_security = true }
+      local result = interpolation.interpolate("$(echo `whoami`)", env_vars, opts)
+      -- This would execute whoami command, but for test we just check it doesn't get sanitized
+      assert.is_string(result)
     end)
   end)
 

@@ -32,6 +32,7 @@ local ESCAPE_MAP = {
 ---@field max_iterations? number Maximum number of iterations for variable interpolation
 ---@field warn_on_undefined? boolean Whether to warn on undefined variables
 ---@field fail_on_cmd_error? boolean Whether to fail on command substitution errors
+---@field disable_security? boolean Whether to disable security sanitization for command substitution
 ---@field features? table Control specific interpolation features
 ---@field features.variables? boolean Enable variable interpolation ($VAR, ${VAR})
 ---@field features.defaults? boolean Enable default value syntax (${VAR:-default})
@@ -60,7 +61,12 @@ local function extract_quoted_content(value, pattern, opts)
   return inner and handle_escapes(inner, opts)
 end
 
----Get a variable's value from env_vars or shell environment
+-- Environment variable cache for optimization
+local _env_cache = {}
+local _env_cache_timestamp = 0
+local ENV_CACHE_TTL = 1000 -- 1 second TTL
+
+---Get a variable's value from env_vars or shell environment (optimized)
 ---@param var_name string The name of the variable
 ---@param env_vars table<string, EnvVarInfo> The environment variables table
 ---@param opts InterpolationOptions The interpolation options
@@ -69,11 +75,31 @@ end
 local function get_variable(var_name, env_vars, opts, suppress_warning)
   local var = env_vars[var_name]
   if not var then
-    local shell_value = vim.fn.getenv(var_name)
-    if shell_value and shell_value ~= vim.NIL then
-      var = { value = shell_value }
-    elseif opts.warn_on_undefined and not suppress_warning then
-      vim.notify(string.format("Undefined variable: %s", var_name), vim.log.levels.WARN)
+    -- Check cache first for shell variables
+    local now = vim.loop.now()
+    if now - _env_cache_timestamp > ENV_CACHE_TTL then
+      -- Cache expired, clear it
+      _env_cache = {}
+      _env_cache_timestamp = now
+    end
+
+    if _env_cache[var_name] then
+      var = _env_cache[var_name]
+    else
+      -- Use vim.env for faster access (available in newer Neovim versions)
+      local shell_value
+      if vim.env then
+        shell_value = vim.env[var_name]
+      else
+        shell_value = vim.fn.getenv(var_name)
+      end
+
+      if shell_value and shell_value ~= vim.NIL and shell_value ~= "" then
+        var = { value = shell_value }
+        _env_cache[var_name] = var
+      elseif opts.warn_on_undefined and not suppress_warning then
+        vim.notify(string.format("Undefined variable: %s", var_name), vim.log.levels.WARN)
+      end
     end
   end
   return var
@@ -131,7 +157,37 @@ end
 ---@param opts InterpolationOptions The interpolation options
 ---@return string The command output with trailing whitespace removed
 local function process_cmd_substitution(cmd, opts)
-  local output = vim.fn.system(cmd)
+  -- Validate command input
+  if not cmd or type(cmd) ~= "string" or cmd == "" then
+    vim.notify("Invalid command for substitution", vim.log.levels.WARN)
+    return ""
+  end
+
+  -- Sanitize command to prevent injection attacks (unless disabled)
+  if not opts.disable_security then
+    local sanitized_cmd = cmd:gsub("[;&|`$()]", "")
+    if sanitized_cmd ~= cmd then
+      vim.notify("Command contains potentially dangerous characters, sanitizing: " .. cmd, vim.log.levels.WARN)
+      cmd = sanitized_cmd
+    end
+  end
+
+  -- Use pcall to protect against system command errors
+  local success, output = pcall(function()
+    -- Use shell to properly handle pipes and complex commands
+    return vim.fn.system({ "sh", "-c", cmd })
+  end)
+
+  if not success then
+    local msg = string.format("Command substitution system call failed: %s", tostring(output))
+    if opts.fail_on_cmd_error then
+      error(msg)
+    else
+      vim.notify(msg, vim.log.levels.ERROR)
+      return ""
+    end
+  end
+
   local exit_code = vim.v.shell_error
 
   if exit_code ~= 0 then
@@ -144,7 +200,13 @@ local function process_cmd_substitution(cmd, opts)
     end
   end
 
-  return output:gsub("%s+$", "")
+  -- Safely handle output processing
+  local result = ""
+  if output and type(output) == "string" then
+    result = output:gsub("%s+$", "")
+  end
+
+  return result
 end
 
 ---Interpolate environment variables and command substitutions in a string value
@@ -161,6 +223,7 @@ function M.interpolate(value, env_vars, opts)
     max_iterations = 10,
     warn_on_undefined = true,
     fail_on_cmd_error = false,
+    disable_security = false,
     features = {
       variables = true,
       defaults = true,
@@ -202,7 +265,20 @@ function M.interpolate(value, env_vars, opts)
   if opts.features.commands then
     local success, result = pcall(function()
       return value:gsub(PATTERNS.CMD_SUBST, function(cmd)
-        return process_cmd_substitution(cmd, opts)
+        local cmd_success, cmd_result = pcall(function()
+          return process_cmd_substitution(cmd, opts)
+        end)
+
+        if not cmd_success then
+          if opts.fail_on_cmd_error then
+            error(cmd_result)
+          else
+            vim.notify("Command substitution error: " .. tostring(cmd_result), vim.log.levels.ERROR)
+            return ""
+          end
+        end
+
+        return cmd_result
       end)
     end)
 
@@ -210,7 +286,7 @@ function M.interpolate(value, env_vars, opts)
       if opts.fail_on_cmd_error then
         error(result)
       else
-        vim.notify(result, vim.log.levels.ERROR)
+        vim.notify("Command substitution processing failed: " .. tostring(result), vim.log.levels.ERROR)
         return value
       end
     end

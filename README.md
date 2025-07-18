@@ -27,6 +27,12 @@ A Neovim plugin for seamless environment variable integration and management. Pr
   - [Configuration Options](#configuration-options)
   - [Features](#features)
   - [Best Practices](#best-practices)
+- [Monorepo Support](#-monorepo-support)
+  - [Configuration](#configuration)
+  - [Workspace Detection](#workspace-detection)
+  - [Environment File Resolution](#environment-file-resolution)
+  - [Workspace Switching](#workspace-switching)
+  - [Advanced Configuration](#advanced-configuration-1)
 - [Variable Interpolation](#-variable-interpolation)
   - [Supported Syntax](#supported-syntax)
   - [Examples](#examples)
@@ -228,6 +234,14 @@ If you use `blink.cmp` see [Blink-cmp Integration guide](#blink-cmp-integration)
 - Environment-specific configurations
 - Custom sort functions for file priority
 
+🏢 **Monorepo Support**
+
+- Automatic workspace detection (Turborepo, Nx, Lerna, Rush, etc.)
+- Intelligent environment file resolution strategies
+- Workspace-aware variable completion and display
+- Automatic and manual workspace switching
+- Cross-workspace environment file management
+
 💡 **Type System**
 
 - Built-in type validation
@@ -279,6 +293,36 @@ TIMESTAMP=$(date +%Y%m%d)
 DATABASE_URL="postgres://${DB_USER:-postgres}:${DB_PASS}@${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME}"
 ```
 
+### Security
+
+By default, Ecolog sanitizes potentially dangerous characters in command substitutions to prevent command injection attacks. Characters like `;`, `|`, `` ` ``, `$`, `()` are removed from commands before execution.
+
+For example:
+
+```sh
+# This dangerous command:
+HACK=$(echo hello; rm -rf /)
+
+# Gets sanitized to:
+HACK=$(echo hello rm -rf /)
+```
+
+#### Disabling Security (Advanced)
+
+In trusted environments where you need complex shell commands, you can disable security sanitization:
+
+```lua
+require('ecolog').setup({
+  interpolation = {
+    enabled = true,
+    disable_security = true,  -- ⚠️ Use with caution!
+    -- ... other options
+  }
+})
+```
+
+**⚠️ Warning**: Only disable security in trusted environments. When `disable_security = true`, all shell command characters are allowed, which can be dangerous if environment files contain malicious commands.
+
 ### Configuration Options
 
 You can customize the interpolation behavior through the plugin's configuration:
@@ -297,6 +341,7 @@ require('ecolog').setup({
     max_iterations = 10,         -- Maximum iterations for nested interpolation
     warn_on_undefined = true,    -- Warn about undefined variables
     fail_on_cmd_error = false,  -- How to handle command substitution errors
+    disable_security = false,    -- Disable security sanitization for command substitution
     features = {
       variables = true,         -- Enable variable interpolation ($VAR, ${VAR})
       defaults = true,         -- Enable default value syntax (${VAR:-default})
@@ -316,6 +361,7 @@ The configuration options are:
 | max_iterations      | number  | 10      | Maximum iterations for nested variable interpolation      |
 | warn_on_undefined   | boolean | true    | Whether to warn when undefined variables are referenced   |
 | fail_on_cmd_error   | boolean | false   | Whether to error or warn on command substitution failures |
+| disable_security    | boolean | false   | Disable security sanitization for command substitution    |
 | features            | table   | -       | Control specific interpolation features                   |
 | features.variables  | boolean | true    | Enable variable interpolation ($VAR, ${VAR})              |
 | features.defaults   | boolean | true    | Enable default value syntax (${VAR:-default})             |
@@ -333,6 +379,7 @@ The configuration options are:
 - **Quote Handling**: Proper handling of single and double quotes
 - **Default Values**: Support for default and alternate value syntax
 - **Safety Limits**: Prevention of infinite recursion with iteration limits
+- **Security Sanitization**: Built-in protection against command injection attacks
 
 ### Best Practices
 
@@ -346,6 +393,10 @@ The configuration options are:
    - Disable `alternates` and `defaults` if not needed
    - Keep `variables` enabled for basic interpolation
    - Consider disabling `escapes` if not using special characters
+7. Use security settings appropriately:
+   - Keep `disable_security = false` (default) in untrusted environments
+   - Only set `disable_security = true` in trusted environments where you need complex shell commands
+   - Be aware that disabling security allows potentially dangerous characters like `;`, `|`, `` ` ``, `$`, `()` in command substitutions
 
 ## 🌍 Supported Languages
 
@@ -508,6 +559,386 @@ require('ecolog').setup({
 2. Consider using `transform` to clearly mark shell-sourced variables
 3. Be mindful of the `override` setting when working with both shell and .env variables
 4. Apply shelter mode settings to shell variables containing sensitive data
+
+## 🏢 Monorepo Support
+
+Ecolog provides comprehensive monorepo support for managing environment variables across multiple workspaces and projects. This feature automatically detects monorepo structures and provides intelligent workspace-aware environment variable management.
+
+### Basic Configuration
+
+Enable monorepo support with default settings:
+
+```lua
+require('ecolog').setup({
+  monorepo = true,  -- Enable with default configuration
+  -- or
+  monorepo = {
+    enabled = true,
+    auto_switch = true,  -- Automatically switch to workspace based on current file
+  }
+})
+```
+
+### Advanced Configuration
+
+The new monorepo system supports advanced configuration with provider-based detection and performance optimization:
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    enabled = true,
+    auto_switch = true,
+    notify_on_switch = false,  -- Show notifications when switching workspaces
+
+    -- Provider configuration
+    providers = {
+      -- Built-in providers (loaded automatically)
+      builtin = {
+        "turborepo",
+        "nx",
+        "lerna",
+        "yarn_workspaces",
+        "cargo_workspaces"
+      },
+      -- Custom providers
+      custom = {
+        {
+          module = "my_custom_provider",
+          config = { custom_option = "value" }
+        }
+      }
+    },
+
+    -- Performance settings
+    performance = {
+      -- Cache configuration
+      cache = {
+        max_entries = 1000,
+        default_ttl = 300000,     -- 5 minutes
+        cleanup_interval = 60000  -- 1 minute
+      },
+
+      -- Auto-switch throttling
+      auto_switch_throttle = {
+        min_interval = 100,           -- Minimum ms between checks
+        debounce_delay = 250,         -- Debounce delay for rapid changes
+        same_file_skip = true,        -- Skip if same file
+        workspace_boundary_only = true, -- Only check when crossing boundaries
+        max_checks_per_second = 10    -- Rate limiting
+      }
+    }
+  }
+})
+```
+
+### Plugin System Configuration
+
+The new monorepo system supports a plugin architecture for extensibility:
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    enabled = true,
+
+    -- Plugin configuration
+    plugins = {
+      -- Load plugins from directory
+      directory = "/path/to/my/monorepo/plugins",
+
+      -- Or register plugins directly
+      list = {
+        {
+          name = "my_monorepo_plugin",
+          providers = {
+            {
+              type = "simple",
+              name = "my_simple_provider",
+              detection = {
+                file_markers = { "my-workspace.json" }
+              },
+              workspace = {
+                patterns = { "apps/*", "libs/*" }
+              }
+            }
+          },
+          hooks = {
+            before_detection = function(path)
+              print("Detecting monorepo at:", path)
+            end,
+            after_workspace_switch = function(new_workspace, old_workspace)
+              print("Switched to workspace:", new_workspace and new_workspace.name or "none")
+            end
+          }
+        }
+      }
+    }
+  }
+})
+```
+
+### Workspace Detection
+
+The new system uses provider-specific detection instead of global constants:
+
+#### Built-in Providers
+
+Each provider has its own detection logic and workspace patterns:
+
+| Provider             | Detection Files                        | Workspace Patterns                     |
+| -------------------- | -------------------------------------- | -------------------------------------- |
+| **Turborepo**        | `turbo.json`                           | `apps/*`, `packages/*`                 |
+| **NX**               | `nx.json`, `workspace.json`            | `apps/*`, `libs/*`, `tools/*`, `e2e/*` |
+| **Lerna**            | `lerna.json`                           | `packages/*`                           |
+| **Yarn Workspaces**  | `package.json` (with workspaces field) | `packages/*`, `apps/*`, `services/*`   |
+| **Cargo Workspaces** | `Cargo.toml` (with workspace section)  | `crates/*`, `libs/*`, `bins/*`         |
+
+#### Custom Provider Example
+
+```lua
+-- File: lua/my_custom_provider.lua
+local BaseProvider = require("ecolog.monorepo.detection.providers.base")
+
+local MyCustomProvider = {}
+setmetatable(MyCustomProvider, { __index = BaseProvider })
+
+function MyCustomProvider.new(config)
+  local default_config = {
+    name = "my_custom_provider",
+    detection = {
+      strategies = { "file_markers" },
+      file_markers = { "my-monorepo.json" },
+      max_depth = 4,
+      cache_duration = 300000,
+    },
+    workspace = {
+      patterns = { "workspaces/*", "projects/*" },
+      priority = { "workspaces", "projects" }
+    },
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    priority = 50,
+  }
+
+  local merged_config = config and vim.tbl_deep_extend("force", default_config, config) or default_config
+  local instance = BaseProvider.new(merged_config)
+  setmetatable(instance, { __index = MyCustomProvider })
+  return instance
+end
+
+return MyCustomProvider
+```
+
+### Factory-Based Provider Creation
+
+```lua
+-- Using the factory system for quick custom providers
+local Factory = require("ecolog.monorepo.detection.providers.factory")
+
+-- Create from template
+local my_provider = Factory.create_from_template("js_monorepo", {
+  name = "my_js_provider",
+  detection = {
+    file_markers = { "my-package.json" }
+  },
+  workspace = {
+    patterns = { "my-apps/*", "my-packages/*" }
+  }
+})
+
+-- Register the provider
+local monorepo = require("ecolog.monorepo")
+monorepo.register_provider(my_provider.new())
+```
+
+### Environment File Resolution
+
+Each provider defines its own environment file resolution strategy:
+
+#### Resolution Strategies
+
+1. **`workspace_first`** (default): Workspace files take precedence over root files
+2. **`root_first`**: Root files take precedence over workspace files
+3. **`workspace_only`**: Only load workspace environment files
+4. **`merge`**: Merge files based on override order
+
+#### Provider-Specific Resolution
+
+Each provider can define its own resolution strategy:
+
+```lua
+-- Example: Custom provider with specific resolution
+local MyProvider = {}
+setmetatable(MyProvider, { __index = BaseProvider })
+
+function MyProvider.new(config)
+  local default_config = {
+    name = "my_provider",
+    -- Provider-specific resolution strategy
+    env_resolution = {
+      strategy = "workspace_first",
+      inheritance = true,
+      override_order = { "workspace", "root" }
+    },
+    -- Provider-specific workspace patterns
+    workspace = {
+      patterns = { "my-apps/*", "my-packages/*" },
+      priority = { "my-apps", "my-packages" }
+    }
+  }
+
+  local merged_config = config and vim.tbl_deep_extend("force", default_config, config) or default_config
+  local instance = BaseProvider.new(merged_config)
+  setmetatable(instance, { __index = MyProvider })
+  return instance
+end
+
+return MyProvider
+```
+
+#### Available Templates
+
+The factory system provides pre-configured templates:
+
+```lua
+local Factory = require("ecolog.monorepo.detection.providers.factory")
+
+-- Available templates: "simple", "js_monorepo", "generic"
+local templates = Factory.get_available_templates()
+
+-- Create from template
+local provider = Factory.create_from_template("js_monorepo", {
+  name = "my_js_provider",
+  detection = {
+    file_markers = { "my-package.json" }
+  }
+})
+```
+
+### Workspace Switching
+
+#### Automatic Workspace Switching
+
+When `auto_switch = true`, Ecolog automatically switches to the appropriate workspace based on your current file location:
+
+```lua
+-- Opens file in apps/frontend/src/component.tsx
+-- Automatically switches to apps/frontend workspace
+-- Loads environment files from apps/frontend/.env, apps/frontend/.env.local, etc.
+```
+
+#### Manual Workspace Selection
+
+When `auto_switch = false`, use `:EcologSelect` to manually choose environment files from all workspaces:
+
+```vim
+:EcologSelect
+```
+
+This will show files with workspace context:
+
+```
+1. .env.local (apps/frontend)
+2. .env (apps/frontend)
+3. .env.local (apps/backend)
+4. .env (apps/backend)
+5. .env.local (packages/shared)
+6. .env (root)
+```
+
+#### Workspace Context Display
+
+All ecolog integrations display workspace context for better identification:
+
+- **File Selection**: Shows workspace path in file listings
+- **Completion**: Displays workspace context in completion details
+- **Pickers**: Shows workspace information in Telescope, FZF, and Snacks
+- **Peek Window**: Displays workspace context in source information
+- **Statusline**: Shows current workspace and environment file
+
+### Performance
+
+#### Caching System
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    performance = {
+      cache = {
+        max_entries = 1000,        -- Maximum cache entries
+        default_ttl = 300000,      -- 5 minutes default TTL
+        cleanup_interval = 60000   -- 1 minute cleanup interval
+      }
+    }
+  }
+})
+```
+
+#### Auto-Switch Throttling
+
+```lua
+require('ecolog').setup({
+  monorepo = {
+    performance = {
+      auto_switch_throttle = {
+        min_interval = 100,               -- Minimum ms between checks
+        debounce_delay = 250,             -- Debounce rapid changes
+        same_file_skip = true,            -- Skip if same file
+        workspace_boundary_only = true,   -- Only check at boundaries
+        max_checks_per_second = 10        -- Rate limiting
+      }
+    }
+  }
+})
+```
+
+### API Usage Examples
+
+```lua
+local monorepo = require("ecolog.monorepo")
+
+-- Setup with custom configuration
+monorepo.setup({
+  enabled = true,
+  providers = {
+    builtin = { "turborepo", "nx" }
+  }
+})
+
+-- Detection
+local root_path, provider, info = monorepo.detect_monorepo_root()
+if root_path then
+  print("Found monorepo at:", root_path)
+  print("Provider:", provider.name)
+end
+
+-- Get workspaces
+local workspaces = monorepo.get_workspaces(root_path, provider)
+for _, workspace in ipairs(workspaces) do
+  print("Workspace:", workspace.name, "at", workspace.path)
+end
+
+-- Manual workspace switching
+local current_workspace = monorepo.find_current_workspace(nil, workspaces)
+if current_workspace then
+  monorepo.set_current_workspace(current_workspace)
+end
+
+-- Register custom provider
+local custom_provider = Factory.create_simple_provider({
+  name = "my_provider",
+  detection = {
+    file_markers = { "my-config.json" }
+  }
+})
+monorepo.register_provider(custom_provider.new())
+
+-- Statistics and monitoring
+local stats = monorepo.get_stats()
+print("Monorepo stats:", vim.inspect(stats))
+```
 
 ## 💡 vim.env Integration
 
@@ -1377,7 +1808,7 @@ Add to your lualine config:
 require('lualine').setup({
   sections = {
     lualine_x = {
-      require('ecolog').get_lualine,
+      require('ecolog.integrations.statusline').lualine(),
     }
   }
 })
@@ -2203,12 +2634,12 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
 > **Note**: Additional setup is required for [blink-cmp](#blink-cmp-integration) and [statusline](#statusline-integration) integrations.
 
 ```lua
-{
+  {
     'ssstba/ecolog.nvim',
     keys = {
+      { '<leader>e', '', desc = '+ecolog', mode = { 'n', 'v' } },
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Ecolog peek line' },
       { '<leader>eh', '<Cmd>EcologShellToggle<cr>', desc = 'Toggle shell variables' },
-      { '<leader>ei', '<Cmd>EcologInterpolationToggle<cr>', desc = 'Toggle shell variables' },
       { '<leader>ge', '<cmd>EcologGoto<cr>', desc = 'Go to env file' },
       { '<leader>ec', '<cmd>EcologSnacks<cr>', desc = 'Open a picker' },
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
@@ -2218,6 +2649,11 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
     opts = {
       preferred_environment = 'local',
       types = true,
+      monorepo = {
+        enabled = true,
+        auto_switch = true,
+        notify_on_switch = true,
+      },
       providers = {
         {
           pattern = '{{[%w_]+}}?$',
@@ -2252,6 +2688,7 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
         blink_cmp = true,
         statusline = {
           hidden_mode = true,
+          icons = { enabled = true, env = 'E', shelter = 'S' },
           highlights = {
             env_file = 'Directory',
             vars_count = 'Number',
@@ -2261,6 +2698,9 @@ It's author's (`ssstba`) personal setup for ecolog.nvim, it is opionated. Howeve
       },
       shelter = {
         configuration = {
+          patterns = {
+            ['DATABASE_URL'] = 'full',
+          },
           sources = {
             ['.env.example'] = 'none',
           },

@@ -83,10 +83,10 @@ local function create_peek_content(var_name, var_info, types, config)
   -- Handle multi-line values properly
   local is_multiline = display_value:find('\n') ~= nil
   if is_multiline then
-    lines[4] = "Value   : (multi-line)"
     local value_lines = vim.split(display_value, '\n', { plain = true })
-    for i, line in ipairs(value_lines) do
-      lines[4 + i] = "          " .. line
+    lines[4] = "Value   : " .. value_lines[1]
+    for i = 2, #value_lines do
+      lines[3 + i] = "          " .. value_lines[i]
     end
   else
     lines[4] = "Value   : " .. display_value
@@ -110,19 +110,19 @@ local function create_peek_content(var_name, var_info, types, config)
   
   -- Handle multi-line value highlights
   if is_multiline then
+    local value_lines = vim.split(display_value, '\n', { plain = true })
     highlights[4] = {
-      "Comment",
+      highlight_group,
       3,
       PATTERNS.label_width,
-      PATTERNS.label_width + #"(multi-line)",
+      PATTERNS.label_width + #value_lines[1],
     }
-    local value_lines = vim.split(display_value, '\n', { plain = true })
-    for i, line in ipairs(value_lines) do
-      highlights[4 + i] = {
+    for i = 2, #value_lines do
+      highlights[3 + i] = {
         highlight_group,
-        3 + i,
+        2 + i,
         PATTERNS.label_width,
-        PATTERNS.label_width + #line,
+        PATTERNS.label_width + #value_lines[i],
       }
     end
   else

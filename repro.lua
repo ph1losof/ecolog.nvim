@@ -10,7 +10,7 @@ load(vim.fn.system("curl -s https://raw.githubusercontent.com/folke/lazy.nvim/ma
 require("lazy.minit").repro({
   spec = {
     {
-      "t3ntxcl3s/ecolog.nvim",
+      "ssstba/ecolog.nvim",
       -- please test on 'main' if possible
       lazy = false,
       opts = {},

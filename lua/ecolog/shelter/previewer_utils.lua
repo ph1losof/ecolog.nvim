@@ -9,56 +9,36 @@ local LRUCache = require("ecolog.shelter.lru_cache")
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 local processed_buffers = LRUCache.new(100)
 
----Process a chunk of lines and create extmarks for them
+---Process buffer with optimized multi-line support
 ---@param bufnr number Buffer number
 ---@param lines string[] Lines to process
----@param start_idx number Start index
----@param end_idx number End index
 ---@param content_hash string Content hash
 ---@param filename string Filename
 ---@param on_complete? function Optional callback when processing is complete
-local function process_buffer_chunk(bufnr, lines, start_idx, end_idx, content_hash, filename, on_complete)
+local function process_buffer_with_multiline(bufnr, lines, content_hash, filename, on_complete)
   if not api.nvim_buf_is_valid(bufnr) then
     return
   end
 
-  end_idx = math.min(end_idx, #lines)
-  local chunk_extmarks = {}
   local config = state.get_config()
   local skip_comments = state.get_buffer_state().skip_comments
-
-  for i = start_idx, end_idx do
-    local line = lines[i]
-    local processed_items = buffer_utils.process_line(line)
-
-    for _, item in ipairs(processed_items) do
-      if not (skip_comments and item.is_comment) then
-        local extmark = buffer_utils.create_extmark(item.value, item, config, filename, i)
-        if extmark then
-          table.insert(chunk_extmarks, extmark)
-        end
-      end
-    end
-  end
-
-  if #chunk_extmarks > 0 then
-    vim.schedule(function()
-      for _, mark in ipairs(chunk_extmarks) do
-        pcall(api.nvim_buf_set_extmark, bufnr, namespace, mark[1], mark[2], mark[3])
-      end
-    end)
-  end
-
-  if end_idx < #lines then
-    vim.schedule(function()
-      process_buffer_chunk(bufnr, lines, end_idx + 1, end_idx + 50, content_hash, filename, on_complete)
-    end)
+  
+  -- Use the optimized multi-line engine
+  local multiline_engine = require("ecolog.shelter.multiline_engine")
+  multiline_engine.process_buffer_optimized(
+    bufnr,
+    lines,
+    config,
+    filename,
+    namespace,
+    skip_comments
+  )
+  
+  -- Complete processing
+  if on_complete then
+    on_complete(content_hash)
   else
-    if on_complete then
-      on_complete(content_hash)
-    else
-      processed_buffers:put(bufnr, content_hash)
-    end
+    processed_buffers:put(bufnr, content_hash)
   end
 end
 
@@ -183,7 +163,7 @@ function M.process_buffer(bufnr, source_filename, cache, on_complete)
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
 
   M.setup_preview_buffer(bufnr, filename)
-  process_buffer_chunk(bufnr, lines, 1, 50, content_hash, filename, on_complete)
+  process_buffer_with_multiline(bufnr, lines, content_hash, filename, on_complete)
 end
 
 ---@param bufnr number

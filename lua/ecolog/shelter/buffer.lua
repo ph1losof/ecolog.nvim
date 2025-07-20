@@ -51,19 +51,21 @@ M.NAMESPACE = NAMESPACE
 
 ---@param text string
 ---@param start_pos number?
+---@param multi_line_state table? Multi-line parsing state
 ---@return KeyValueResult?
-M.find_next_key_value = function(text, start_pos)
+---@return table? multi_line_state Updated multi-line state
+M.find_next_key_value = function(text, start_pos, multi_line_state)
   vim.validate("text", text, "string")
   vim.validate("start_pos", start_pos, "number", true)
 
   start_pos = start_pos or 1
   if start_pos > #text then
-    return nil
+    return nil, multi_line_state
   end
 
   local eq_pos = string_find(text, "=", start_pos)
   if not eq_pos then
-    return nil
+    return nil, multi_line_state
   end
 
   -- Find the key by scanning backwards from equals sign
@@ -78,8 +80,11 @@ M.find_next_key_value = function(text, start_pos)
 
   local key = string_match(string_sub(text, key_start, eq_pos - 1), KEY_PATTERN)
   if not key or #key == 0 then
-    return M.find_next_key_value(text, eq_pos + 1)
+    return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
   end
+
+  local value_part = text:sub(eq_pos + 1)
+  
 
   -- Handle quoted values
   local pos = eq_pos + 1
@@ -102,7 +107,7 @@ M.find_next_key_value = function(text, start_pos)
       value = text:sub(eq_pos + 2, value_end - 1)
       pos = value_end + 1
     else
-      return M.find_next_key_value(text, eq_pos + 1)
+      return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
     end
   else
     -- Handle unquoted values
@@ -117,7 +122,7 @@ M.find_next_key_value = function(text, start_pos)
   end
 
   if not value or #value == 0 then
-    return M.find_next_key_value(text, eq_pos + 1)
+    return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
   end
 
   return {
@@ -126,12 +131,14 @@ M.find_next_key_value = function(text, start_pos)
     quote_char = in_quotes and quote_char or nil,
     eq_pos = eq_pos,
     next_pos = pos,
-  }
+  }, multi_line_state
 end
 
 ---@param line string
+---@param multi_line_state table? Multi-line parsing state
 ---@return ProcessedItem[]
-function M.process_line(line)
+---@return table? multi_line_state Updated multi-line state
+function M.process_line(line, multi_line_state)
   vim.validate("line", line, "string")
 
   local results = {}
@@ -139,7 +146,7 @@ function M.process_line(line)
   local is_comment_line = comment_start == 1
 
   if not is_comment_line then
-    local kv = M.find_next_key_value(line)
+    local kv, updated_state = M.find_next_key_value(line, nil, multi_line_state)
     if kv and (not comment_start or kv.eq_pos < comment_start) then
       table_insert(results, {
         key = kv.key,
@@ -149,6 +156,7 @@ function M.process_line(line)
         is_comment = false,
       })
     end
+    multi_line_state = updated_state
   end
 
   if comment_start then
@@ -156,7 +164,7 @@ function M.process_line(line)
     local pos = 1
 
     while true do
-      local kv = M.find_next_key_value(comment_text, pos)
+      local kv, updated_state = M.find_next_key_value(comment_text, pos, multi_line_state)
       if not kv then
         break
       end
@@ -170,10 +178,11 @@ function M.process_line(line)
       })
 
       pos = kv.next_pos
+      multi_line_state = updated_state
     end
   end
 
-  return results
+  return results, multi_line_state
 end
 
 ---@param line string
@@ -293,7 +302,7 @@ end
 ---@param config table
 ---@param bufname string
 ---@param line_num number
----@return table?
+---@return table|table[]? extmark(s) Single extmark or array of extmarks for multi-line values
 function M.create_extmark(value, item, config, bufname, line_num)
   local is_revealed = state.is_line_revealed(line_num)
   local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
@@ -311,6 +320,12 @@ function M.create_extmark(value, item, config, bufname, line_num)
   end
 
   local mask_length = state.get_config().mask_length
+  
+  -- Check if this is a multi-line value
+  local is_multi_line = masked_value:find("\n") ~= nil
+  if is_multi_line then
+    return M.create_multi_line_extmarks(raw_value, masked_value, item, config, line_num)
+  end
 
   local extmark_opts = {
     virt_text = {
@@ -334,6 +349,46 @@ function M.create_extmark(value, item, config, bufname, line_num)
     item.eq_pos,
     extmark_opts,
   }
+end
+
+---Create extmarks for multi-line values
+---@param raw_value string The original raw value
+---@param masked_value string The masked value
+---@param item ProcessedItem The processed item
+---@param config table Configuration
+---@param start_line_num number The starting line number
+---@return table[] extmarks Array of extmarks for each line
+function M.create_multi_line_extmarks(raw_value, masked_value, item, config, start_line_num)
+  local raw_lines = vim.split(raw_value, "\n", { plain = true })
+  local masked_lines = vim.split(masked_value, "\n", { plain = true })
+  local extmarks = {}
+  
+  for i, masked_line in ipairs(masked_lines) do
+    local line_num = start_line_num + i - 1
+    local is_revealed = state.is_line_revealed(line_num)
+    local display_value = is_revealed and (raw_lines[i] or "") or masked_line
+    
+    local extmark_opts = {
+      virt_text = {
+        { display_value, (is_revealed or display_value == (raw_lines[i] or "")) and "String" or config.highlight_group },
+      },
+      virt_text_pos = "overlay",
+      hl_mode = "combine",
+      priority = item.is_comment and 10000 or 9999,
+      strict = false,
+    }
+    
+    -- For the first line, use the equals position; for subsequent lines, start at column 0
+    local col_pos = i == 1 and item.eq_pos or 0
+    
+    table.insert(extmarks, {
+      line_num - 1,
+      col_pos,
+      extmark_opts,
+    })
+  end
+  
+  return extmarks
 end
 
 ---@param bufnr number
@@ -371,61 +426,30 @@ function M.shelter_buffer()
   local winid = api.nvim_get_current_win()
   setup_buffer_options(bufnr, winid)
 
-  local line_count = api.nvim_buf_line_count(bufnr)
-  local extmarks = {}
-  local config_partial_mode = state.get_config().partial_mode
-  local config_highlight_group = state.get_config().highlight_group
+  -- Get configuration for masking
+  local masking_config = {
+    partial_mode = state.get_config().partial_mode,
+    highlight_group = state.get_config().highlight_group,
+  }
   local skip_comments = state.get_config().skip_comments
-
-  for chunk_start = 0, line_count - 1, CHUNK_SIZE do
-    local chunk_end = math.min(chunk_start + CHUNK_SIZE - 1, line_count - 1)
-    local ok, lines = pcall(api.nvim_buf_get_lines, bufnr, chunk_start, chunk_end + 1, false)
-
-    if not ok then
-      vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
-      return
-    end
-
-    for i, line in ipairs(lines) do
-      local line_num = chunk_start + i
-      local is_comment_line = string_find(line, COMMENT_PATTERN)
-
-      if is_comment_line and skip_comments then
-        goto continue
-      end
-
-      local cached_data = get_cached_line(line, line_num, bufname)
-      if cached_data and cached_data.extmarks and not state.is_line_revealed(line_num) then
-        for _, extmark in ipairs(cached_data.extmarks) do
-          table_insert(extmarks, extmark)
-        end
-        goto continue
-      end
-
-      local processed_items = M.process_line(line)
-      for _, item in ipairs(processed_items) do
-        if skip_comments and item.is_comment then
-          goto continue_item
-        end
-
-        if item.value and #item.value > 0 then
-          local extmark = M.create_extmark(item.value, item, {
-            partial_mode = config_partial_mode,
-            highlight_group = config_highlight_group,
-          }, bufname, line_num)
-
-          if extmark then
-            table_insert(extmarks, extmark)
-            cache_line(line, line_num, bufname, extmark)
-          end
-        end
-        ::continue_item::
-      end
-      ::continue::
-    end
+  
+  -- Read all lines at once for optimized processing
+  local ok, all_lines = pcall(api.nvim_buf_get_lines, bufnr, 0, -1, false)
+  if not ok then
+    vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
+    return
   end
 
-  apply_extmarks(bufnr, extmarks)
+  -- Use the optimized multi-line engine
+  local multiline_engine = require("ecolog.shelter.multiline_engine")
+  multiline_engine.process_buffer_optimized(
+    bufnr,
+    all_lines,
+    masking_config,
+    bufname,
+    NAMESPACE,
+    skip_comments
+  )
 end
 
 ---@param config table

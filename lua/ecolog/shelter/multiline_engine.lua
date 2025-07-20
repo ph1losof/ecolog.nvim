@@ -439,7 +439,6 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
     ::continue_var::
   end
 
-  -- Cache the result
   extmark_cache:put(extmark_cache_key, extmarks)
   return extmarks
 end

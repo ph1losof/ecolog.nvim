@@ -143,6 +143,32 @@ function M.setup(opts)
 
     local autocmd_group = api.nvim_create_augroup("EcologPeek_" .. bufnr .. "_" .. current_line, { clear = true })
 
+    -- Helper function to check if a line is part of the same multiline variable as current_line
+    local function is_within_same_multiline_var(line_num)
+      if line_num == current_line then
+        return true
+      end
+
+      local all_lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      local multiline_engine = require("ecolog.shelter.multiline_engine")
+      local content_hash = vim.fn.sha256(table.concat(all_lines, "\n"))
+      local parsed_vars = multiline_engine.parse_lines_cached(all_lines, content_hash)
+
+      local current_var = nil
+      for _, var_info in pairs(parsed_vars) do
+        if current_line >= var_info.start_line and current_line <= var_info.end_line then
+          current_var = var_info
+          break
+        end
+      end
+
+      if not current_var or not (current_var.is_multi_line or current_var.has_newlines) then
+        return false
+      end
+
+      return line_num >= current_var.start_line and line_num <= current_var.end_line
+    end
+
     local cursor_timer = nil
     api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
       buffer = bufnr,
@@ -150,7 +176,7 @@ function M.setup(opts)
       callback = function(ev)
         local new_line = api.nvim_win_get_cursor(0)[1]
 
-        if new_line ~= current_line then
+        if new_line ~= current_line and not is_within_same_multiline_var(new_line) then
           if cursor_timer then
             vim.fn.timer_stop(cursor_timer)
           end

@@ -122,6 +122,10 @@ function M.setup(opts)
     -- Use CursorHold instead of CursorMoved to avoid immediate triggering
     -- This will trigger after the user stops moving the cursor for a short time
     local function cleanup_peek()
+      if not state.is_enabled("files") then
+        return
+      end
+
       state.reset_revealed_lines()
       buffer.clear_line_cache(current_line, api.nvim_buf_get_name(bufnr))
 

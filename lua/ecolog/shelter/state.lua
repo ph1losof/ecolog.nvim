@@ -167,6 +167,19 @@ function M.set_feature_state(feature, enabled)
 
   state.features.enabled[feature] = enabled
   _state_cache["feature_enabled_" .. feature] = enabled
+
+  if feature == "files" and enabled then
+    M.reset_revealed_lines()
+    vim.schedule(function()
+      local multiline_engine = require("ecolog.shelter.multiline_engine")
+      multiline_engine.clear_caches()
+
+      local buffer = require("ecolog.shelter.buffer")
+      if buffer and buffer.shelter_buffer then
+        buffer.shelter_buffer()
+      end
+    end)
+  end
 end
 
 ---@param feature string

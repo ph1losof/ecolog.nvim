@@ -148,119 +148,25 @@ local _loading = {}
 local _setup_done = false
 local _lazy_setup_tasks = {}
 
--- Cache management
 local MAX_CACHE_SIZE = 1000
 local _cache_stats = { hits = 0, misses = 0, cleanups = 0 }
 local _last_cleanup = 0
-local CLEANUP_INTERVAL = 300000 -- 5 minutes in milliseconds
+local CLEANUP_INTERVAL = 300000
 
--- Configuration cache
 local _config_cache = {}
 local _config_cache_key = nil
 
--- Improved synchronization primitives
 local _state_lock = false
-local _state_waiters = {}
 local _module_locks = {}
 local _lock_start_time = 0
-local _lock_owner = nil
-local _lock_count = 0
 local _pending_operations = 0
 
--- Lock-free read operations for better performance
-local function safe_read_state(key)
-  -- Direct access for read-only operations
-  if key then
-    return state[key]
-  end
-  return state
-end
+local _validation_errors = 0
+local _last_validation_check = 0
+local VALIDATION_INTERVAL = 30000
 
--- Lightweight lock for critical sections only
-local function try_acquire_lock(timeout_ms)
-  timeout_ms = timeout_ms or 1000
-  local start_time = vim.loop.now()
+local _health_timer = nil
 
-  while _state_lock do
-    local elapsed = vim.loop.now() - start_time
-    if elapsed > timeout_ms then
-      return false
-    end
-    vim.wait(10)
-  end
-
-  _state_lock = true
-  _lock_start_time = vim.loop.now()
-  _lock_owner = debug.traceback("Lock acquired", 2)
-  return true
-end
-
--- Enhanced mutex with better error handling
-local function acquire_state_lock(timeout_ms)
-  timeout_ms = timeout_ms or 2000
-
-  -- Track pending operations
-  _pending_operations = _pending_operations + 1
-
-  -- Quick path for uncontended case
-  if not _state_lock then
-    _state_lock = true
-    _lock_start_time = vim.loop.now()
-    _lock_owner = debug.traceback("Lock acquired", 2)
-    return true
-  end
-
-  -- Check if lock is held too long
-  if _lock_start_time > 0 then
-    local elapsed = vim.loop.now() - _lock_start_time
-    if elapsed > 15000 then -- 15 seconds is definitely too long
-      vim.notify(
-        string.format("Lock held for %dms by:\n%s\nForcing unlock", elapsed, _lock_owner or "unknown"),
-        vim.log.levels.ERROR
-      )
-      _state_lock = false
-      _lock_start_time = 0
-      _lock_owner = nil
-    end
-  end
-
-  -- Try to acquire with timeout
-  local start_time = vim.loop.now()
-  local wait_time = 5
-
-  while _state_lock do
-    local elapsed = vim.loop.now() - start_time
-    if elapsed > timeout_ms then
-      _pending_operations = math.max(0, _pending_operations - 1)
-      return false
-    end
-
-    vim.wait(math.min(wait_time, 50))
-    wait_time = math.min(wait_time * 1.2, 100)
-  end
-
-  _state_lock = true
-  _lock_start_time = vim.loop.now()
-  _lock_owner = debug.traceback("Lock acquired", 2)
-  return true
-end
-
-local function release_state_lock()
-  _state_lock = false
-  _lock_start_time = 0
-  _lock_owner = nil
-  _pending_operations = math.max(0, _pending_operations - 1)
-
-  -- Wake up any waiting operations
-  for _, waiter in ipairs(_state_waiters) do
-    if waiter then
-      vim.schedule(waiter)
-    end
-  end
-  _state_waiters = {}
-end
-
--- Cache cleanup functions
 local function should_cleanup_cache()
   local now = vim.loop.now()
   return now - _last_cleanup > CLEANUP_INTERVAL
@@ -274,14 +180,12 @@ local function cleanup_caches()
   _last_cleanup = vim.loop.now()
   _cache_stats.cleanups = _cache_stats.cleanups + 1
 
-  -- Clean up module cache if it gets too large
   local module_count = 0
   for _ in pairs(_loaded_modules) do
     module_count = module_count + 1
   end
 
   if module_count > MAX_CACHE_SIZE then
-    -- Keep only frequently used modules
     local essential_modules = {
       "ecolog.utils",
       "ecolog.providers",
@@ -298,7 +202,6 @@ local function cleanup_caches()
     _loaded_modules = new_modules
   end
 
-  -- Clean up line cache if it gets too large
   local cache_size = 0
   for _ in pairs(state._env_line_cache) do
     cache_size = cache_size + 1
@@ -317,14 +220,12 @@ local function get_cache_stats()
   })
 end
 
--- Thread-safe module loading with proper synchronization
 local function require_module(name)
   if not name or type(name) ~= "string" then
     vim.notify("Invalid module name: " .. tostring(name), vim.log.levels.ERROR)
     return {}
   end
 
-  -- Check if module is already loaded (fast path)
   if _loaded_modules[name] then
     _cache_stats.hits = _cache_stats.hits + 1
     return _loaded_modules[name]
@@ -332,12 +233,9 @@ local function require_module(name)
 
   _cache_stats.misses = _cache_stats.misses + 1
 
-  -- Periodic cache cleanup
   cleanup_caches()
 
-  -- Acquire lock for this specific module
   if _module_locks[name] then
-    -- Another thread is loading this module, wait for it
     local start_time = vim.loop.now()
     while _module_locks[name] do
       if vim.loop.now() - start_time > 5000 then
@@ -347,16 +245,13 @@ local function require_module(name)
       vim.wait(10)
     end
 
-    -- Check again if module was loaded while waiting
     if _loaded_modules[name] then
       return _loaded_modules[name]
     end
   end
 
-  -- Set lock for this module
   _module_locks[name] = true
 
-  -- Check for circular dependencies
   if _loading[name] then
     _module_locks[name] = nil
     vim.notify("Circular dependency detected: " .. name .. ". Using fallback module.", vim.log.levels.WARN)
@@ -367,7 +262,7 @@ local function require_module(name)
           "Attempted to access '" .. key .. "' from stub module due to circular dependency",
           vim.log.levels.WARN
         )
-        return function() end -- Return no-op function
+        return function() end
       end,
     })
     return stub
@@ -379,12 +274,12 @@ local function require_module(name)
 
   if not success then
     vim.notify("Failed to load module: " .. name .. ". Error: " .. tostring(module), vim.log.levels.ERROR)
-    -- Return stub module instead of failing
+
     local stub = {}
     setmetatable(stub, {
       __index = function(_, key)
         vim.notify("Attempted to access '" .. key .. "' from failed module: " .. name, vim.log.levels.WARN)
-        return function() end -- Return no-op function
+        return function() end
       end,
     })
     _loaded_modules[name] = stub
@@ -397,14 +292,152 @@ local function require_module(name)
   return module
 end
 
-local utils = require_module("ecolog.utils")
-local providers = utils.get_module("ecolog.providers")
-local select = utils.get_module("ecolog.select")
-local peek = utils.get_module("ecolog.peek")
-local shelter = utils.get_module("ecolog.shelter")
-local types = utils.get_module("ecolog.types")
-local env_loader = require_module("ecolog.env_loader")
-local file_watcher = require_module("ecolog.file_watcher")
+local function start_health_monitoring()
+  if _health_timer then
+    return
+  end
+
+  _health_timer = vim.loop.new_timer()
+  _health_timer:start(
+    60000,
+    60000,
+    vim.schedule_wrap(function()
+      if _state_lock and (vim.loop.now() - _lock_start_time) > 30000 then
+        vim.notify("Detected long-running lock - auto-recovering", vim.log.levels.WARN)
+        _state_lock = false
+        _lock_start_time = 0
+      end
+
+      if vim.tbl_count(_loaded_modules) > MAX_CACHE_SIZE * 2 then
+        cleanup_caches()
+      end
+    end)
+  )
+end
+
+local function stop_health_monitoring()
+  if _health_timer then
+    _health_timer:stop()
+    _health_timer:close()
+    _health_timer = nil
+  end
+end
+
+local function safe_read_state(key)
+  local now = vim.loop.now()
+  if now - _last_validation_check > VALIDATION_INTERVAL then
+    _last_validation_check = now
+
+    if state.selected_env_file and not state.env_vars then
+      _validation_errors = _validation_errors + 1
+      if _validation_errors > 3 then
+        vim.notify("State inconsistency detected - consider running :EcologRefresh", vim.log.levels.WARN)
+        _validation_errors = 0
+      end
+    end
+  end
+
+  if key then
+    return state[key]
+  end
+  return state
+end
+
+local function acquire_state_lock(timeout_ms)
+  timeout_ms = timeout_ms or 1000
+
+  if not _state_lock then
+    _state_lock = true
+    _lock_start_time = vim.loop.now()
+    return true
+  end
+
+  local start_time = vim.loop.now()
+  local wait_time = 1
+
+  while _state_lock do
+    local elapsed = vim.loop.now() - start_time
+    if elapsed > timeout_ms then
+      return false
+    end
+
+    if _lock_start_time > 0 and (vim.loop.now() - _lock_start_time) > 10000 then
+      _state_lock = false
+      _lock_start_time = 0
+      break
+    end
+
+    vim.wait(wait_time)
+    wait_time = math.min(wait_time * 1.5, 20)
+  end
+
+  _state_lock = true
+  _lock_start_time = vim.loop.now()
+  return true
+end
+
+local function release_state_lock()
+  _state_lock = false
+  _lock_start_time = 0
+end
+
+local utils, providers, select, peek, shelter, types, env_loader, file_watcher
+
+local function get_utils()
+  if not utils then
+    utils = require_module("ecolog.utils")
+  end
+  return utils
+end
+
+local function get_providers()
+  if not providers then
+    providers = get_utils().get_module("ecolog.providers")
+  end
+  return providers
+end
+
+local function get_select()
+  if not select then
+    select = get_utils().get_module("ecolog.select")
+  end
+  return select
+end
+
+local function get_peek()
+  if not peek then
+    peek = get_utils().get_module("ecolog.peek")
+  end
+  return peek
+end
+
+local function get_shelter()
+  if not shelter then
+    shelter = get_utils().get_module("ecolog.shelter")
+  end
+  return shelter
+end
+
+local function get_types()
+  if not types then
+    types = get_utils().get_module("ecolog.types")
+  end
+  return types
+end
+
+local function get_env_loader()
+  if not env_loader then
+    env_loader = require_module("ecolog.env_loader")
+  end
+  return env_loader
+end
+
+local function get_file_watcher()
+  if not file_watcher then
+    file_watcher = require_module("ecolog.file_watcher")
+  end
+  return file_watcher
+end
 
 local function get_env_module()
   if not state._env_module then
@@ -421,15 +454,19 @@ local function get_secret_manager(name)
   return state._secret_managers[name]
 end
 
-function M.refresh_env_vars(opts)
-  -- Use async approach to avoid blocking
+function M.refresh_env_vars(opts, retry_count)
+  retry_count = retry_count or 0
+
   vim.schedule(function()
     if not acquire_state_lock(5000) then
-      vim.notify("Refresh operation queued due to lock contention", vim.log.levels.INFO)
-      -- Queue the operation for later
-      vim.defer_fn(function()
-        M.refresh_env_vars(opts)
-      end, 1000)
+      if retry_count < 3 then
+        vim.notify("Refresh operation queued due to lock contention", vim.log.levels.INFO)
+        vim.defer_fn(function()
+          M.refresh_env_vars(opts, retry_count + 1)
+        end, math.min(1000 * (retry_count + 1), 5000))
+      else
+        vim.notify("Refresh failed after 3 retries - system may be overloaded", vim.log.levels.WARN)
+      end
       return
     end
 
@@ -440,13 +477,12 @@ function M.refresh_env_vars(opts)
       local base_opts = state.last_opts or DEFAULT_CONFIG
       opts = vim.tbl_deep_extend("force", base_opts, opts or {})
 
-      -- Re-apply monorepo integration if enabled, but skip if workspace file transition already handled
       if opts.monorepo and not opts._workspace_file_handled then
         local monorepo = require("ecolog.monorepo")
         opts = monorepo.integrate_with_ecolog_config(opts)
       end
 
-      env_loader.load_environment(opts, state, true)
+      get_env_loader().load_environment(opts, state, true)
 
       if opts.integrations.statusline then
         local statusline = require("ecolog.integrations.statusline")
@@ -477,17 +513,13 @@ end
 ---Get all environment variables
 ---@return table<string, EnvVarInfo> Environment variables with their metadata
 function M.get_env_vars()
-  -- Periodic cache cleanup
   cleanup_caches()
 
-  -- Quick read-only check first
   local env_vars = safe_read_state("env_vars")
   local selected_file = safe_read_state("selected_env_file")
 
-  -- If we have vars and file is still valid, return immediately
   if env_vars and next(env_vars) ~= nil then
     if not selected_file or vim.fn.filereadable(selected_file) == 1 then
-      -- Use shallow copy for better performance where possible
       local result = {}
       for k, v in pairs(env_vars) do
         result[k] = v
@@ -496,9 +528,11 @@ function M.get_env_vars()
     end
   end
 
-  -- Need to modify state, acquire lock
   if not acquire_state_lock(3000) then
-    -- Fallback: return what we have with shallow copy
+    -- Graceful fallback with user notification
+    if next(env_vars or {}) == nil then
+      vim.notify("Environment loading in progress - using cached data", vim.log.levels.INFO)
+    end
     local result = {}
     if env_vars then
       for k, v in pairs(env_vars) do
@@ -515,26 +549,33 @@ function M.get_env_vars()
       state.selected_env_file = nil
       state.env_vars = {}
       state._env_line_cache = {}
-      env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state, true)
-      
-      -- Notify about file deletion and automatic switching after env loading
+      get_env_loader().load_environment(state.last_opts or DEFAULT_CONFIG, state, true)
+
       if state.selected_env_file then
-        local utils = require("ecolog.utils")
-        local new_display_name = utils.get_env_file_display_name(state.selected_env_file, state.last_opts or DEFAULT_CONFIG)
-        local deleted_display_name = utils.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
-        vim.notify(string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name), vim.log.levels.INFO)
+        local utils_mod = get_utils()
+        local new_display_name =
+          utils_mod.get_env_file_display_name(state.selected_env_file, state.last_opts or DEFAULT_CONFIG)
+        local deleted_display_name =
+          utils_mod.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
+        vim.notify(
+          string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),
+          vim.log.levels.INFO
+        )
       else
-        local utils = require("ecolog.utils")
-        local deleted_display_name = utils.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
-        vim.notify(string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name), vim.log.levels.WARN)
+        local utils_mod = get_utils()
+        local deleted_display_name =
+          utils_mod.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
+        vim.notify(
+          string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name),
+          vim.log.levels.WARN
+        )
       end
     end
 
     if next(state.env_vars) == nil then
-      env_loader.load_environment(state.last_opts or DEFAULT_CONFIG, state)
+      get_env_loader().load_environment(state.last_opts or DEFAULT_CONFIG, state)
     end
 
-    -- Use shallow copy for better performance
     result = {}
     for k, v in pairs(state.env_vars) do
       result[k] = v
@@ -561,7 +602,7 @@ local function handle_env_file_selection(file, config)
   local success, err = pcall(function()
     state.selected_env_file = file
     config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
-    file_watcher.setup_watcher(config, state, M.refresh_env_vars)
+    get_file_watcher().setup_watcher(config, state, M.refresh_env_vars)
     state.cached_env_files = nil
 
     -- Don't call M.refresh_env_vars here as it would cause deadlock
@@ -570,15 +611,14 @@ local function handle_env_file_selection(file, config)
     state.file_cache_opts = nil
     local base_opts = state.last_opts or DEFAULT_CONFIG
     local opts = vim.tbl_deep_extend("force", base_opts, config or {})
-    env_loader.load_environment(opts, state, true)
+    get_env_loader().load_environment(opts, state, true)
 
     if state._env_module then
       state._env_module.update_env_vars()
     end
 
-    -- Use workspace context display name for notification
-    local utils = require("ecolog.utils")
-    local display_name = utils.get_env_file_display_name(file, opts)
+    local utils_mod = get_utils()
+    local display_name = utils_mod.get_env_file_display_name(file, opts)
     notify(string.format("Selected environment file: %s", display_name), vim.log.levels.INFO)
   end)
 
@@ -588,62 +628,70 @@ local function handle_env_file_selection(file, config)
 end
 
 local function setup_integrations(config)
-  -- Only setup integrations that are actually enabled
-  -- Use lazy loading to defer module loading until needed
-
-  if config.integrations.lsp then
-    vim.defer_fn(function()
-      local lsp = require_module("ecolog.integrations.lsp")
-      lsp.setup()
-    end, 100)
-  end
-
-  if config.integrations.lspsaga then
-    vim.defer_fn(function()
-      local lspsaga = require_module("ecolog.integrations.lspsaga")
-      lspsaga.setup()
-    end, 100)
+  if config.integrations.statusline then
+    local statusline = require("ecolog.integrations.statusline")
+    statusline.setup(type(config.integrations.statusline) == "table" and config.integrations.statusline or {})
   end
 
   if config.integrations.nvim_cmp then
-    -- Defer nvim_cmp loading until InsertEnter (already done in nvim_cmp.lua)
     local nvim_cmp = require("ecolog.integrations.cmp.nvim_cmp")
-    nvim_cmp.setup(config.integrations.nvim_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+    nvim_cmp.setup(
+      config.integrations.nvim_cmp,
+      state.env_vars,
+      get_providers(),
+      get_shelter(),
+      get_types(),
+      state.selected_env_file
+    )
   end
 
   if config.integrations.blink_cmp then
     vim.defer_fn(function()
       local blink_cmp = require("ecolog.integrations.cmp.blink_cmp")
-      blink_cmp.setup(config.integrations.blink_cmp, state.env_vars, providers, shelter, types, state.selected_env_file)
+      blink_cmp.setup(
+        config.integrations.blink_cmp,
+        state.env_vars,
+        get_providers(),
+        get_shelter(),
+        get_types(),
+        state.selected_env_file
+      )
     end, 50)
   end
 
   if config.integrations.omnifunc then
     vim.defer_fn(function()
       local omnifunc = require("ecolog.integrations.cmp.omnifunc")
-      omnifunc.setup(config.integrations.omnifunc, state.env_vars, providers, shelter)
-    end, 50)
+      omnifunc.setup(config.integrations.omnifunc, state.env_vars, get_providers(), get_shelter())
+    end, 100)
   end
 
-  if config.integrations.fzf then
-    -- Defer FZF loading until first command usage
+  if config.integrations.lsp then
     vim.defer_fn(function()
-      local fzf = require("ecolog.integrations.fzf")
-      fzf.setup(type(config.integrations.fzf) == "table" and config.integrations.fzf or {})
+      local lsp = require_module("ecolog.integrations.lsp")
+      lsp.setup()
+    end, 150)
+  end
+
+  if config.integrations.lspsaga then
+    vim.defer_fn(function()
+      local lspsaga = require_module("ecolog.integrations.lspsaga")
+      lspsaga.setup()
     end, 200)
   end
 
-  if config.integrations.statusline then
-    -- Statusline can be loaded immediately as it's lightweight
-    local statusline = require("ecolog.integrations.statusline")
-    statusline.setup(type(config.integrations.statusline) == "table" and config.integrations.statusline or {})
+  if config.integrations.fzf then
+    vim.defer_fn(function()
+      local fzf = require("ecolog.integrations.fzf")
+      fzf.setup(type(config.integrations.fzf) == "table" and config.integrations.fzf or {})
+    end, 300)
   end
 
   if config.integrations.snacks then
     vim.defer_fn(function()
       local snacks = require("ecolog.integrations.snacks")
       snacks.setup(type(config.integrations.snacks) == "table" and config.integrations.snacks or {})
-    end, 200)
+    end, 350)
   end
 end
 
@@ -652,8 +700,8 @@ local function create_commands(config)
     EcologPeek = {
       callback = function(args)
         local filetype = vim.bo.filetype
-        local available_providers = providers.get_providers(filetype)
-        peek.peek_env_var(available_providers, args.args)
+        local available_providers = get_providers().get_providers(filetype)
+        get_peek().peek_env_var(available_providers, args.args)
       end,
       nargs = "?",
       desc = "Peek environment variable value",
@@ -671,18 +719,18 @@ local function create_commands(config)
         end
 
         local current_config = M.get_config()
-        select.select_env_file({
+        get_select().select_env_file({
           path = current_config.path,
           active_file = state.selected_env_file,
           env_file_patterns = current_config.env_file_patterns,
           sort_file_fn = current_config.sort_file_fn,
           sort_var_fn = current_config.sort_var_fn,
           preferred_environment = current_config.preferred_environment,
-          -- Pass monorepo integration flags
+
           _is_monorepo_workspace = current_config._is_monorepo_workspace,
           _workspace_info = current_config._workspace_info,
           _monorepo_root = current_config._monorepo_root,
-          -- Pass manual mode flags
+
           _is_monorepo_manual_mode = current_config._is_monorepo_manual_mode,
           _all_workspaces = current_config._all_workspaces,
           _current_workspace_info = current_config._current_workspace_info,
@@ -700,7 +748,7 @@ local function create_commands(config)
           notify("No environment file selected. Use :EcologSelect to select one.", vim.log.levels.ERROR)
           return
         end
-        utils.generate_example_file(state.selected_env_file)
+        get_utils().generate_example_file(state.selected_env_file)
       end,
       desc = "Generate .env.example file from selected .env file",
     },
@@ -708,7 +756,7 @@ local function create_commands(config)
       callback = function(args)
         local arg = args.args:lower()
         if arg == "" then
-          shelter.toggle_all()
+          get_shelter().toggle_all()
           return
         end
         local parts = vim.split(arg, " ")
@@ -718,7 +766,7 @@ local function create_commands(config)
           notify("Invalid command. Use 'enable' or 'disable'", vim.log.levels.ERROR)
           return
         end
-        shelter.set_state(command, feature)
+        get_shelter().set_state(command, feature)
       end,
       nargs = "?",
       desc = "Toggle all shelter modes or enable/disable specific features",
@@ -755,11 +803,11 @@ local function create_commands(config)
     EcologGotoVar = {
       callback = function(args)
         local filetype = vim.bo.filetype
-        local available_providers = providers.get_providers(filetype)
+        local available_providers = get_providers().get_providers(filetype)
         local var_name = args.args
 
         if var_name == "" then
-          var_name = utils.get_var_word_under_cursor(available_providers)
+          var_name = get_utils().get_var_word_under_cursor(available_providers)
         end
 
         if not var_name or #var_name == 0 then
@@ -767,7 +815,7 @@ local function create_commands(config)
           return
         end
 
-        env_loader.load_environment(config, state)
+        get_env_loader().load_environment(config, state)
 
         local var = state.env_vars[var_name]
         if not var then
@@ -825,8 +873,8 @@ local function create_commands(config)
 
         if var_name == "" then
           if config.provider_patterns.extract then
-            local available_providers = providers.get_providers(filetype)
-            var_name = utils.get_var_word_under_cursor(available_providers)
+            local available_providers = get_providers().get_providers(filetype)
+            var_name = get_utils().get_var_word_under_cursor(available_providers)
           else
             local word = vim.fn.expand("<cword>")
             if word and #word > 0 then
@@ -840,7 +888,7 @@ local function create_commands(config)
           return
         end
 
-        env_loader.load_environment(config, state)
+        get_env_loader().load_environment(config, state)
 
         local var = state.env_vars[var_name]
         if not var then
@@ -1043,7 +1091,6 @@ local function create_commands(config)
         local workspace_name = args.args
 
         if workspace_name == "" then
-          -- Show picker
           if #workspaces == 0 then
             notify("No workspaces found in monorepo", vim.log.levels.WARN)
             return
@@ -1067,7 +1114,6 @@ local function create_commands(config)
             end
           end)
         else
-          -- Direct switch
           for _, workspace in ipairs(workspaces) do
             if workspace.name == workspace_name then
               monorepo.set_current_workspace(workspace)
@@ -1123,7 +1169,7 @@ local function create_commands(config)
     EcologDebugFiles = {
       callback = function()
         local ecolog_config = M.get_config()
-        local utils = require("ecolog.utils")
+        local utils_mod = get_utils()
 
         print("=== Ecolog File Discovery Debug ===")
         print("Config path:", ecolog_config.path)
@@ -1132,7 +1178,7 @@ local function create_commands(config)
         print("Monorepo root:", ecolog_config._monorepo_root)
         print("Env file patterns:", vim.inspect(ecolog_config.env_file_patterns))
 
-        local files = utils.find_env_files(ecolog_config)
+        local files = utils_mod.find_env_files(ecolog_config)
         print("Found files:")
         for i, file in ipairs(files) do
           print(string.format("  %d. %s", i, file))
@@ -1145,6 +1191,25 @@ local function create_commands(config)
         M._debug_ecolog_state()
       end,
       desc = "Debug current ecolog state",
+    },
+    EcologRecover = {
+      callback = function()
+        M.recover()
+      end,
+      desc = "Attempt smart recovery from issues",
+    },
+    EcologHealth = {
+      callback = function()
+        local health = M.get_lock_health()
+        print("=== Ecolog Health ===")
+        print("State lock:", health.state_lock and "LOCKED" or "FREE")
+        print("Lock duration:", health.lock_duration .. "ms")
+        print("Pending operations:", health.pending_operations)
+        print("Module locks:", health.module_locks)
+        print("Validation errors:", _validation_errors)
+        print("Cache stats:", vim.inspect(M.get_cache_stats()))
+      end,
+      desc = "Show plugin health status",
     },
   }
 
@@ -1161,26 +1226,18 @@ end
 ---@param new_workspace table? New workspace information
 ---@param previous_workspace table? Previous workspace information
 function M._handle_workspace_change(new_workspace, previous_workspace)
-  -- Clear configuration cache to ensure fresh evaluation
   _config_cache = {}
   _config_cache_key = nil
-  
-  -- Schedule the environment reload to ensure workspace change is fully processed
+
   vim.schedule(function()
-    -- Get fresh configuration with new workspace context
     local new_config = M.get_config()
-    
-    -- Update state configuration
+
     state.last_opts = new_config
-    
-    -- Clear environment cache to force reload
+
     M._clear_environment_cache()
-    
-    -- Reload environment with new workspace context
+
     M.refresh_env_vars(new_config)
-    
-    -- Notify about workspace change after environment is reloaded
-    -- Use another schedule to ensure the environment loading is complete
+
     vim.schedule(function()
       if new_config.monorepo and new_config.monorepo.notify_on_switch then
         M._notify_workspace_change(new_workspace, previous_workspace)
@@ -1189,7 +1246,6 @@ function M._handle_workspace_change(new_workspace, previous_workspace)
   end)
 end
 
----Clear environment-related cache
 function M._clear_environment_cache()
   state.cached_env_files = nil
   state.file_cache_opts = nil
@@ -1203,20 +1259,20 @@ end
 function M._generate_config_cache_key(config)
   local current_file = vim.api.nvim_buf_get_name(0)
   local current_dir = vim.fn.getcwd()
-  
-  -- Include monorepo-specific context if available
+
   local monorepo_context = ""
   if config.monorepo then
     local monorepo = require("ecolog.monorepo")
     local current_workspace = monorepo.get_current_workspace()
     local monorepo_root = monorepo.detect_monorepo_root()
-    
-    monorepo_context = string.format("|monorepo:%s|workspace:%s", 
+
+    monorepo_context = string.format(
+      "|monorepo:%s|workspace:%s",
       monorepo_root or "none",
       current_workspace and current_workspace.name or "none"
     )
   end
-  
+
   return vim.inspect(config) .. "|file:" .. current_file .. "|dir:" .. current_dir .. monorepo_context
 end
 
@@ -1225,20 +1281,17 @@ end
 ---@return table config Updated configuration with monorepo integration
 function M._setup_monorepo_integration(config)
   local monorepo = require("ecolog.monorepo")
-  
-  -- Initialize monorepo system
+
   monorepo.setup(config.monorepo)
-  
-  -- Integrate monorepo context with ecolog configuration
+
   local integrated_config = monorepo.integrate_with_ecolog_config(config)
-  
-  -- Set up workspace change listener for automatic environment reloading
+
   monorepo.add_workspace_change_listener(function(new_workspace, previous_workspace)
     if new_workspace ~= previous_workspace then
       M._handle_workspace_change(new_workspace, previous_workspace)
     end
   end)
-  
+
   return integrated_config
 end
 
@@ -1250,11 +1303,9 @@ function M._apply_monorepo_integration(config)
   return monorepo.integrate_with_ecolog_config(config)
 end
 
----Debug current ecolog state
 function M._debug_ecolog_state()
-  -- Wait for async setup to complete
   vim.wait(500)
-  
+
   local state = M.get_state()
   local monorepo = require("ecolog.monorepo")
   local current_workspace = monorepo.get_current_workspace()
@@ -1269,7 +1320,6 @@ function M._debug_ecolog_state()
     print("File exists:", vim.fn.filereadable(state.selected_env_file) == 1)
   end
 
-  -- Show first few env vars
   local count = 0
   print("Environment variables:")
   for key, var in pairs(state.env_vars) do
@@ -1298,20 +1348,17 @@ end
 ---@param current_workspace table? Current workspace
 ---@param previous_workspace table? Previous workspace
 function M._notify_workspace_change(current_workspace, previous_workspace)
-  -- Guard against nil workspace
   if not current_workspace then
     vim.notify("Workspace change detected", vim.log.levels.INFO)
     return
   end
-  
-  -- Get the selected environment file information
+
   local selected_env_file = M._get_selected_env_file_info(current_workspace)
-  
+
   local message
   if selected_env_file then
     message = string.format("Selected environment file: %s (%s)", selected_env_file.name, selected_env_file.location)
   else
-    -- Fallback to workspace name if no env file is found
     local workspace_name = current_workspace.name or "unknown"
     message = string.format("Entered workspace: %s", workspace_name)
   end
@@ -1326,24 +1373,21 @@ function M._get_selected_env_file_info(workspace)
   if not workspace then
     return nil
   end
-  
-  -- Get the current ecolog state to find the selected environment file
+
   local current_state = M.get_state()
-  
+
   if not current_state.selected_env_file then
     return nil
   end
-  
-  -- Extract the filename from the full path
+
   local filename = vim.fn.fnamemodify(current_state.selected_env_file, ":t")
-  
-  -- Create a readable location string
+
   local location = string.format("%s/%s", workspace.type, workspace.name)
-  
+
   return {
     name = filename,
     location = location,
-    full_path = current_state.selected_env_file
+    full_path = current_state.selected_env_file,
   }
 end
 
@@ -1393,23 +1437,19 @@ function M.setup(opts)
     _setup_done = true
 
     local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
-    
-    -- Set default path if not provided
+
     if not config.path then
       config.path = vim.fn.getcwd()
     end
-    
+
     validate_config(config)
 
-    -- Setup monorepo support if enabled
     if config.monorepo then
       config = M._setup_monorepo_integration(config)
     end
 
-    -- Set state.last_opts after monorepo integration
     state.last_opts = config
-    
-    -- Clear config cache to ensure fresh config is used
+
     _config_cache = {}
     _config_cache_key = nil
 
@@ -1452,11 +1492,11 @@ function M.setup(opts)
     end
 
     require("ecolog.highlights").setup()
-    shelter.setup({
+    get_shelter().setup({
       config = config.shelter.configuration,
       partial = config.shelter.modules,
     })
-    types.setup({
+    get_types().setup({
       types = config.types,
       custom_types = config.custom_types,
     })
@@ -1473,7 +1513,7 @@ function M.setup(opts)
       end
     end
 
-    local initial_env_files = utils.find_env_files({
+    local initial_env_files = get_utils().find_env_files({
       path = config.path,
       preferred_environment = config.preferred_environment,
       env_file_patterns = config.env_file_patterns,
@@ -1482,26 +1522,26 @@ function M.setup(opts)
     })
 
     if #initial_env_files > 0 then
-      handle_env_file_selection(initial_env_files[1], config)
+      vim.schedule(function()
+        handle_env_file_selection(initial_env_files[1], config)
+      end)
     end
 
-    table.insert(_lazy_setup_tasks, function()
+    vim.schedule(function()
+      get_env_loader().load_environment(config, state)
+      get_file_watcher().setup_watcher(config, state, M.refresh_env_vars)
+    end)
+
+    vim.schedule(function()
       setup_integrations(config)
     end)
 
-    schedule(function()
-      env_loader.load_environment(config, state)
-      file_watcher.setup_watcher(config, state, M.refresh_env_vars)
+    create_commands(config)
 
-      for _, task in ipairs(_lazy_setup_tasks) do
-        local task_success, task_err = pcall(task)
-        if not task_success then
-          vim.notify("Error in lazy setup task: " .. tostring(task_err), vim.log.levels.ERROR)
-        end
-      end
+    state.initialized = true
 
-      create_commands(config)
-    end)
+    -- Start health monitoring for early issue detection
+    start_health_monitoring()
 
     if opts and opts.vim_env then
       schedule(function()
@@ -1518,7 +1558,6 @@ function M.setup(opts)
 end
 
 function M.get_status()
-  -- Lock-free status check
   local selected_file = safe_read_state("selected_env_file")
   local opts = safe_read_state("last_opts")
 
@@ -1531,7 +1570,6 @@ function M.get_status()
     return ""
   end
 
-  -- Simple fallback status
   if selected_file then
     return vim.fn.fnamemodify(selected_file, ":t")
   end
@@ -1540,7 +1578,6 @@ function M.get_status()
 end
 
 function M.get_lualine()
-  -- Lock-free lualine status
   local selected_file = safe_read_state("selected_env_file")
   local opts = safe_read_state("last_opts")
 
@@ -1553,7 +1590,6 @@ function M.get_lualine()
     return ""
   end
 
-  -- Simple fallback status for lualine
   if selected_file then
     return vim.fn.fnamemodify(selected_file, ":t")
   end
@@ -1562,63 +1598,78 @@ function M.get_lualine()
 end
 
 function M.get_state()
-  -- Lock-free shallow copy for most fields
   local result = {}
   for k, v in pairs(state) do
     if k == "_env_line_cache" then
-      -- Skip cache to avoid expensive copy
       result[k] = {}
     elseif type(v) ~= "table" then
       result[k] = v
     else
-      -- Safe shallow copy for tables
       result[k] = vim.tbl_extend("force", {}, v)
     end
   end
   return result
 end
 
----Get lock health information for debugging
 ---@return table health_info
 function M.get_lock_health()
   return {
     state_lock = _state_lock,
     lock_start_time = _lock_start_time,
     lock_duration = _lock_start_time > 0 and (vim.loop.now() - _lock_start_time) or 0,
-    lock_owner = _lock_owner,
     pending_operations = _pending_operations,
-    waiting_operations = #_state_waiters,
     module_locks = vim.tbl_count(_module_locks),
   }
 end
 
----Force release all locks (emergency function)
 function M.force_unlock_all()
   vim.notify("Force unlocking all state locks", vim.log.levels.WARN)
   _state_lock = false
   _lock_start_time = 0
-  _lock_owner = nil
   _pending_operations = 0
-  _state_waiters = {}
   _module_locks = {}
 end
 
+-- Safe shutdown with cleanup
+function M.shutdown()
+  stop_health_monitoring()
+  M.force_unlock_all()
+
+  _loaded_modules = {}
+  _config_cache = {}
+  state._env_line_cache = setmetatable({}, { __mode = "kv" })
+
+  vim.notify("Ecolog safely shut down", vim.log.levels.INFO)
+end
+
+function M.recover()
+  vim.notify("Attempting smart recovery...", vim.log.levels.INFO)
+
+  M.force_unlock_all()
+
+  state.cached_env_files = nil
+  state.file_cache_opts = nil
+
+  start_health_monitoring()
+
+  if state.last_opts then
+    M.refresh_env_vars(state.last_opts)
+  end
+
+  vim.notify("Recovery completed", vim.log.levels.INFO)
+end
+
 function M.get_config()
-  -- Use lock-free read for config (read-only operation)
   local config = safe_read_state("last_opts")
   if config then
-    -- Generate cache key based on config content and current context for monorepo awareness
     local cache_key = M._generate_config_cache_key(config)
 
-    -- Check if we have a cached version
     if _config_cache_key == cache_key and _config_cache[cache_key] then
       return _config_cache[cache_key]
     end
 
-    -- Create cached copy
     local cached_config = vim.tbl_extend("force", {}, config)
 
-    -- Apply monorepo integration if enabled
     if cached_config.monorepo then
       cached_config = M._apply_monorepo_integration(cached_config)
     end
@@ -1629,11 +1680,9 @@ function M.get_config()
     return cached_config
   end
 
-  -- Cache default config too
   if not _config_cache["DEFAULT"] then
     local default_config = vim.tbl_extend("force", {}, DEFAULT_CONFIG)
 
-    -- Apply monorepo integration to default config if enabled
     if default_config.monorepo and not default_config._monorepo_root then
       local monorepo = require("ecolog.monorepo")
       default_config = monorepo.integrate_with_ecolog_config(default_config)

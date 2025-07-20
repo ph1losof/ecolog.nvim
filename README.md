@@ -2737,6 +2737,7 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | Nvim-cmp support           | ✅ Nvim-cmp integration                                                                             | ✅ Nvim-cmp integration                                     |
 | Blink-cmp support          | ✅ Native blink-cmp integration                                                                     | ❌ Doesn't support blink-cmp natively                       |
 | Omnifunc support           | ✅ Native vim's omnifunc                                                                            | ❌ Doesn't support omnifunc                                 |
+| Multi-line env variables   | ✅ Full support                                                                                     | ❌ No support                                               |
 | Documentation Support      | ✅ Rich documentation with type info and source                                                     | 🟡 Basic documentation support                              |
 | Shell Variable Integration | ✅ Configurable shell variable loading and filtering                                                | 🟡 Basic shell variable support                             |
 | Sorting                    | ✅ Built-in fully customizable sorting for both variables and files, involving all all integrations | ❌ No sorting supported                                     |
@@ -2753,8 +2754,9 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 | Mask on leave                | ✅ Supports                                                                                                                                                 | ✅ Supports                                                                                |
 | Completion disable           | ✅ Supports both blink-cmp and nvim-cmp, configurable                                                                                                       | 🟡 Only nvim-cmp and can't disable                                                         |
 | Custom mask and highlights   | ✅ Supports                                                                                                                                                 | ✅ Supports                                                                                |
-| Performance                  | ✅ Better performance, especially in previewer buffers due to LRU caching, opening files is ~20ms faster then normal neovim(from my experience)             | 🟡 Significantly slower. However, minimal implementation and also good                     |
-| Line of code                 | 🟡 ~1500+ LOC actively used on average, the rest is lazy loaded                                                                                             | ✅ Only ~300 LOC                                                                           |
+| Multi-line env variables     | ✅ Full support                                                                                                                                             | ❌ No support                                                                              |
+| Performance                  | ✅ Better performance, especially in previewer buffers due to LRU caching, on benchmarks faster when opening files                                          | 🟡 Significantly slower. However, minimal implementation and also good                     |
+| Line of code                 | 🟡 ~2500+ LOC actively used on average, the rest is lazy loaded                                                                                             | ✅ Only ~300 LOC                                                                           |
 | Supports custom integrations | ✅ Supports all ecolog.nvim features telescope-lua, snacks, fzf-lua, cmp, peek and etc.                                                                     | 🟡 Only works in file buffers and telescope previewer                                      |
 | Setup and Docs               | 🟡 Docs are big due to the amount of features, but it's well documented and the plugin provides a lot of defaults, so it should be relatively easy to setup | ✅ Well documented and easy to setup                                                       |
 | Filetype support             | 🟡 Supports only `sh` and `.env` files                                                                                                                      | ✅ Can work in any filetype                                                                |
@@ -2772,11 +2774,13 @@ While `ecolog.nvim` has many great and unique features, here are some comparison
 
 ### File Management (vs [dotenv.nvim](https://github.com/ellisonleao/dotenv.nvim))
 
-| Feature                      | ecolog.nvim                                          | dotenv.nvim                  |
-| ---------------------------- | ---------------------------------------------------- | ---------------------------- |
-| Environment File Detection   | ✅ Custom patterns and priority-based loading        | 🟡 Basic env file loading    |
-| Multiple Environment Support | ✅ Advanced environment file switching               | 🟡 Basic environment support |
-| Shell Variable Integration   | ✅ Configurable shell variable loading and filtering | ❌ No shell integration      |
+| Feature                      | ecolog.nvim                                            | dotenv.nvim                                      |
+| ---------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
+| Environment File Detection   | ✅ Custom patterns and priority-based loading          | 🟡 Basic env file loading                        |
+| Multi-line env variables     | ✅ Full support                                        | ❌ No support                                    |
+| Monorepo support             | ✅ Support for monorepo environments and custom config | 🟡 No direct support, configuration very limited |
+| Multiple Environment Support | ✅ Advanced environment file switching                 | 🟡 Basic environment support                     |
+| Shell Variable Integration   | ✅ Configurable shell variable loading and filtering   | ❌ No shell integration                          |
 
 ### Key Benefits of ecolog.nvim
 

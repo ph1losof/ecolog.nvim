@@ -84,7 +84,6 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
   end
 
   local value_part = text:sub(eq_pos + 1)
-  
 
   -- Handle quoted values
   local pos = eq_pos + 1
@@ -131,7 +130,8 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
     quote_char = in_quotes and quote_char or nil,
     eq_pos = eq_pos,
     next_pos = pos,
-  }, multi_line_state
+  },
+    multi_line_state
 end
 
 ---@param line string
@@ -307,6 +307,8 @@ function M.create_extmark(value, item, config, bufname, line_num)
   local is_revealed = state.is_line_revealed(line_num)
   local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
 
+  -- vim.notify("DEBUG: Single-line var " .. (item.key or "unknown") .. " on line " .. line_num .. " revealed: " .. tostring(is_revealed) .. " (revealed_lines: " .. vim.inspect(state.get_buffer_state().revealed_lines) .. ")", vim.log.levels.INFO)
+
   local masked_value = is_revealed and raw_value
     or shelter_utils.determine_masked_value(value, {
       partial_mode = config.partial_mode,
@@ -315,12 +317,18 @@ function M.create_extmark(value, item, config, bufname, line_num)
       quote_char = item.quote_char,
     })
 
+  -- if is_revealed then
+  --   vim.notify("DEBUG: Using raw value for " .. (item.key or "unknown") .. ": " .. raw_value, vim.log.levels.INFO)
+  -- else
+  --   vim.notify("DEBUG: Using masked value for " .. (item.key or "unknown") .. ": " .. (masked_value or "nil"), vim.log.levels.INFO)
+  -- end
+
   if not masked_value or #masked_value == 0 then
     return nil
   end
 
   local mask_length = state.get_config().mask_length
-  
+
   -- Check if this is a multi-line value
   local is_multi_line = masked_value:find("\n") ~= nil
   if is_multi_line then
@@ -362,32 +370,35 @@ function M.create_multi_line_extmarks(raw_value, masked_value, item, config, sta
   local raw_lines = vim.split(raw_value, "\n", { plain = true })
   local masked_lines = vim.split(masked_value, "\n", { plain = true })
   local extmarks = {}
-  
+
   for i, masked_line in ipairs(masked_lines) do
     local line_num = start_line_num + i - 1
     local is_revealed = state.is_line_revealed(line_num)
     local display_value = is_revealed and (raw_lines[i] or "") or masked_line
-    
+
     local extmark_opts = {
       virt_text = {
-        { display_value, (is_revealed or display_value == (raw_lines[i] or "")) and "String" or config.highlight_group },
+        {
+          display_value,
+          (is_revealed or display_value == (raw_lines[i] or "")) and "String" or config.highlight_group,
+        },
       },
       virt_text_pos = "overlay",
       hl_mode = "combine",
       priority = item.is_comment and 10000 or 9999,
       strict = false,
     }
-    
+
     -- For the first line, use the equals position; for subsequent lines, start at column 0
     local col_pos = i == 1 and item.eq_pos or 0
-    
+
     table.insert(extmarks, {
       line_num - 1,
       col_pos,
       extmark_opts,
     })
   end
-  
+
   return extmarks
 end
 
@@ -410,6 +421,8 @@ local function apply_extmarks(bufnr, extmarks)
 end
 
 function M.shelter_buffer()
+  -- local stack_trace = debug.traceback("", 2):match("stack traceback:\n(.-)$"):gsub("\n", " | ")
+  -- vim.notify("DEBUG: shelter_buffer() called, revealed_lines: " .. vim.inspect(state.get_buffer_state().revealed_lines) .. " | Called from: " .. stack_trace, vim.log.levels.INFO)
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   local bufname = fn.bufname()
 
@@ -432,7 +445,7 @@ function M.shelter_buffer()
     highlight_group = state.get_config().highlight_group,
   }
   local skip_comments = state.get_config().skip_comments
-  
+
   -- Read all lines at once for optimized processing
   local ok, all_lines = pcall(api.nvim_buf_get_lines, bufnr, 0, -1, false)
   if not ok then
@@ -442,14 +455,7 @@ function M.shelter_buffer()
 
   -- Use the optimized multi-line engine
   local multiline_engine = require("ecolog.shelter.multiline_engine")
-  multiline_engine.process_buffer_optimized(
-    bufnr,
-    all_lines,
-    masking_config,
-    bufname,
-    NAMESPACE,
-    skip_comments
-  )
+  multiline_engine.process_buffer_optimized(bufnr, all_lines, masking_config, bufname, NAMESPACE, skip_comments)
 end
 
 ---@param config table
@@ -473,29 +479,25 @@ end
 ---@param group number
 local function setup_buffer_autocmds(config, group)
   local watch_patterns = main_utils.get_watch_patterns(config)
-  
-  -- Add monorepo workspace patterns if in monorepo mode
+
   if config._monorepo_root then
     local monorepo_patterns = {}
     local base_patterns = config.env_file_patterns or { ".env", ".envrc", ".env.*" }
-    
-    -- Add patterns for monorepo root and all workspaces
+
     for _, pattern in ipairs(base_patterns) do
       table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
       table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
     end
-    
-    -- Extend existing patterns with monorepo patterns
+
     for _, pattern in ipairs(monorepo_patterns) do
       table.insert(watch_patterns, pattern)
     end
   end
-  
+
   if #watch_patterns == 0 then
     watch_patterns = { ".env*" }
   end
 
-  -- BufReadCmd handler
   api.nvim_create_autocmd("BufReadCmd", {
     pattern = watch_patterns,
     group = group,
@@ -524,14 +526,16 @@ local function setup_buffer_autocmds(config, group)
       end
 
       if state.is_enabled("files") then
-        M.shelter_buffer()
+        local revealed_lines = state.get_buffer_state().revealed_lines
+        if not next(revealed_lines) then
+          M.shelter_buffer()
+        end
       end
 
       return true
     end,
   })
 
-  -- Buffer modification handlers
   api.nvim_create_autocmd({ "BufWritePost", "BufEnter", "TextChanged", "TextChangedI", "TextChangedP" }, {
     pattern = watch_patterns,
     group = group,
@@ -546,7 +550,6 @@ local function setup_buffer_autocmds(config, group)
     end,
   })
 
-  -- Buffer leave handler
   api.nvim_create_autocmd("BufLeave", {
     pattern = watch_patterns,
     group = group,
@@ -635,15 +638,11 @@ function M.setup_file_shelter()
   setup_paste_override(config)
 end
 
--- Refresh shelter when monorepo workspace changes
 function M.refresh_shelter_for_monorepo()
-  -- Clear existing autocmds
   pcall(api.nvim_del_augroup_by_name, "ecolog_shelter")
-  
-  -- Re-setup with current config (which should include updated monorepo context)
+
   M.setup_file_shelter()
-  
-  -- Re-apply masking to current buffer if it's an env file
+
   local current_file = fn.bufname()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   if current_file and shelter_utils.match_env_file(current_file, config) and state.is_enabled("files") then

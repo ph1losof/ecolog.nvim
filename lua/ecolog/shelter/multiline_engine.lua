@@ -2,7 +2,7 @@
 ---@field private cache table LRU cache for parsed results
 local M = {}
 
--- Cache API references for performance
+
 local api = vim.api
 local api_buf_is_valid = api.nvim_buf_is_valid
 local api_buf_clear_namespace = api.nvim_buf_clear_namespace
@@ -10,11 +10,7 @@ local api_buf_set_extmark = api.nvim_buf_set_extmark
 local vim_split = vim.split
 local vim_schedule = vim.schedule
 local string_rep = string.rep
-local string_sub = string.sub
-local string_find = string.find
-local string_format = string.format
 local table_concat = table.concat
-local table_insert = table.insert
 local math_min = math.min
 local math_max = math.max
 local math_floor = math.floor
@@ -24,28 +20,30 @@ local common = require("ecolog.shelter.common")
 local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
 
--- Performance configuration with defaults
+
 local perf_config = {
   parsed_cache_size = 200,
   extmark_cache_size = 100,
   mask_cache_size = 150,
   batch_size = 50,
-  hash_sample_rate = 16, -- Sample every 16th character for hashing
-  estimated_vars_per_lines = 4, -- Estimate 1 var per 4 lines
-  estimated_extmarks_multiplier = 2, -- Estimate 2 extmarks per variable
+  hash_sample_rate = 16,
+  estimated_vars_per_lines = 4,
+  estimated_extmarks_multiplier = 2,
 }
 
--- String interning system for performance
-local string_cache = setmetatable({}, {__mode = "v"})
+local string_cache
 local function intern_string(s)
   if not s then return s end
+  if not string_cache then
+    string_cache = setmetatable({}, {__mode = "v"})
+  end
   local cached = string_cache[s]
   if cached then return cached end
   string_cache[s] = s
   return s
 end
 
--- Fast hash function to replace SHA256
+
 local function fast_hash(content)
   if type(content) == "table" then
     content = table_concat(content, "\n")
@@ -61,7 +59,7 @@ local function fast_hash(content)
   return tostring(hash)
 end
 
--- Configuration function for performance tuning
+
 function M.configure_performance(config)
   if config then
     for key, value in pairs(config) do
@@ -70,7 +68,7 @@ function M.configure_performance(config)
       end
     end
     
-    -- Reconfigure caches with new settings
+    
     local cache_config = {
       enable_stats = true,
       ttl_ms = config.cache_ttl_ms or 3600000,
@@ -78,38 +76,61 @@ function M.configure_performance(config)
       auto_cleanup = config.auto_cleanup ~= false,
     }
     
-    parsed_cache:configure(cache_config)
-    extmark_cache:configure(cache_config)
-    mask_length_cache:configure(cache_config)
+    if parsed_cache then parsed_cache:configure(cache_config) end
+    if extmark_cache then extmark_cache:configure(cache_config) end
+    if mask_length_cache then mask_length_cache:configure(cache_config) end
   end
   return perf_config
 end
 
--- Create optimized LRU caches with statistics
-local parsed_cache = lru_cache.new(perf_config.parsed_cache_size, {
-  enable_stats = true,
-  ttl_ms = 3600000, -- 1 hour
-  auto_cleanup = true,
-})
 
-local extmark_cache = lru_cache.new(perf_config.extmark_cache_size, {
-  enable_stats = true,
-  ttl_ms = 1800000, -- 30 minutes
-  auto_cleanup = true,
-})
+local parsed_cache, extmark_cache, mask_length_cache
 
-local mask_length_cache = lru_cache.new(perf_config.mask_cache_size, {
-  enable_stats = true,
-  ttl_ms = 1800000, -- 30 minutes
-  auto_cleanup = true,
-})
+local function get_parsed_cache()
+  if not parsed_cache then
+    parsed_cache = lru_cache.new(perf_config.parsed_cache_size, {
+      enable_stats = true,
+      ttl_ms = 3600000, 
+      auto_cleanup = true,
+    })
+  end
+  return parsed_cache
+end
+
+local function get_extmark_cache()
+  if not extmark_cache then
+    extmark_cache = lru_cache.new(perf_config.extmark_cache_size, {
+      enable_stats = true,
+      ttl_ms = 1800000, 
+      auto_cleanup = true,
+    })
+  end
+  return extmark_cache
+end
+
+local function get_mask_cache()
+  if not mask_length_cache then
+    mask_length_cache = lru_cache.new(perf_config.mask_cache_size, {
+      enable_stats = true,
+      ttl_ms = 1800000, 
+      auto_cleanup = true,
+    })
+  end
+  return mask_length_cache
+end
 
 
--- Interned constants for performance
-local BACKSLASH = intern_string("\\")
-local EMPTY_STRING = intern_string("")
-local SPACE = intern_string(" ")
-local NEWLINE = intern_string("\n")
+
+local BACKSLASH, EMPTY_STRING, SPACE, NEWLINE
+
+local function get_constants()
+  if not BACKSLASH then
+    BACKSLASH = intern_string("\\")
+    EMPTY_STRING = intern_string("")
+    SPACE = intern_string(" ")
+    NEWLINE = intern_string("\n")
+  end
+end
 
 
 local PATTERNS = {
@@ -142,13 +163,14 @@ local PATTERNS = {
 ---@param content_hash string Hash of the content for caching
 ---@return table<string, ParsedVariable> parsed_vars
 function M.parse_lines_cached(lines, content_hash)
+  get_constants() 
 
-  local cached_result = parsed_cache:get(content_hash)
+  local cached_result = get_parsed_cache():get(content_hash)
   if cached_result then
     return cached_result
   end
 
-  -- Pre-allocate tables for better performance
+  
   local lines_count = #lines
   local estimated_vars = math_max(1, math_floor(lines_count / perf_config.estimated_vars_per_lines))
   
@@ -206,7 +228,7 @@ function M.parse_lines_cached(lines, content_hash)
     ::continue::
   end
 
-  parsed_cache:put(content_hash, parsed_vars)
+  get_parsed_cache():put(content_hash, parsed_vars)
   return parsed_vars
 end
 
@@ -219,6 +241,7 @@ end
 ---@param mask_config table Mask configuration
 ---@return string[] distributed_masks Array of masks for each line
 function M.create_mask_length_masks(var_info, lines, config, source_filename, mask_length, mask_config)
+  get_constants() -- Initialize constants
   local state = require("ecolog.shelter.state")
   
   local has_revealed_line = false
@@ -261,7 +284,7 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
   local cache_key = fast_hash(table_concat(cache_parts, ":"))
 
 
-  local cached_result = mask_length_cache:get(cache_key)
+  local cached_result = get_mask_cache():get(cache_key)
   if cached_result then
     return cached_result
   end
@@ -353,7 +376,7 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     end
   end
 
-  mask_length_cache:put(cache_key, distributed_masks)
+  get_mask_cache():put(cache_key, distributed_masks)
 
   return distributed_masks
 end
@@ -365,6 +388,7 @@ end
 ---@param source_filename string Source filename for masking
 ---@return string[] distributed_masks Array of masks for each line
 function M.generate_multiline_masks(var_info, lines, config, source_filename)
+  get_constants() -- Initialize constants
   local state = require("ecolog.shelter.state")
   local mask_length = state.get_config().mask_length
   if not mask_length then
@@ -499,7 +523,7 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
   local extmarks = {}
   local extmark_cache_key = table_concat({source_filename, fast_hash(lines)}, ":")
 
-  local cached_extmarks = extmark_cache:get(extmark_cache_key)
+  local cached_extmarks = get_extmark_cache():get(extmark_cache_key)
   if cached_extmarks then
     return cached_extmarks
   end
@@ -585,7 +609,7 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
     ::continue_var::
   end
 
-  extmark_cache:put(extmark_cache_key, extmarks)
+  get_extmark_cache():put(extmark_cache_key, extmarks)
   return extmarks
 end
 
@@ -644,33 +668,30 @@ function M.process_buffer_optimized(bufnr, lines, config, source_filename, names
 end
 
 function M.clear_caches()
-  parsed_cache:clear()
-  extmark_cache:clear()
-  mask_length_cache:clear()
+  if parsed_cache then parsed_cache:clear() end
+  if extmark_cache then extmark_cache:clear() end
+  if mask_length_cache then mask_length_cache:clear() end
 end
 
 ---Get cache statistics for debugging
 ---@return table stats Cache statistics
 function M.get_cache_stats()
+  local function get_cache_info(cache, cache_name)
+    if not cache then
+      return { not_initialized = true, cache_name = cache_name }
+    end
+    return {
+      stats = cache:get_stats(),
+      size = cache:get_size(),
+      memory_usage = cache:get_memory_usage(),
+      hit_ratio = cache:get_hit_ratio(),
+    }
+  end
+  
   return {
-    parsed = {
-      stats = parsed_cache:get_stats(),
-      size = parsed_cache:get_size(),
-      memory_usage = parsed_cache:get_memory_usage(),
-      hit_ratio = parsed_cache:get_hit_ratio(),
-    },
-    extmark = {
-      stats = extmark_cache:get_stats(),
-      size = extmark_cache:get_size(),
-      memory_usage = extmark_cache:get_memory_usage(),
-      hit_ratio = extmark_cache:get_hit_ratio(),
-    },
-    mask = {
-      stats = mask_length_cache:get_stats(),
-      size = mask_length_cache:get_size(),
-      memory_usage = mask_length_cache:get_memory_usage(),
-      hit_ratio = mask_length_cache:get_hit_ratio(),
-    },
+    parsed = get_cache_info(parsed_cache, "parsed"),
+    extmark = get_cache_info(extmark_cache, "extmark"),
+    mask = get_cache_info(mask_length_cache, "mask"),
   }
 end
 
@@ -678,17 +699,17 @@ end
 ---@return table ratios Hit ratios for all caches
 function M.get_cache_hit_ratios()
   return {
-    parsed = parsed_cache:get_hit_ratio(),
-    extmark = extmark_cache:get_hit_ratio(),
-    mask = mask_length_cache:get_hit_ratio(),
+    parsed = parsed_cache and parsed_cache:get_hit_ratio() or 0,
+    extmark = extmark_cache and extmark_cache:get_hit_ratio() or 0,
+    mask = mask_length_cache and mask_length_cache:get_hit_ratio() or 0,
   }
 end
 
 ---Shutdown all caches (stop timers and clear)
 function M.shutdown_caches()
-  parsed_cache:shutdown()
-  extmark_cache:shutdown()
-  mask_length_cache:shutdown()
+  if parsed_cache then parsed_cache:shutdown() end
+  if extmark_cache then extmark_cache:shutdown() end
+  if mask_length_cache then mask_length_cache:shutdown() end
 end
 
 return M

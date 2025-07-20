@@ -12,25 +12,53 @@
 ---@field private tail LRUNode
 ---@field private memory_limit number Memory limit in bytes (optional)
 ---@field private current_memory number Current memory usage in bytes
+---@field private stats table Cache statistics
+---@field private config table Cache configuration
+---@field private created_at number Creation timestamp
+---@field private cleanup_timer number? Cleanup timer handle
 local LRUCache = {}
 LRUCache.__index = LRUCache
 
 ---Create a new LRU Cache
 ---@param capacity integer Maximum number of items to store
----@param memory_limit? number Optional memory limit in bytes
+---@param config? table Optional configuration
 ---@return LRUCache
-function LRUCache.new(capacity, memory_limit)
+function LRUCache.new(capacity, config)
+  config = config or {}
+  
   local self = setmetatable({}, { __index = LRUCache })
   self.capacity = capacity
   self.size = 0
   self.cache = {}
-  self.memory_limit = memory_limit
+  self.memory_limit = config.memory_limit
   self.current_memory = 0
+  self.created_at = vim.loop.hrtime()
+  
+  -- Configuration with defaults
+  self.config = {
+    enable_stats = config.enable_stats ~= false, -- Default true
+    ttl_ms = config.ttl_ms or 3600000, -- 1 hour default
+    cleanup_interval_ms = config.cleanup_interval_ms or 300000, -- 5 minutes
+    auto_cleanup = config.auto_cleanup ~= false, -- Default true
+  }
+  
+  -- Statistics tracking
+  self.stats = {
+    hits = 0,
+    misses = 0,
+    evictions = 0,
+    memory_bytes = 0,
+  }
 
   self.head = { key = 0, value = 0 }
   self.tail = { key = 0, value = 0 }
   self.head.next = self.tail
   self.tail.prev = self.head
+
+  -- Start automatic cleanup if enabled
+  if self.config.auto_cleanup and self.config.cleanup_interval_ms > 0 then
+    self:start_cleanup_timer()
+  end
 
   return self
 end
@@ -74,6 +102,43 @@ local function estimate_memory_usage(value, depth)
     return 50 -- Rough estimate for userdata
   end
   return 0
+end
+
+---Start automatic cleanup timer
+function LRUCache:start_cleanup_timer()
+  if self.cleanup_timer then
+    vim.fn.timer_stop(self.cleanup_timer)
+  end
+  
+  self.cleanup_timer = vim.fn.timer_start(self.config.cleanup_interval_ms, function()
+    self:cleanup_expired()
+  end, { ["repeat"] = -1 })
+end
+
+---Stop automatic cleanup timer
+function LRUCache:stop_cleanup_timer()
+  if self.cleanup_timer then
+    vim.fn.timer_stop(self.cleanup_timer)
+    self.cleanup_timer = nil
+  end
+end
+
+---Check if cache is expired based on TTL
+---@return boolean
+function LRUCache:is_expired()
+  if not self.config.ttl_ms or self.config.ttl_ms <= 0 then
+    return false
+  end
+  
+  local age_ms = (vim.loop.hrtime() - self.created_at) / 1000000
+  return age_ms > self.config.ttl_ms
+end
+
+---Cleanup expired cache entries
+function LRUCache:cleanup_expired()
+  if self:is_expired() then
+    self:clear()
+  end
 end
 
 ---Add a node to the front of the list
@@ -143,6 +208,11 @@ function LRUCache:remove_lru()
   if self.memory_limit then
     self.current_memory = math.max(0, self.current_memory - memory_to_remove)
   end
+  
+  -- Update statistics
+  if self.config.enable_stats then
+    self.stats.evictions = self.stats.evictions + 1
+  end
 
   -- Clear node references to prevent memory leaks
   lru_node.key = nil
@@ -184,6 +254,12 @@ function LRUCache:put(key, value)
     if self.memory_limit then
       self.current_memory = self.current_memory - old_memory + value_memory
     end
+    
+    -- Update statistics
+    if self.config.enable_stats then
+      self.stats.memory_bytes = self.stats.memory_bytes - old_memory + value_memory
+    end
+    
     node.value = value
     self:move_to_front(node)
   else
@@ -195,6 +271,11 @@ function LRUCache:put(key, value)
     
     if self.memory_limit then
       self.current_memory = self.current_memory + value_memory
+    end
+    
+    -- Update statistics
+    if self.config.enable_stats then
+      self.stats.memory_bytes = self.stats.memory_bytes + value_memory
     end
 
     -- Evict items if necessary
@@ -219,9 +300,20 @@ end
 ---@return any|nil
 function LRUCache:get(key)
   local node = self.cache[key]
+  
+  -- Update statistics
+  if self.config.enable_stats then
+    if node then
+      self.stats.hits = self.stats.hits + 1
+    else
+      self.stats.misses = self.stats.misses + 1
+    end
+  end
+  
   if not node then
     return nil
   end
+  
   self:move_to_front(node)
   return node.value
 end
@@ -276,6 +368,11 @@ function LRUCache:clear()
   self.current_memory = 0
   self.head.next = self.tail
   self.tail.prev = self.head
+  
+  -- Reset statistics
+  if self.config.enable_stats then
+    self.stats.memory_bytes = 0
+  end
 end
 
 ---Get current cache size
@@ -284,10 +381,75 @@ function LRUCache:get_size()
   return self.size
 end
 
+---Alias for get_size for backward compatibility
+---@return integer
+function LRUCache:size()
+  return self.size
+end
+
 ---Get current memory usage in bytes (if memory limit is enabled)
 ---@return number
 function LRUCache:get_memory_usage()
   return self.current_memory
+end
+
+---Get cache statistics
+---@return table stats Current cache statistics
+function LRUCache:get_stats()
+  if not self.config.enable_stats then
+    return { stats_disabled = true }
+  end
+  
+  return vim.tbl_deep_extend("force", {}, self.stats)
+end
+
+---Get cache hit ratio
+---@return number ratio Hit ratio between 0 and 1
+function LRUCache:get_hit_ratio()
+  if not self.config.enable_stats then
+    return 0
+  end
+  
+  local total_requests = self.stats.hits + self.stats.misses
+  return total_requests > 0 and (self.stats.hits / total_requests) or 0
+end
+
+---Reset cache statistics
+function LRUCache:reset_stats()
+  if self.config.enable_stats then
+    self.stats.hits = 0
+    self.stats.misses = 0
+    self.stats.evictions = 0
+  end
+end
+
+---Get cache configuration
+---@return table config Current cache configuration
+function LRUCache:get_config()
+  return vim.tbl_deep_extend("force", {}, self.config)
+end
+
+---Update cache configuration
+---@param new_config table New configuration options
+function LRUCache:configure(new_config)
+  local old_auto_cleanup = self.config.auto_cleanup
+  self.config = vim.tbl_deep_extend("force", self.config, new_config or {})
+  
+  -- Handle cleanup timer changes
+  if old_auto_cleanup and not self.config.auto_cleanup then
+    self:stop_cleanup_timer()
+  elseif not old_auto_cleanup and self.config.auto_cleanup then
+    self:start_cleanup_timer()
+  elseif self.config.auto_cleanup and self.cleanup_timer then
+    -- Restart timer with new interval
+    self:start_cleanup_timer()
+  end
+end
+
+---Shutdown cache (stop timers and clear)
+function LRUCache:shutdown()
+  self:stop_cleanup_timer()
+  self:clear()
 end
 
 ---Get all keys in the cache

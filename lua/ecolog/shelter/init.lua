@@ -34,7 +34,8 @@ function M.setup(opts)
     state.get_config().mask_char = opts.config.mask_char or "*"
     state.get_config().highlight_group = opts.config.highlight_group or "Comment"
     state.get_config().mask_length = type(opts.config.mask_length) == "number" and opts.config.mask_length or nil
-    state.get_config().skip_comments = type(opts.config.skip_comments) == "boolean" and opts.config.skip_comments or false
+    state.get_config().skip_comments = type(opts.config.skip_comments) == "boolean" and opts.config.skip_comments
+      or false
 
     if opts.config.patterns then
       state.get_config().patterns = opts.config.patterns
@@ -62,12 +63,11 @@ function M.setup(opts)
         state.set_initial_feature_state(feature, true)
         state.get_config().shelter_on_leave = partial[feature].shelter_on_leave
         state.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
-        
-        -- Handle deprecated skip_comments in files module
+
         if partial[feature].skip_comments ~= nil then
           notify(
-            "DEPRECATED: Using skip_comments in shelter.modules.files module is deprecated. " ..
-            "Please move it to shelter.configuration.skip_comments instead.",
+            "DEPRECATED: Using skip_comments in shelter.modules.files module is deprecated. "
+              .. "Please move it to shelter.configuration.skip_comments instead.",
             vim.log.levels.WARN
           )
           state.get_config().skip_comments = partial[feature].skip_comments == true
@@ -104,43 +104,70 @@ function M.setup(opts)
 
   api.nvim_create_user_command("EcologShelterLinePeek", function()
     if not state.is_enabled("files") then
-      notify("Shelter mode for files is not enabled", vim.log.levels.WARN)
+      notify("Shelter mode for files is not enabled. Enable with: shelter.modules.files = true", vim.log.levels.WARN)
       return
     end
 
     local current_line = api.nvim_win_get_cursor(0)[1]
+    local bufnr = api.nvim_get_current_buf()
+
     state.reset_revealed_lines()
     state.set_revealed_line(current_line, true)
+
+    local multiline_engine = require("ecolog.shelter.multiline_engine")
+    multiline_engine.clear_caches()
+
     buffer.shelter_buffer()
 
-    local bufnr = api.nvim_get_current_buf()
-    api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
-      buffer = bufnr,
-      callback = function(ev)
-        if ev.event == "BufLeave" then
-          local bufname = api.nvim_buf_get_name(bufnr)
-          state.reset_revealed_lines()
-          buffer.clear_line_cache(current_line, bufname)
-          buffer.shelter_buffer()
-          api.nvim_del_autocmd(ev.id)
-          return true
+    -- Use CursorHold instead of CursorMoved to avoid immediate triggering
+    -- This will trigger after the user stops moving the cursor for a short time
+    local function cleanup_peek()
+      state.reset_revealed_lines()
+      buffer.clear_line_cache(current_line, api.nvim_buf_get_name(bufnr))
+
+      local multiline_engine = require("ecolog.shelter.multiline_engine")
+      multiline_engine.clear_caches()
+
+      buffer.shelter_buffer()
+
+      vim.schedule(function()
+        if api.nvim_buf_is_valid(bufnr) then
+          vim.cmd("redraw")
         end
+      end)
+    end
 
-        if ev.event:match("Cursor") then
-          local new_line = api.nvim_win_get_cursor(0)[1]
+    local autocmd_group = api.nvim_create_augroup("EcologPeek_" .. bufnr .. "_" .. current_line, { clear = true })
 
-          if new_line ~= current_line then
-            local bufname = api.nvim_buf_get_name(bufnr)
-            state.reset_revealed_lines()
-            buffer.clear_line_cache(current_line, bufname)
-            buffer.clear_line_cache(new_line, bufname)
-            buffer.shelter_buffer()
-            api.nvim_del_autocmd(ev.id)
-            return true
+    local cursor_timer = nil
+    api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+      buffer = bufnr,
+      group = autocmd_group,
+      callback = function(ev)
+        local new_line = api.nvim_win_get_cursor(0)[1]
+
+        if new_line ~= current_line then
+          if cursor_timer then
+            vim.fn.timer_stop(cursor_timer)
           end
+          cursor_timer = vim.fn.timer_start(50, function()
+            cleanup_peek()
+            api.nvim_del_augroup_by_id(autocmd_group)
+          end)
         end
       end,
-      desc = "Hide revealed env values on cursor move",
+    })
+
+    api.nvim_create_autocmd("BufLeave", {
+      buffer = bufnr,
+      group = autocmd_group,
+      callback = function()
+        if cursor_timer then
+          vim.fn.timer_stop(cursor_timer)
+        end
+        cleanup_peek()
+        api.nvim_del_augroup_by_id(autocmd_group)
+      end,
     })
   end, {
     desc = "Temporarily reveal env value for current line",

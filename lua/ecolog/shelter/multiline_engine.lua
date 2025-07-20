@@ -126,6 +126,35 @@ end
 ---@param mask_config table Mask configuration
 ---@return string[] distributed_masks Array of masks for each line
 function M.create_mask_length_masks(var_info, lines, config, source_filename, mask_length, mask_config)
+  local state = require("ecolog.shelter.state")
+  
+  local has_revealed_line = false
+  for line_idx = var_info.start_line, var_info.end_line do
+    if state.is_line_revealed(line_idx) then
+      has_revealed_line = true
+      break
+    end
+  end
+
+  if has_revealed_line then
+    local unmasked_result = {}
+    for line_idx = var_info.start_line, var_info.end_line do
+      local original_line = lines[line_idx]
+      if original_line then
+        if line_idx == var_info.start_line then
+          local eq_pos = original_line:find("=")
+          if eq_pos then
+            unmasked_result[line_idx] = original_line:sub(eq_pos + 1)
+          else
+            unmasked_result[line_idx] = original_line
+          end
+        else
+          unmasked_result[line_idx] = original_line
+        end
+      end
+    end
+    return unmasked_result
+  end
 
   local cache_key = string.format(
     "%s:%s:%d:%s:%s:%d:%d",
@@ -266,6 +295,34 @@ function M.generate_multiline_masks(var_info, lines, config, source_filename)
     mask_length = global_config and global_config.mask_length
   end
 
+  local has_revealed_line = false
+  for line_idx = var_info.start_line, var_info.end_line do
+    if state.is_line_revealed(line_idx) then
+      has_revealed_line = true
+      break
+    end
+  end
+
+  if has_revealed_line then
+    local unmasked_result = {}
+    for line_idx = var_info.start_line, var_info.end_line do
+      local original_line = lines[line_idx]
+      if original_line then
+        if line_idx == var_info.start_line then
+          local eq_pos = original_line:find("=")
+          if eq_pos then
+            unmasked_result[line_idx] = original_line:sub(eq_pos + 1)
+          else
+            unmasked_result[line_idx] = original_line
+          end
+        else
+          unmasked_result[line_idx] = original_line
+        end
+      end
+    end
+    return unmasked_result
+  end
+
   if mask_length and (var_info.is_multi_line or var_info.has_newlines) then
     return M.create_mask_length_masks(var_info, lines, config, source_filename, mask_length, state.get_config())
   end
@@ -390,28 +447,39 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
 
     if var_info.value and #var_info.value > 0 then
       if var_info.is_multi_line or var_info.has_newlines then
-        local distributed_masks = M.generate_multiline_masks(var_info, lines, config, source_filename)
+        local state = require("ecolog.shelter.state")
+        local has_revealed_line = false
+        for line_idx = var_info.start_line, var_info.end_line do
+          if state.is_line_revealed(line_idx) then
+            has_revealed_line = true
+            break
+          end
+        end
 
-        local highlight_group = config.highlight_group
+        if not has_revealed_line then
+          local distributed_masks = M.generate_multiline_masks(var_info, lines, config, source_filename)
 
-        for line_idx, mask in pairs(distributed_masks) do
-          local extmark_opts = {
-            virt_text = { { mask, highlight_group } },
-            virt_text_pos = base_extmark_opts.virt_text_pos,
-            hl_mode = base_extmark_opts.hl_mode,
-            priority = base_extmark_opts.priority,
-            strict = base_extmark_opts.strict,
-          }
+          local highlight_group = config.highlight_group
 
-          -- For mask_length scenarios, position extmark after the equals sign on first line, 
-          -- at column 0 for subsequent lines
-          local col_pos = (line_idx == var_info.start_line) and var_info.eq_pos or 0
+          for line_idx, mask in pairs(distributed_masks) do
+            local extmark_opts = {
+              virt_text = { { mask, highlight_group } },
+              virt_text_pos = base_extmark_opts.virt_text_pos,
+              hl_mode = base_extmark_opts.hl_mode,
+              priority = base_extmark_opts.priority,
+              strict = base_extmark_opts.strict,
+            }
 
-          table.insert(extmarks, {
-            line = line_idx - 1, -- 0-based
-            col = col_pos,
-            opts = extmark_opts,
-          })
+            -- For mask_length scenarios, position extmark after the equals sign on first line, 
+            -- at column 0 for subsequent lines
+            local col_pos = (line_idx == var_info.start_line) and var_info.eq_pos or 0
+
+            table.insert(extmarks, {
+              line = line_idx - 1, -- 0-based
+              col = col_pos,
+              opts = extmark_opts,
+            })
+          end
         end
       else
         local buffer_utils = require("ecolog.shelter.buffer")

@@ -194,7 +194,13 @@ function M.parse_lines_cached(lines, content_hash)
       if eq_pos then
         local potential_key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
         if potential_key and #potential_key > 0 then
-          line_start_positions[potential_key] = current_line_idx
+          -- Create unique key for tracking duplicates
+          local unique_tracking_key = potential_key .. "_line_" .. current_line_idx
+          line_start_positions[unique_tracking_key] = current_line_idx
+          -- Also store without line number for backward compatibility
+          if not line_start_positions[potential_key] then
+            line_start_positions[potential_key] = current_line_idx
+          end
         end
       end
     end
@@ -202,15 +208,26 @@ function M.parse_lines_cached(lines, content_hash)
     local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, multi_line_state)
     if updated_state then
       multi_line_state = updated_state
-      if updated_state.in_multi_line and updated_state.key and not line_start_positions[updated_state.key] then
-        line_start_positions[updated_state.key] = current_line_idx
+      if updated_state.in_multi_line and updated_state.key then
+        local unique_tracking_key = updated_state.key .. "_line_" .. current_line_idx
+        if not line_start_positions[unique_tracking_key] then
+          line_start_positions[unique_tracking_key] = current_line_idx
+        end
+        -- Also store without line number for backward compatibility
+        if not line_start_positions[updated_state.key] then
+          line_start_positions[updated_state.key] = current_line_idx
+        end
       end
     end
 
     if key and value then
-      local start_line = line_start_positions[key] or current_line_idx
+      -- Look up the correct start line for this occurrence
+      local unique_tracking_key = key .. "_line_" .. current_line_idx
+      local start_line = line_start_positions[unique_tracking_key] or line_start_positions[key] or current_line_idx
       local end_line = current_line_idx
-      parsed_vars[key] = {
+      -- Use a unique identifier that includes the start line to handle duplicates
+      local unique_key = key .. "_line_" .. start_line
+      parsed_vars[unique_key] = {
         key = key,
         value = value,
         quote_char = quote_char,
@@ -671,6 +688,41 @@ function M.clear_caches()
   if parsed_cache then parsed_cache:clear() end
   if extmark_cache then extmark_cache:clear() end
   if mask_length_cache then mask_length_cache:clear() end
+end
+
+---Clear cache entries for a specific buffer
+---@param bufnr number Buffer number
+---@param source_filename string Source filename
+function M.clear_buffer_cache(bufnr, source_filename)
+  if not bufnr or not source_filename then
+    return
+  end
+  
+  -- Clear cache entries that match this buffer
+  if parsed_cache then
+    -- Clear all entries for this buffer by iterating through cache
+    -- Since we can't iterate through LRU cache directly, we'll clear all
+    -- This is safer to ensure no stale entries remain
+    parsed_cache:clear()
+  end
+  
+  if extmark_cache then
+    extmark_cache:clear()
+  end
+  
+  if mask_length_cache then
+    mask_length_cache:clear()
+  end
+end
+
+---Clear cache entries for specific lines in a buffer
+---@param bufnr number Buffer number
+---@param start_line number Start line (1-based)
+---@param end_line number End line (1-based)
+function M.clear_line_range_cache(bufnr, start_line, end_line)
+  -- Clear all caches when lines change to ensure consistency
+  -- This is a conservative approach but ensures correctness
+  M.clear_caches()
 end
 
 ---Get cache statistics for debugging

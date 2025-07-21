@@ -693,9 +693,9 @@ function M.extract_line_parts(line, state)
   end
 
 
-  -- Check for backslash continuation
-  if value:match("\\%s*$") then
-    local clean_value = value:match("^(.-)\\%s*$")
+  -- Check for backslash continuation (with optional comment)
+  if value:match("\\%s*#") or value:match("\\%s*$") then
+    local clean_value = value:match("^(.-)\\%s*#") or value:match("^(.-)\\%s*$")
     state.in_multi_line = true
     state.key = key
     state.value_lines = { clean_value }
@@ -763,15 +763,25 @@ end
 ---@return MultiLineState|nil state Updated multi-line state
 function M.handle_multi_line_continuation(line, state)
   if state.continuation_type == 'backslash' then
-    -- Handle backslash continuation
-    if line:match("\\%s*$") then
-      -- Continue on next line
-      local clean_line = line:match("^(.-)\\%s*$")
+    -- Handle backslash continuation (with optional comment)
+    if line:match("\\%s*#") or line:match("\\%s*$") then
+      -- Continue on next line, strip backslash and optional comment
+      local clean_line = line:match("^(.-)\\%s*#") or line:match("^(.-)\\%s*$")
       table.insert(state.value_lines, clean_line)
       return nil, nil, nil, nil, state
     else
-      -- End of continuation
-      table.insert(state.value_lines, line)
+      -- End of continuation - check for trailing comment
+      local final_line = line
+      local comment = nil
+      local hash_pos = line:find("#")
+      if hash_pos then
+        if hash_pos > 1 and line:sub(hash_pos - 1, hash_pos - 1):match("%s") then
+          comment = line:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+          final_line = line:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+        end
+      end
+      
+      table.insert(state.value_lines, final_line)
       local final_value = table.concat(state.value_lines, "")
       
       local key = state.key
@@ -784,7 +794,7 @@ function M.handle_multi_line_continuation(line, state)
       state.is_triple_quoted = false
       state.continuation_type = nil
       
-      return key, final_value, nil, nil, state
+      return key, final_value, comment, nil, state
     end
     
   elseif state.continuation_type == 'quoted' then

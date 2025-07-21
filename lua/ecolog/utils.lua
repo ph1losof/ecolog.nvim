@@ -48,22 +48,19 @@ end
 ---@return string display_name The display name with workspace context
 function M.get_env_file_display_name(file_path, opts)
   local display_name = vim.fn.fnamemodify(file_path, ":t")
-  
-  -- Show workspace context for any monorepo setup (both manual and auto modes)
+
   if opts and opts._monorepo_root then
-    local relative_path = file_path:sub(#opts._monorepo_root + 2) -- Remove root path + "/"
+    local relative_path = file_path:sub(#opts._monorepo_root + 2)
     local workspace_parts = vim.split(relative_path, "/")
-    
+
     if #workspace_parts >= 2 then
-      -- Show workspace type and name (e.g., "apps/api")
       local workspace_context = workspace_parts[1] .. "/" .. workspace_parts[2]
       display_name = string.format("%s (%s)", display_name, workspace_context)
     elseif #workspace_parts == 1 then
-      -- Root level file
       display_name = string.format("%s (root)", display_name)
     end
   end
-  
+
   return display_name
 end
 
@@ -125,8 +122,6 @@ local function combine_path_pattern(base, pattern, config)
   return base .. "/" .. pattern
 end
 
---[[ File Pattern Matching ]]
-
 ---Filter a list of files based on glob patterns
 ---@param files string[]|nil The files to filter
 ---@param patterns string[]|nil The glob patterns to match against
@@ -136,7 +131,6 @@ function M.filter_env_files(files, patterns)
     return {}
   end
 
-  -- Filter out nil values more efficiently
   local valid_files = {}
   for i = 1, #files do
     local file = files[i]
@@ -351,23 +345,20 @@ function M.get_watch_patterns(config)
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
       table.insert(watch_patterns, combine_path_pattern(path, pattern, config))
     end
-    
-    -- Add monorepo workspace patterns if in monorepo mode
+
     if config._monorepo_root then
       local monorepo_patterns = {}
-      
-      -- Add patterns for monorepo root and all workspaces
+
       for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
         table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
         table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
       end
-      
-      -- Extend existing patterns with monorepo patterns
+
       for _, pattern in ipairs(monorepo_patterns) do
         table.insert(watch_patterns, pattern)
       end
     end
-    
+
     return watch_patterns
   end
 
@@ -383,20 +374,17 @@ function M.get_watch_patterns(config)
     end
   end
 
-  -- Add monorepo workspace patterns if in monorepo mode
   if config._monorepo_root then
     local monorepo_patterns = {}
     local base_patterns = patterns or DEFAULT_ENV_PATTERNS
-    
-    -- Add patterns for monorepo root and all workspaces
+
     for _, pattern in ipairs(base_patterns) do
       if type(pattern) == "string" then
         table.insert(monorepo_patterns, config._monorepo_root .. "/" .. pattern)
         table.insert(monorepo_patterns, config._monorepo_root .. "/**/" .. pattern)
       end
     end
-    
-    -- Extend existing patterns with monorepo patterns
+
     for _, pattern in ipairs(monorepo_patterns) do
       table.insert(watch_patterns, pattern)
     end
@@ -409,8 +397,6 @@ function M.get_watch_patterns(config)
   return watch_patterns
 end
 
---[[ File Finding and Sorting ]]
-
 ---Find environment files based on provided options
 ---@param opts? {path?: string, project_root?: string|function, env_file_patterns?: string[], preferred_environment?: string, sort_file_fn?: function, sort_fn?: function}
 ---@return string[] List of found environment files
@@ -419,59 +405,50 @@ function M.find_env_files(opts)
   local path = normalize_path(opts.path, opts)
 
   local files = {}
-  
-  -- Handle monorepo workspace file discovery
+
   if opts._is_monorepo_workspace and opts._monorepo_root then
     local monorepo = require("ecolog.monorepo")
     local workspace = opts._workspace_info
     local root_path = opts._monorepo_root
-    
-    -- Get provider from detected info
+
     local provider = opts._detected_info and opts._detected_info.provider
     if not provider then
-      -- Fall back to detecting provider
       local Detection = require("ecolog.monorepo.detection")
       _, provider = Detection.detect_monorepo(root_path)
     end
-    
+
     if not provider then
-      -- No provider found, fall back to default files
       files = M.find_env_files_in_path(opts.path, opts.env_file_patterns)
     else
-      -- Get files using monorepo resolution strategy
       files = monorepo.resolve_env_files(workspace, root_path, provider, opts.env_file_patterns, opts)
     end
-    
-    -- Files are already sorted by resolve_env_files, just return them
+
     return files
   end
-  
-  -- Handle monorepo manual mode - collect files from all workspaces
+
   if opts._is_monorepo_manual_mode and opts._all_workspaces then
     local monorepo = require("ecolog.monorepo")
     local root_path = opts._monorepo_root
-    
-    -- Use provider-specific env_resolution if available, otherwise fall back to provider default
+
     local monorepo_config = {
       strategy = "workspace_first",
-      inheritance = true
+      inheritance = true,
     }
-    
+
     if type(opts.monorepo) == "table" and opts.monorepo.env_resolution then
       monorepo_config = opts.monorepo.env_resolution
     elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.env_resolution then
       monorepo_config = opts._detected_info.provider.env_resolution
     end
-    
+
     local all_files = {}
-    
-    -- Iterate through all workspaces and collect environment files
+
     for _, workspace in ipairs(opts._all_workspaces) do
-      local workspace_files = monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
+      local workspace_files =
+        monorepo.resolve_env_files(workspace, root_path, monorepo_config, opts.env_file_patterns, opts)
       vim.list_extend(all_files, workspace_files)
     end
-    
-    -- Remove duplicates that might occur from overlapping workspace files
+
     local unique_files = {}
     local seen = {}
     for i = 1, #all_files do
@@ -481,14 +458,12 @@ function M.find_env_files(opts)
         unique_files[#unique_files + 1] = file
       end
     end
-    
+
     files = unique_files
-    
-    -- Sort and return
+
     return M.sort_env_files(files, opts)
   end
-  
-  -- Regular (non-monorepo) file discovery
+
   if not opts.env_file_patterns then
     local env_files = {}
     for _, pattern in ipairs(DEFAULT_ENV_PATTERNS) do
@@ -529,7 +504,6 @@ function M.find_env_files(opts)
     files = all_files
   end
 
-  -- Remove duplicates that might occur from overlapping patterns
   local unique_files = {}
   local seen = {}
   for i = 1, #files do
@@ -553,7 +527,6 @@ local function default_sort_file_fn(a, b, opts)
     return false
   end
 
-  -- Preferred environment sorting (highest priority - same as non-monorepo)
   if opts and opts.preferred_environment and opts.preferred_environment ~= "" then
     local pref_pattern = "%." .. vim.pesc(opts.preferred_environment) .. "$"
     local a_is_preferred = a:match(pref_pattern) ~= nil
@@ -563,42 +536,39 @@ local function default_sort_file_fn(a, b, opts)
     end
   end
 
-  -- Standard .env file priority (second priority - same as non-monorepo)
   local a_is_env = a:match(M.PATTERNS.env_file_combined) ~= nil
   local b_is_env = b:match(M.PATTERNS.env_file_combined) ~= nil
   if a_is_env ~= b_is_env then
     return a_is_env
   end
 
-  -- Monorepo workspace-aware sorting (applied after preferred environment)
   if opts and opts._monorepo_root and opts._current_workspace_info then
     local current_workspace = opts._current_workspace_info
     local workspace_path = current_workspace.path
-    
+
     local a_in_current = a:find(workspace_path, 1, true) == 1
     local b_in_current = b:find(workspace_path, 1, true) == 1
-    
-    -- Prioritize files from current workspace in manual mode
+
     if opts._is_monorepo_manual_mode and a_in_current ~= b_in_current then
       return a_in_current
     end
-    
-    -- In auto mode or when both files are from same workspace level,
-    -- apply workspace type priority if configured
+
     local workspace_priority = nil
     if type(opts.monorepo) == "table" and opts.monorepo.workspace_priority then
       workspace_priority = opts.monorepo.workspace_priority
     elseif opts._detected_info and opts._detected_info.provider and opts._detected_info.provider.workspace_priority then
       workspace_priority = opts._detected_info.provider.workspace_priority
     end
-    
+
     if workspace_priority then
       local function get_workspace_priority(file_path)
-        if not opts._monorepo_root then return 999 end
-        
+        if not opts._monorepo_root then
+          return 999
+        end
+
         local relative_path = file_path:sub(#opts._monorepo_root + 2)
         local workspace_parts = vim.split(relative_path, "/")
-        
+
         if #workspace_parts >= 1 then
           local workspace_type = workspace_parts[1]
           for i, priority_type in ipairs(workspace_priority) do
@@ -609,7 +579,7 @@ local function default_sort_file_fn(a, b, opts)
         end
         return 999
       end
-      
+
       local a_priority = get_workspace_priority(a)
       local b_priority = get_workspace_priority(b)
       if a_priority ~= b_priority then
@@ -639,7 +609,6 @@ function M.sort_env_files(files, opts)
 
   sort_file_fn = sort_file_fn or default_sort_file_fn
 
-  -- Filter out nil values more efficiently
   local valid_files = {}
   for i = 1, #files do
     local file = files[i]
@@ -656,15 +625,22 @@ function M.sort_env_files(files, opts)
   return files
 end
 
---[[ Environment File Parsing ]]
-
 ---@class MultiLineState
 ---@field in_multi_line boolean Whether we're parsing a multi-line value
 ---@field key string The key being parsed
 ---@field value_lines string[] Lines accumulated for multi-line value
+---@field comments string[] Comments accumulated for multi-line value
 ---@field quote_char string The quote character for multi-line parsing
 ---@field is_triple_quoted boolean Whether using triple-quoted syntax
 ---@field continuation_type string Type of continuation: 'quoted', 'backslash'
+
+local ML_PATTERNS = {
+  backslash_comment = "^(.-)\\%s*#%s*(.*)$",
+  backslash_only = "^(.-)\\%s*$",
+  comment_with_space = "#",
+  leading_whitespace = "^%s*",
+  trailing_whitespace = "%s*$",
+}
 
 ---Extract parts from an environment file line with multi-line support
 ---@param line string The line to parse
@@ -676,13 +652,11 @@ end
 ---@return MultiLineState|nil state Updated multi-line state
 function M.extract_line_parts(line, state)
   state = state or {}
-  
-  -- Handle multi-line continuation
+
   if state.in_multi_line then
     return M.handle_multi_line_continuation(line, state)
   end
-  
-  -- Skip empty lines and comments
+
   if line:match("^%s*#") or line:match("^%s*$") then
     return nil, nil, nil, nil, state
   end
@@ -692,20 +666,21 @@ function M.extract_line_parts(line, state)
     return nil, nil, nil, nil, state
   end
 
-
-  -- Check for backslash continuation
-  if value:match("\\%s*$") then
-    local clean_value = value:match("^(.-)\\%s*$")
+  if value:match("\\%s*#") or value:match("\\%s*$") then
+    local clean_value, comment = value:match(ML_PATTERNS.backslash_comment)
+    if not clean_value then
+      clean_value = value:match(ML_PATTERNS.backslash_only)
+    end
     state.in_multi_line = true
     state.key = key
     state.value_lines = { clean_value }
+    state.comments = comment and { comment } or {}
     state.quote_char = nil
     state.is_triple_quoted = false
-    state.continuation_type = 'backslash'
+    state.continuation_type = "backslash"
     return nil, nil, nil, nil, state
   end
 
-  -- Handle single-line quoted values
   local first_char = value:sub(1, 1)
   if first_char == '"' or first_char == "'" then
     local end_quote_pos = nil
@@ -729,18 +704,16 @@ function M.extract_line_parts(line, state)
       end
       return key, quoted_value, nil, first_char, state
     else
-      -- Unclosed quote - start multi-line parsing
       state.in_multi_line = true
       state.key = key
       state.value_lines = { value:sub(2) }
       state.quote_char = first_char
       state.is_triple_quoted = false
-      state.continuation_type = 'quoted'
+      state.continuation_type = "quoted"
       return nil, nil, nil, nil, state
     end
   end
 
-  -- Handle unquoted values with comments
   local hash_pos = value:find("#")
   if hash_pos then
     if hash_pos > 1 and value:sub(hash_pos - 1, hash_pos - 1):match("%s") then
@@ -762,36 +735,51 @@ end
 ---@return string|nil quote_char The quote character used (if any)
 ---@return MultiLineState|nil state Updated multi-line state
 function M.handle_multi_line_continuation(line, state)
-  if state.continuation_type == 'backslash' then
-    -- Handle backslash continuation
-    if line:match("\\%s*$") then
-      -- Continue on next line
-      local clean_line = line:match("^(.-)\\%s*$")
+  if state.continuation_type == "backslash" then
+    if line:match("\\%s*#") or line:match("\\%s*$") then
+      local clean_line, comment = line:match(ML_PATTERNS.backslash_comment)
+      if not clean_line then
+        clean_line = line:match(ML_PATTERNS.backslash_only)
+      end
       table.insert(state.value_lines, clean_line)
+      if comment then
+        table.insert(state.comments, comment)
+      end
       return nil, nil, nil, nil, state
     else
-      -- End of continuation
-      table.insert(state.value_lines, line)
+      local final_line = line
+      local comment = nil
+      local hash_pos = line:find("#")
+      if hash_pos then
+        if hash_pos > 1 and line:sub(hash_pos - 1, hash_pos - 1):match("%s") then
+          comment = line:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+          final_line = line:sub(1, hash_pos - 1):match("^%s*(.-)%s*$")
+        end
+      end
+
+      table.insert(state.value_lines, final_line)
+      if comment then
+        table.insert(state.comments, comment)
+      end
+
       local final_value = table.concat(state.value_lines, "")
-      
+      local final_comment = #state.comments > 0 and table.concat(state.comments, "\n") or nil
+
       local key = state.key
-      
-      -- Reset state
+
       state.in_multi_line = false
       state.key = nil
       state.value_lines = nil
+      state.comments = nil
       state.quote_char = nil
       state.is_triple_quoted = false
       state.continuation_type = nil
-      
-      return key, final_value, nil, nil, state
+
+      return key, final_value, final_comment, nil, state
     end
-    
-  elseif state.continuation_type == 'quoted' then
-    -- Handle quoted multi-line
+  elseif state.continuation_type == "quoted" then
     local end_quote_pos = line:find(state.quote_char)
     if end_quote_pos then
-      -- Check if quote is escaped
       local escaped = false
       if end_quote_pos > 1 then
         local escape_count = 0
@@ -804,36 +792,33 @@ function M.handle_multi_line_continuation(line, state)
         end
         escaped = escape_count % 2 == 1
       end
-      
+
       if not escaped then
-        -- End of quoted multi-line
         local final_line = line:sub(1, end_quote_pos - 1)
         table.insert(state.value_lines, final_line)
         local final_value = table.concat(state.value_lines, "\n")
-        
+
         local rest = line:sub(end_quote_pos + 1)
         local comment = rest:match("^%s*#%s*(.-)%s*$")
-        
+
         local key = state.key
         local quote_char = state.quote_char
-        
-        -- Reset state
+
         state.in_multi_line = false
         state.key = nil
         state.value_lines = nil
         state.quote_char = nil
         state.is_triple_quoted = false
         state.continuation_type = nil
-        
+
         return key, final_value, comment, quote_char, state
       end
     end
-    
-    -- Continue accumulating lines
+
     table.insert(state.value_lines, line)
     return nil, nil, nil, nil, state
   end
-  
+
   return nil, nil, nil, nil, state
 end
 
@@ -857,8 +842,6 @@ function M.parse_env_line(line)
 
   return key, value, eq_pos
 end
-
---[[ Text Processing ]]
 
 ---Find word boundaries in a line of text
 ---@param line string The line to search
@@ -948,18 +931,15 @@ function M.extract_env_var(line, col, pattern)
   return before_cursor:match(pattern)
 end
 
---[[ File Generation ]]
 ---Generate an example environment file
 ---@param env_file string Path to the source .env file
 ---@return boolean success Whether the file was generated successfully
 function M.generate_example_file(env_file)
-  -- Validate input
   if not env_file or type(env_file) ~= "string" then
     vim.notify("Invalid environment file path provided", vim.log.levels.ERROR)
     return false
   end
 
-  -- Check file readability
   if vim.fn.filereadable(env_file) == 0 then
     vim.notify("Environment file is not readable: " .. env_file, vim.log.levels.ERROR)
     return false
@@ -973,7 +953,6 @@ function M.generate_example_file(env_file)
 
   local example_content = {}
 
-  -- Use pcall to protect against file reading errors
   local read_success, read_err = pcall(function()
     for line in f:lines() do
       if line:match("^%s*$") or line:match("^%s*#") then
@@ -989,7 +968,6 @@ function M.generate_example_file(env_file)
     end
   end)
 
-  -- Ensure input file is always closed
   local close_success, close_err = pcall(function()
     f:close()
   end)
@@ -1005,7 +983,6 @@ function M.generate_example_file(env_file)
 
   local example_file = env_file:gsub("%.env$", "") .. ".env.example"
 
-  -- Check if we can write to the directory
   local dir = vim.fn.fnamemodify(example_file, ":h")
   if vim.fn.isdirectory(dir) == 0 then
     vim.notify("Directory does not exist: " .. dir, vim.log.levels.ERROR)
@@ -1018,12 +995,10 @@ function M.generate_example_file(env_file)
     return false
   end
 
-  -- Use pcall to protect against file writing errors
   local write_success, write_err = pcall(function()
     out:write(table.concat(example_content, "\n"))
   end)
 
-  -- Ensure output file is always closed
   local out_close_success, out_close_err = pcall(function()
     out:close()
   end)
@@ -1040,8 +1015,6 @@ function M.generate_example_file(env_file)
   vim.notify("Generated " .. example_file, vim.log.levels.INFO)
   return true
 end
-
---[[ UI Utilities ]]
 
 ---Create options for a minimal floating window
 ---@param width number Window width
@@ -1090,8 +1063,6 @@ function M.minimal_restore()
   end
 end
 
---[[ Module Management ]]
-
 local _cached_modules = {}
 
 ---Require a module on demand with caching
@@ -1114,8 +1085,6 @@ function M.get_module(name)
     end,
   })
 end
-
---[[ Variable Extraction ]]
 
 ---Get the variable word under the cursor
 ---@param providers? table[] List of providers
@@ -1159,25 +1128,22 @@ function M.find_env_files_in_path_bulk(path, patterns)
   if not patterns or #patterns == 0 then
     return {}
   end
-  
-  -- Use multiple glob operations but minimize them
+
   local all_files = {}
-  
-  -- Process patterns in batches to avoid vim.fn.glob issues
+
   for _, pattern in ipairs(patterns) do
     local search_pattern = path .. "/" .. pattern
     local found = vim.fn.glob(search_pattern, false, true)
-    
+
     if type(found) == "string" then
       found = { found }
     end
-    
+
     if found and #found > 0 then
       vim.list_extend(all_files, found)
     end
   end
-  
-  -- Remove duplicates efficiently
+
   local unique_files = {}
   local seen = {}
   for _, file in ipairs(all_files) do
@@ -1186,7 +1152,7 @@ function M.find_env_files_in_path_bulk(path, patterns)
       table.insert(unique_files, file)
     end
   end
-  
+
   return unique_files
 end
 
@@ -1198,17 +1164,15 @@ function M.find_env_files_bulk_workspaces(workspaces, patterns)
   if not workspaces or #workspaces == 0 or not patterns or #patterns == 0 then
     return {}
   end
-  
-  -- Collect all files from all workspaces
+
   local all_files = {}
-  
+
   for _, workspace in ipairs(workspaces) do
     local workspace_path = workspace.path
     local workspace_files = M.find_env_files_in_path_bulk(workspace_path, patterns)
     vim.list_extend(all_files, workspace_files)
   end
-  
-  -- Remove duplicates efficiently
+
   local unique_files = {}
   local seen = {}
   for _, file in ipairs(all_files) do
@@ -1217,7 +1181,7 @@ function M.find_env_files_bulk_workspaces(workspaces, patterns)
       table.insert(unique_files, file)
     end
   end
-  
+
   return unique_files
 end
 

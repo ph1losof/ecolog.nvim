@@ -167,6 +167,11 @@ local VALIDATION_INTERVAL = 30000
 
 local _health_timer = nil
 
+local function should_cleanup_cache()
+  local now = vim.loop.now()
+  return now - _last_cleanup > CLEANUP_INTERVAL
+end
+
 local function cleanup_caches()
   if not should_cleanup_cache() then
     return
@@ -374,11 +379,6 @@ end
 local function release_state_lock()
   _state_lock = false
   _lock_start_time = 0
-end
-
-local function should_cleanup_cache()
-  local now = vim.loop.now()
-  return now - _last_cleanup > CLEANUP_INTERVAL
 end
 
 local utils, providers, select, peek, shelter, types, env_loader, file_watcher

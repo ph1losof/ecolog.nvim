@@ -20,6 +20,13 @@ local common = require("ecolog.shelter.common")
 local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
 
+local multiline_parsing
+local function get_multiline_parser()
+  if not multiline_parsing then
+    multiline_parsing = require("ecolog.shelter.multiline_parsing")
+  end
+  return multiline_parsing
+end
 
 local perf_config = {
   parsed_cache_size = 200,
@@ -194,7 +201,13 @@ function M.parse_lines_cached(lines, content_hash)
       if eq_pos then
         local potential_key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
         if potential_key and #potential_key > 0 then
-          line_start_positions[potential_key] = current_line_idx
+
+          local unique_tracking_key = potential_key .. "_line_" .. current_line_idx
+          line_start_positions[unique_tracking_key] = current_line_idx
+
+          if not line_start_positions[potential_key] then
+            line_start_positions[potential_key] = current_line_idx
+          end
         end
       end
     end
@@ -202,15 +215,26 @@ function M.parse_lines_cached(lines, content_hash)
     local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, multi_line_state)
     if updated_state then
       multi_line_state = updated_state
-      if updated_state.in_multi_line and updated_state.key and not line_start_positions[updated_state.key] then
-        line_start_positions[updated_state.key] = current_line_idx
+      if updated_state.in_multi_line and updated_state.key then
+        local unique_tracking_key = updated_state.key .. "_line_" .. current_line_idx
+        if not line_start_positions[unique_tracking_key] then
+          line_start_positions[unique_tracking_key] = current_line_idx
+        end
+
+        if not line_start_positions[updated_state.key] then
+          line_start_positions[updated_state.key] = current_line_idx
+        end
       end
     end
 
     if key and value then
-      local start_line = line_start_positions[key] or current_line_idx
+
+      local unique_tracking_key = key .. "_line_" .. current_line_idx
+      local start_line = line_start_positions[unique_tracking_key] or line_start_positions[key] or current_line_idx
       local end_line = current_line_idx
-      parsed_vars[key] = {
+
+      local unique_key = key .. "_line_" .. start_line
+      parsed_vars[unique_key] = {
         key = key,
         value = value,
         quote_char = quote_char,
@@ -272,7 +296,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     return unmasked_result
   end
 
-  -- Use fast hash for cache key instead of expensive string formatting
   local cache_parts = {
     var_info.key,
     source_filename,
@@ -310,7 +333,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     end
   end
 
-  -- Optimized string splitting using vim.split
   local single_line_parts = vim_split(value_to_mask, NEWLINE, { plain = true })
   local single_line_value = table_concat(single_line_parts, EMPTY_STRING)
   local actual_length = #single_line_value
@@ -335,7 +357,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
       local end_part = single_line_value:sub(-show_end)
       local middle_mask_len = math.max(min_mask, math.min(mask_length - show_start - show_end, actual_length - show_start - show_end))
 
-      -- Use table.concat for better performance
       final_mask = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
     end
 
@@ -357,24 +378,8 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     final_mask = table_concat({quote_char, final_mask, quote_char})
   end
 
-  local original_value_part = first_line:sub(eq_pos + 1)
-  local original_value_len = #original_value_part
-  local masked_len = #final_mask
-
-  if masked_len > original_value_len then
-    distributed_masks[var_info.start_line] = final_mask:sub(1, original_value_len)
-  elseif masked_len < original_value_len then
-    distributed_masks[var_info.start_line] = table_concat({final_mask, string_rep(SPACE, original_value_len - masked_len)})
-  else
-    distributed_masks[var_info.start_line] = final_mask
-  end
-
-  for line_idx = var_info.start_line + 1, var_info.end_line do
-    local original_line = lines[line_idx]
-    if original_line then
-      distributed_masks[line_idx] = string_rep(SPACE, #original_line)
-    end
-  end
+  local parser = get_multiline_parser()
+  distributed_masks = parser.distribute_mask_length_masks(var_info, lines, final_mask, eq_pos)
 
   get_mask_cache():put(cache_key, distributed_masks)
 
@@ -443,38 +448,8 @@ function M.generate_multiline_masks(var_info, lines, config, source_filename)
   local distributed_masks = {}
 
   if var_info.is_multi_line and not var_info.has_newlines then
-
-    local consumed_chars = 0
-    for line_idx = var_info.start_line, var_info.end_line do
-      local buffer_line = lines[line_idx]
-      local is_first_line = line_idx == var_info.start_line
-      local is_last_line = line_idx == var_info.end_line
-
-      local parsed_content_part
-      if is_first_line then
-        local eq_pos = buffer_line:find(PATTERNS.equals)
-        if eq_pos then
-          parsed_content_part = buffer_line:sub(eq_pos + 1):gsub(PATTERNS.backslash_end, EMPTY_STRING)
-        else
-          parsed_content_part = EMPTY_STRING
-        end
-      elseif is_last_line then
-        parsed_content_part = buffer_line
-      else
-        parsed_content_part = buffer_line:gsub(PATTERNS.backslash_end, EMPTY_STRING)
-      end
-
-      local parsed_length = #parsed_content_part
-      if parsed_length > 0 then
-        local mask_for_parsed = entire_masked_value:sub(consumed_chars + 1, consumed_chars + parsed_length)
-        consumed_chars = consumed_chars + parsed_length
-
-        local has_backslash = buffer_line:match(PATTERNS.backslash_end)
-        local final_mask = table_concat({mask_for_parsed, has_backslash and BACKSLASH or EMPTY_STRING})
-
-        distributed_masks[line_idx] = final_mask
-      end
-    end
+    local parser = get_multiline_parser()
+    distributed_masks = parser.distribute_multiline_masks(var_info, lines, entire_masked_value)
 
   elseif var_info.has_newlines then
 
@@ -528,7 +503,6 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
     return cached_extmarks
   end
 
-  -- Pre-allocate extmarks table based on estimated count
   local estimated_count = 0
   for _ in pairs(parsed_vars) do
     estimated_count = estimated_count + 1
@@ -671,6 +645,35 @@ function M.clear_caches()
   if parsed_cache then parsed_cache:clear() end
   if extmark_cache then extmark_cache:clear() end
   if mask_length_cache then mask_length_cache:clear() end
+end
+
+---Clear cache entries for a specific buffer
+---@param bufnr number Buffer number
+---@param source_filename string Source filename
+function M.clear_buffer_cache(bufnr, source_filename)
+  if not bufnr or not source_filename then
+    return
+  end
+  
+  if parsed_cache then
+    parsed_cache:clear()
+  end
+  
+  if extmark_cache then
+    extmark_cache:clear()
+  end
+  
+  if mask_length_cache then
+    mask_length_cache:clear()
+  end
+end
+
+---Clear cache entries for specific lines in a buffer
+---@param bufnr number Buffer number
+---@param start_line number Start line (1-based)
+---@param end_line number End line (1-based)
+function M.clear_line_range_cache(bufnr, start_line, end_line)
+  M.clear_caches()
 end
 
 ---Get cache statistics for debugging

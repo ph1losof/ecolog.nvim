@@ -542,6 +542,9 @@ local function setup_buffer_autocmds(config, group)
     callback = function(ev)
       if shelter_utils.match_env_file(ev.file, config) then
         if state.is_enabled("files") then
+          -- Clear multiline engine caches on text changes to ensure fresh parsing
+          local multiline_engine = require("ecolog.shelter.multiline_engine")
+          multiline_engine.clear_buffer_cache(ev.buf, ev.file)
           vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
         else
           M.unshelter_buffer()

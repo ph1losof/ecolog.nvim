@@ -662,6 +662,7 @@ end
 ---@field in_multi_line boolean Whether we're parsing a multi-line value
 ---@field key string The key being parsed
 ---@field value_lines string[] Lines accumulated for multi-line value
+---@field comments string[] Comments accumulated for multi-line value
 ---@field quote_char string The quote character for multi-line parsing
 ---@field is_triple_quoted boolean Whether using triple-quoted syntax
 ---@field continuation_type string Type of continuation: 'quoted', 'backslash'
@@ -695,10 +696,14 @@ function M.extract_line_parts(line, state)
 
   -- Check for backslash continuation (with optional comment)
   if value:match("\\%s*#") or value:match("\\%s*$") then
-    local clean_value = value:match("^(.-)\\%s*#") or value:match("^(.-)\\%s*$")
+    local clean_value, comment = value:match("^(.-)\\%s*#(.*)$")
+    if not clean_value then
+      clean_value = value:match("^(.-)\\%s*$")
+    end
     state.in_multi_line = true
     state.key = key
     state.value_lines = { clean_value }
+    state.comments = comment and { comment } or {}
     state.quote_char = nil
     state.is_triple_quoted = false
     state.continuation_type = 'backslash'
@@ -766,8 +771,14 @@ function M.handle_multi_line_continuation(line, state)
     -- Handle backslash continuation (with optional comment)
     if line:match("\\%s*#") or line:match("\\%s*$") then
       -- Continue on next line, strip backslash and optional comment
-      local clean_line = line:match("^(.-)\\%s*#") or line:match("^(.-)\\%s*$")
+      local clean_line, comment = line:match("^(.-)\\%s*#(.*)$")
+      if not clean_line then
+        clean_line = line:match("^(.-)\\%s*$")
+      end
       table.insert(state.value_lines, clean_line)
+      if comment then
+        table.insert(state.comments, comment)
+      end
       return nil, nil, nil, nil, state
     else
       -- End of continuation - check for trailing comment
@@ -782,7 +793,12 @@ function M.handle_multi_line_continuation(line, state)
       end
       
       table.insert(state.value_lines, final_line)
+      if comment then
+        table.insert(state.comments, comment)
+      end
+      
       local final_value = table.concat(state.value_lines, "")
+      local final_comment = #state.comments > 0 and table.concat(state.comments, "\n") or nil
       
       local key = state.key
       
@@ -790,11 +806,12 @@ function M.handle_multi_line_continuation(line, state)
       state.in_multi_line = false
       state.key = nil
       state.value_lines = nil
+      state.comments = nil
       state.quote_char = nil
       state.is_triple_quoted = false
       state.continuation_type = nil
       
-      return key, final_value, comment, nil, state
+      return key, final_value, final_comment, nil, state
     end
     
   elseif state.continuation_type == 'quoted' then

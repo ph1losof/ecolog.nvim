@@ -154,10 +154,26 @@ local function create_peek_content(var_name, var_info, types, config)
       end
     end
     
-    -- Calculate correct line position for comment (after multi-line values)
+    -- Handle multi-line comments (split by newlines)
+    local comment_lines = vim.split(comment_value, '\n', { plain = true })
     local comment_line_pos = is_multiline and (#vim.split(display_value, '\n', { plain = true }) + 4) or 5
-    lines[comment_line_pos] = "Comment : " .. tostring(comment_value)
-    highlights[comment_line_pos] = { "Comment", comment_line_pos - 1, PATTERNS.label_width, -1 }
+    
+    if #comment_lines == 1 then
+      -- Single line comment
+      lines[comment_line_pos] = "Comment : " .. tostring(comment_value)
+      highlights[comment_line_pos] = { "Comment", comment_line_pos - 1, PATTERNS.label_width, -1 }
+    else
+      -- Multi-line comment
+      lines[comment_line_pos] = "Comment : " .. comment_lines[1]
+      highlights[comment_line_pos] = { "Comment", comment_line_pos - 1, PATTERNS.label_width, -1 }
+      
+      -- Add subsequent comment lines
+      for i = 2, #comment_lines do
+        local line_pos = comment_line_pos + i - 1
+        lines[line_pos] = string.rep(" ", PATTERNS.label_width) .. comment_lines[i]
+        highlights[line_pos] = { "Comment", line_pos - 1, PATTERNS.label_width, -1 }
+      end
+    end
   end
 
   return {

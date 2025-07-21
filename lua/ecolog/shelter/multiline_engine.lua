@@ -20,6 +20,13 @@ local common = require("ecolog.shelter.common")
 local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
 
+local multiline_parsing
+local function get_multiline_parser()
+  if not multiline_parsing then
+    multiline_parsing = require("ecolog.shelter.multiline_parsing")
+  end
+  return multiline_parsing
+end
 
 local perf_config = {
   parsed_cache_size = 200,
@@ -194,10 +201,10 @@ function M.parse_lines_cached(lines, content_hash)
       if eq_pos then
         local potential_key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
         if potential_key and #potential_key > 0 then
-          -- Create unique key for tracking duplicates
+
           local unique_tracking_key = potential_key .. "_line_" .. current_line_idx
           line_start_positions[unique_tracking_key] = current_line_idx
-          -- Also store without line number for backward compatibility
+
           if not line_start_positions[potential_key] then
             line_start_positions[potential_key] = current_line_idx
           end
@@ -213,7 +220,7 @@ function M.parse_lines_cached(lines, content_hash)
         if not line_start_positions[unique_tracking_key] then
           line_start_positions[unique_tracking_key] = current_line_idx
         end
-        -- Also store without line number for backward compatibility
+
         if not line_start_positions[updated_state.key] then
           line_start_positions[updated_state.key] = current_line_idx
         end
@@ -221,11 +228,11 @@ function M.parse_lines_cached(lines, content_hash)
     end
 
     if key and value then
-      -- Look up the correct start line for this occurrence
+
       local unique_tracking_key = key .. "_line_" .. current_line_idx
       local start_line = line_start_positions[unique_tracking_key] or line_start_positions[key] or current_line_idx
       local end_line = current_line_idx
-      -- Use a unique identifier that includes the start line to handle duplicates
+
       local unique_key = key .. "_line_" .. start_line
       parsed_vars[unique_key] = {
         key = key,
@@ -289,7 +296,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     return unmasked_result
   end
 
-  -- Use fast hash for cache key instead of expensive string formatting
   local cache_parts = {
     var_info.key,
     source_filename,
@@ -327,7 +333,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     end
   end
 
-  -- Optimized string splitting using vim.split
   local single_line_parts = vim_split(value_to_mask, NEWLINE, { plain = true })
   local single_line_value = table_concat(single_line_parts, EMPTY_STRING)
   local actual_length = #single_line_value
@@ -352,7 +357,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
       local end_part = single_line_value:sub(-show_end)
       local middle_mask_len = math.max(min_mask, math.min(mask_length - show_start - show_end, actual_length - show_start - show_end))
 
-      -- Use table.concat for better performance
       final_mask = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
     end
 
@@ -374,63 +378,8 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     final_mask = table_concat({quote_char, final_mask, quote_char})
   end
 
-  -- Process first line - need to handle comments separately
-  local original_value_part = first_line:sub(eq_pos + 1)
-  
-  -- Check if there's a backslash and/or comment
-  local value_without_backslash_comment = original_value_part
-  local backslash_comment_part = ""
-  
-  if original_value_part:match("\\%s*#") then
-    -- Has backslash and comment
-    value_without_backslash_comment = original_value_part:match("^(.-)\\") or original_value_part
-    backslash_comment_part = original_value_part:match("(\\%s*#.*)$") or ""
-  elseif original_value_part:match("\\%s*$") then
-    -- Has only backslash
-    value_without_backslash_comment = original_value_part:match("^(.-)\\") or original_value_part
-    backslash_comment_part = "\\"
-  end
-  
-  local original_value_len = #value_without_backslash_comment
-  local masked_len = #final_mask
-
-  if masked_len > original_value_len then
-    distributed_masks[var_info.start_line] = final_mask:sub(1, original_value_len) .. backslash_comment_part
-  elseif masked_len < original_value_len then
-    distributed_masks[var_info.start_line] = table_concat({final_mask, string_rep(SPACE, original_value_len - masked_len)}) .. backslash_comment_part
-  else
-    distributed_masks[var_info.start_line] = final_mask .. backslash_comment_part
-  end
-
-  -- Process continuation lines
-  for line_idx = var_info.start_line + 1, var_info.end_line do
-    local original_line = lines[line_idx]
-    if original_line then
-      -- Check for comments on continuation lines
-      local line_without_comment = original_line
-      local line_comment = ""
-      
-      -- Handle comments after backslash continuation
-      local has_backslash_comment = original_line:match("^(.-)\\%s*#(.*)$")
-      if has_backslash_comment then
-        line_without_comment = original_line:match("^(.-)\\") or original_line
-        line_comment = original_line:match("(\\%s*#.*)$") or ""
-      elseif line_idx == var_info.end_line then
-        -- Handle comments on the last line (no backslash)
-        local comment_pos = original_line:find("#")
-        if comment_pos and comment_pos > 1 and original_line:sub(comment_pos - 1, comment_pos - 1):match("%s") then
-          line_without_comment = original_line:sub(1, comment_pos - 1)
-          line_comment = original_line:sub(comment_pos)
-        else
-          -- No comment on last line
-          line_without_comment = original_line
-          line_comment = ""
-        end
-      end
-      
-      distributed_masks[line_idx] = string_rep(SPACE, #line_without_comment) .. line_comment
-    end
-  end
+  local parser = get_multiline_parser()
+  distributed_masks = parser.distribute_mask_length_masks(var_info, lines, final_mask, eq_pos)
 
   get_mask_cache():put(cache_key, distributed_masks)
 
@@ -499,111 +448,8 @@ function M.generate_multiline_masks(var_info, lines, config, source_filename)
   local distributed_masks = {}
 
   if var_info.is_multi_line and not var_info.has_newlines then
-
-    local consumed_chars = 0
-    for line_idx = var_info.start_line, var_info.end_line do
-      local buffer_line = lines[line_idx]
-      local is_first_line = line_idx == var_info.start_line
-      local is_last_line = line_idx == var_info.end_line
-
-      local parsed_content_part
-      local comment_part = ""
-      
-      if is_first_line then
-        local eq_pos = buffer_line:find(PATTERNS.equals)
-        if eq_pos then
-          local value_part = buffer_line:sub(eq_pos + 1)
-          -- Check for comment after backslash
-          if value_part:match("\\%s*#") then
-            -- Has backslash and comment
-            local before_backslash = value_part:match("^(.-)\\")
-            local after_backslash = value_part:match("\\(.*)$")
-            parsed_content_part = before_backslash or ""
-            comment_part = "\\" .. (after_backslash or "")
-          elseif value_part:match("\\%s*$") then
-            -- Has only backslash, no comment
-            local before_backslash = value_part:match("^(.-)\\%s*$")
-            parsed_content_part = before_backslash or ""
-            comment_part = "\\"
-          else
-            -- No backslash
-            parsed_content_part = value_part
-            comment_part = ""
-          end
-        else
-          parsed_content_part = EMPTY_STRING
-        end
-      elseif is_last_line then
-        -- Check for comment on last line
-        local comment_pos = buffer_line:find("#")
-        if comment_pos and comment_pos > 1 and buffer_line:sub(comment_pos - 1, comment_pos - 1):match("%s") then
-          -- Extract content without trimming to preserve spacing
-          local content_with_space = buffer_line:sub(1, comment_pos - 1)
-          parsed_content_part = content_with_space:match("^%s*(.-)%s*$") or ""
-          -- Get the exact spacing before the comment
-          local space_before_comment = content_with_space:match("(%s*)$") or ""
-          comment_part = space_before_comment .. buffer_line:sub(comment_pos)
-        else
-          parsed_content_part = buffer_line:match("^%s*(.-)%s*$") or buffer_line
-        end
-      else
-        -- Middle lines: preserve exact structure
-        if buffer_line:match("\\%s*#") then
-          -- Line has backslash and comment
-          local before_backslash = buffer_line:match("^(.-)\\")
-          local after_backslash = buffer_line:match("\\(.*)$")
-          
-          -- Get the actual content to mask (trim leading spaces only)
-          parsed_content_part = before_backslash:match("^%s*(.*)$") or ""
-          
-          -- Preserve everything after the content (backslash + spaces + comment)
-          comment_part = "\\" .. (after_backslash or "")
-        else
-          -- Line has only backslash, no comment
-          local before_backslash = buffer_line:match("^(.-)\\%s*$")
-          if before_backslash then
-            parsed_content_part = before_backslash:match("^%s*(.-)%s*$") or ""
-            comment_part = "\\"
-          else
-            -- No backslash (shouldn't happen in middle lines)
-            parsed_content_part = buffer_line:match("^%s*(.-)%s*$") or ""
-            comment_part = ""
-          end
-        end
-      end
-
-      local parsed_length = #parsed_content_part
-      if parsed_length > 0 or comment_part ~= "" then
-        local mask_for_parsed = ""
-        if parsed_length > 0 then
-          mask_for_parsed = entire_masked_value:sub(consumed_chars + 1, consumed_chars + parsed_length)
-          consumed_chars = consumed_chars + parsed_length
-        end
-
-        local has_backslash = buffer_line:match(PATTERNS.backslash_end) or buffer_line:match("\\%s*#")
-        
-        -- Build the final mask preserving original spacing
-        local final_mask
-        if is_first_line then
-          -- First line: mask + comment_part (which includes backslash if present)
-          final_mask = mask_for_parsed .. comment_part
-        else
-          -- Continuation lines: preserve leading spaces
-          local original_spacing = buffer_line:match("^(%s*)") or ""
-          
-          -- The mask should cover exactly the content length
-          if parsed_length > 0 then
-            -- Apply mask only to the content portion, preserve everything else
-            final_mask = original_spacing .. mask_for_parsed .. comment_part
-          else
-            -- If no content to mask (only comment/backslash), preserve original
-            final_mask = buffer_line
-          end
-        end
-
-        distributed_masks[line_idx] = final_mask
-      end
-    end
+    local parser = get_multiline_parser()
+    distributed_masks = parser.distribute_multiline_masks(var_info, lines, entire_masked_value)
 
   elseif var_info.has_newlines then
 
@@ -657,7 +503,6 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
     return cached_extmarks
   end
 
-  -- Pre-allocate extmarks table based on estimated count
   local estimated_count = 0
   for _ in pairs(parsed_vars) do
     estimated_count = estimated_count + 1
@@ -810,11 +655,7 @@ function M.clear_buffer_cache(bufnr, source_filename)
     return
   end
   
-  -- Clear cache entries that match this buffer
   if parsed_cache then
-    -- Clear all entries for this buffer by iterating through cache
-    -- Since we can't iterate through LRU cache directly, we'll clear all
-    -- This is safer to ensure no stale entries remain
     parsed_cache:clear()
   end
   
@@ -832,8 +673,6 @@ end
 ---@param start_line number Start line (1-based)
 ---@param end_line number End line (1-based)
 function M.clear_line_range_cache(bufnr, start_line, end_line)
-  -- Clear all caches when lines change to ensure consistency
-  -- This is a conservative approach but ensures correctness
   M.clear_caches()
 end
 

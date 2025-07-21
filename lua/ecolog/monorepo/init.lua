@@ -1,13 +1,10 @@
 ---@class MonorepoModule
 local M = {}
 
--- Export default config for backward compatibility
 M.DEFAULT_MONOREPO_CONFIG = require("ecolog.monorepo.config.defaults")
 
--- Lazy-loaded modules
 local _modules = {}
 
--- Module state
 local _state = {
   initialized = false,
   config = nil,
@@ -24,15 +21,12 @@ local function get_module(name)
   return _modules[name]
 end
 
----Default configuration for the new monorepo system
 local DEFAULT_CONFIG = {
   enabled = false,
   auto_switch = true,
   notify_on_switch = false,
 
-  -- Provider configuration
   providers = {
-    -- Built-in providers will be loaded automatically
     builtin = {
       "turborepo",
       "nx",
@@ -40,20 +34,16 @@ local DEFAULT_CONFIG = {
       "yarn_workspaces",
       "cargo_workspaces",
     },
-    -- Custom providers can be added here
     custom = {},
   },
 
-  -- Performance settings
   performance = {
-    -- Cache configuration
     cache = {
       max_entries = 1000,
-      default_ttl = 300000, -- 5 minutes
-      cleanup_interval = 60000, -- 1 minute
+      default_ttl = 300000,
+      cleanup_interval = 60000,
     },
 
-    -- Auto-switch throttling
     auto_switch_throttle = {
       min_interval = 100,
       debounce_delay = 250,
@@ -67,7 +57,6 @@ local DEFAULT_CONFIG = {
 ---Initialize the monorepo system
 ---@param config table|boolean Configuration or boolean to enable with defaults
 function M.setup(config)
-  -- Handle boolean configuration
   if type(config) == "boolean" then
     if config then
       config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, { enabled = true })
@@ -77,7 +66,6 @@ function M.setup(config)
     end
   end
 
-  -- Merge with defaults and validate
   local Schema = get_module("config.schema")
   local merged_config, valid, error_msg = Schema.merge_and_validate(DEFAULT_CONFIG, config or {})
 
@@ -94,21 +82,17 @@ function M.setup(config)
 
   config = merged_config
 
-  -- Initialize detection system
   local Detection = get_module("detection")
   Detection.configure(config.performance)
 
-  -- Load built-in providers
   if config.providers.builtin then
     M._load_builtin_providers(config.providers.builtin)
   end
 
-  -- Load custom providers
   if config.providers.custom then
     M._load_custom_providers(config.providers.custom)
   end
 
-  -- Load plugins if present
   if config.plugins then
     local PluginSystem = get_module("plugin_system")
     if config.plugins.directory then
@@ -121,8 +105,6 @@ function M.setup(config)
     end
   end
 
-  -- Check if we have any providers after loading
-  local Detection = get_module("detection")
   local providers = Detection.get_providers()
   if not next(providers) then
     vim.notify("No monorepo providers available. Disabling monorepo system.", vim.log.levels.WARN)
@@ -130,7 +112,6 @@ function M.setup(config)
     return
   end
 
-  -- Setup auto-switching if enabled
   if config.auto_switch then
     local AutoSwitch = get_module("auto_switch")
     AutoSwitch.setup(config)
@@ -155,7 +136,6 @@ function M._load_builtin_providers(provider_names)
   end
 end
 
----Clear all registered providers
 function M.clear_providers()
   local Detection = get_module("detection")
   Detection.clear_providers()
@@ -168,7 +148,6 @@ function M._load_custom_providers(custom_providers)
 
   for _, provider_config in ipairs(custom_providers) do
     if provider_config.module then
-      -- Load provider from module
       local success, provider_module = pcall(require, provider_config.module)
       if success then
         local provider = provider_module.new(provider_config.config)
@@ -177,13 +156,9 @@ function M._load_custom_providers(custom_providers)
         vim.notify("Failed to load custom provider: " .. provider_config.module, vim.log.levels.WARN)
       end
     elseif provider_config.provider then
-      -- Direct provider instance
       Detection.register_provider(provider_config.provider)
     elseif provider_config.name then
-      -- Create a provider dynamically from configuration
       local BaseProvider = require("ecolog.monorepo.detection.providers.base")
-      
-      -- Convert old format to new format
       local normalized_config = {
         name = provider_config.name,
         priority = provider_config.priority or 50,
@@ -203,8 +178,7 @@ function M._load_custom_providers(custom_providers)
           override_order = { "workspace", "root" },
         },
       }
-      
-      -- Create a custom provider with basic detection
+
       local CustomProvider = setmetatable({}, { __index = BaseProvider })
       function CustomProvider:detect(path)
         local file_markers = self.config.detection.file_markers or {}
@@ -215,12 +189,11 @@ function M._load_custom_providers(custom_providers)
         end
         return false, 0, {}
       end
-      
+
       function CustomProvider:get_package_managers()
-        -- For workspace detection, look for package.json files
         return { "package.json" }
       end
-      
+
       local provider = BaseProvider.new(normalized_config)
       setmetatable(provider, { __index = CustomProvider })
       Detection.register_provider(provider)
@@ -235,51 +208,43 @@ end
 ---@return table? detection_info Detection information including provider
 function M.detect_monorepo_root(path, config)
   local use_config
-  
-  -- Handle boolean config values
+
   if type(config) == "boolean" then
     use_config = { enabled = config }
   else
     use_config = config or _state.config or {}
   end
-  
-  -- Use config.enabled if provided, otherwise use _state.enabled
+
   local enabled = use_config.enabled
   if enabled == nil then
     enabled = _state.enabled
   end
-  
+
   if not enabled then
     return nil, nil
   end
 
   local Detection = get_module("detection")
-  
-  -- Check if we have any providers registered, if not, load them
+
   local providers = Detection.get_providers()
   if not next(providers) then
-    -- Handle different provider configuration formats
     if use_config.providers then
       if type(use_config.providers) == "table" then
-        -- Check if it's an array of provider configurations (test format)
         if use_config.providers[1] and use_config.providers[1].name then
           M._load_custom_providers(use_config.providers)
         else
-          -- Standard format with builtin/custom structure
           local builtin_providers = use_config.providers.builtin or DEFAULT_CONFIG.providers.builtin
           M._load_builtin_providers(builtin_providers)
-          
+
           if use_config.providers.custom then
             M._load_custom_providers(use_config.providers.custom)
           end
         end
       end
     else
-      -- Load default built-in providers
       M._load_builtin_providers(DEFAULT_CONFIG.providers.builtin)
     end
-    
-    -- Check again after loading
+
     providers = Detection.get_providers()
     if not next(providers) then
       vim.notify("No monorepo providers registered. Disabling monorepo detection.", vim.log.levels.WARN)
@@ -287,10 +252,9 @@ function M.detect_monorepo_root(path, config)
       return nil, nil
     end
   end
-  
+
   local root_path, provider, detection_info = Detection.detect_monorepo(path)
   if root_path and provider then
-    -- Combine provider with detection_info for backward compatibility
     local combined_info = {
       provider = provider,
       confidence = detection_info and detection_info.confidence or 1,
@@ -299,7 +263,7 @@ function M.detect_monorepo_root(path, config)
     }
     return root_path, combined_info
   end
-  
+
   return nil, nil
 end
 
@@ -310,25 +274,22 @@ end
 ---@return table[] workspaces List of workspace information
 function M.get_workspaces(root_path, config, detected_info)
   local use_config
-  
-  -- Handle boolean config values
+
   if type(config) == "boolean" then
     use_config = { enabled = config }
   else
     use_config = config or _state.config or {}
   end
-  
-  -- Use config.enabled if provided, otherwise use _state.enabled
+
   local enabled = use_config.enabled
   if enabled == nil then
     enabled = _state.enabled
   end
-  
+
   if not enabled or not root_path then
     return {}
   end
-  
-  -- Extract provider from detected_info if available
+
   local provider = detected_info and detected_info.provider
   if not provider then
     return {}
@@ -466,7 +427,6 @@ function M.get_plugins()
   return PluginSystem.get_plugins()
 end
 
----Enable auto-switching
 function M.enable_auto_switch()
   if not _state.enabled then
     return
@@ -476,7 +436,6 @@ function M.enable_auto_switch()
   AutoSwitch.enable()
 end
 
----Disable auto-switching
 function M.disable_auto_switch()
   if not _state.enabled then
     return
@@ -508,7 +467,6 @@ function M.manual_switch(file_path)
   AutoSwitch.manual_switch(file_path)
 end
 
----Clear all caches
 function M.clear_cache()
   if not _state.enabled then
     return
@@ -534,7 +492,6 @@ function M.get_stats()
     config = _state.config,
   }
 
-  -- Add component stats if loaded
   if _modules["detection"] then
     stats.detection = _modules["detection"].get_stats()
   end
@@ -570,7 +527,6 @@ function M.configure(config)
 
   _state.config = vim.tbl_deep_extend("force", _state.config or {}, config)
 
-  -- Update component configurations
   if _modules["detection"] and config.performance then
     _modules["detection"].configure(config.performance)
   end
@@ -592,7 +548,6 @@ function M.get_config()
   return _state.config
 end
 
----Gracefully shutdown the monorepo system
 function M.shutdown()
   if _modules["auto_switch"] then
     _modules["auto_switch"].disable()
@@ -619,7 +574,6 @@ function M.integrate_with_ecolog_config(ecolog_config)
     return ecolog_config
   end
 
-  -- Setup the new system if not already done
   if not _state.initialized then
     M.setup(ecolog_config.monorepo)
   end
@@ -628,26 +582,22 @@ function M.integrate_with_ecolog_config(ecolog_config)
     return ecolog_config
   end
 
-  -- Detect monorepo and integrate
   local root_path, detected_info = M.detect_monorepo_root(vim.fn.getcwd(), ecolog_config.monorepo)
   if not root_path then
     return ecolog_config
   end
 
   local workspaces = M.get_workspaces(root_path, ecolog_config.monorepo, detected_info)
-  -- Use current working directory as fallback if no file is specified
   local current_file = vim.fn.expand("%:p")
   if current_file == "" then
     current_file = vim.fn.getcwd()
   end
   local current_workspace = M.find_current_workspace(current_file, workspaces)
 
-  -- Add monorepo information to config
   ecolog_config._monorepo_root = root_path
   ecolog_config._detected_info = detected_info
 
   if _state.config.auto_switch then
-    -- Auto-switch mode
     if current_workspace then
       M.set_current_workspace(current_workspace)
       ecolog_config.path = current_workspace.path
@@ -655,7 +605,6 @@ function M.integrate_with_ecolog_config(ecolog_config)
       ecolog_config._workspace_info = current_workspace
     end
   else
-    -- Manual mode
     if #workspaces > 0 then
       ecolog_config._is_monorepo_manual_mode = true
       ecolog_config._all_workspaces = workspaces
@@ -667,4 +616,3 @@ function M.integrate_with_ecolog_config(ecolog_config)
 end
 
 return M
-

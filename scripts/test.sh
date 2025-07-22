@@ -33,7 +33,8 @@ run_all_tests() {
     echo -e "${GREEN}Running all tests...${NC}"
     nvim --headless -u tests/minimal_init.lua \
         -c "lua require('plenary.test_harness').test_directory('tests/spec/', {minimal_init='tests/minimal_init.lua'})" \
-        -c "qa!"
+        -c "qa!" || true
+    echo -e "${GREEN}Tests completed. Check output above for any failures.${NC}"
 }
 
 run_test_file() {

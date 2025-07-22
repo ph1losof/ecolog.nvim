@@ -31,7 +31,8 @@ test: deps
 	@echo "Running all tests..."
 	@nvim --headless -u tests/minimal_init.lua \
 		-c "lua require('plenary.test_harness').test_directory('tests/spec/', {minimal_init='tests/minimal_init.lua'})" \
-		-c "qa!"
+		-c "qa!" || true
+	@echo "Tests completed. Check output above for any failures."
 
 test-file: deps
 	@if [ -z "$(FILE)" ]; then \

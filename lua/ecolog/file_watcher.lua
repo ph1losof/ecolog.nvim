@@ -52,7 +52,11 @@ local function cleanup_watchers(state)
 
   -- Clean up libuv filesystem watcher
   if state._libuv_fs_watcher then
-    TimerManager.cancel_timer(state._libuv_fs_watcher)
+    pcall(function()
+      if state._libuv_fs_watcher.close then
+        state._libuv_fs_watcher:close()
+      end
+    end)
     state._libuv_fs_watcher = nil
   end
 

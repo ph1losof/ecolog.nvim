@@ -358,9 +358,7 @@ end
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", config, opts or {})
 
-  vim.schedule(function()
-    hl.setup_highlights()
-  end)
+  hl.setup_highlights()
 
   M.invalidate_cache()
 

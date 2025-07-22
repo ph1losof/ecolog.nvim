@@ -12,6 +12,17 @@ M.providers = {
       return "process.env."
     end,
   },
+  -- process.env.VARIABLE (anywhere in line)
+  {
+    pattern = "process%.env%.[%w_]+",
+    filetype = { "javascript", "javascriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "process%.env%.([%w_]+)")
+    end,
+    get_completion_trigger = function()
+      return "process.env."
+    end,
+  },
   -- process.env square brackets with double quotes
   {
     pattern = 'process%.env%["[%w_]*$',
@@ -23,12 +34,34 @@ M.providers = {
       return 'process.env["'
     end,
   },
+  -- process.env square brackets with double quotes (complete)
+  {
+    pattern = 'process%.env%["[%w_]+"]',
+    filetype = { "javascript", "javascriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'process%.env%["([%w_]+)"]')
+    end,
+    get_completion_trigger = function()
+      return 'process.env["'
+    end,
+  },
   -- process.env square brackets with single quotes
   {
     pattern = "process%.env%['[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
     extract_var = function(line, col)
       return utils.extract_env_var(line, col, "process%.env%['([%w_]*)$")
+    end,
+    get_completion_trigger = function()
+      return "process.env['"
+    end,
+  },
+  -- process.env square brackets with single quotes (complete)
+  {
+    pattern = "process%.env%['[%w_]+']",
+    filetype = { "javascript", "javascriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "process%.env%['([%w_]+)']")
     end,
     get_completion_trigger = function()
       return "process.env['"
@@ -64,6 +97,17 @@ M.providers = {
     end,
     get_completion_trigger = function()
       return "import.meta.env['"
+    end,
+  },
+  -- Deno.env.get() syntax
+  {
+    pattern = 'Deno%.env%.get%("([%w_]+)"%)',
+    filetype = { "javascript", "javascriptreact", "typescript", "typescriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'Deno%.env%.get%("([%w_]+)"%)')
+    end,
+    get_completion_trigger = function()
+      return 'Deno.env.get("'
     end,
   },
 }

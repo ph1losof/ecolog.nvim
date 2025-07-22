@@ -186,11 +186,14 @@ local function setup_peek_autocommands(curbuf)
   api.nvim_create_autocmd({ "CursorMoved", "InsertEnter", "BufDelete", "BufWinLeave" }, {
     buffer = curbuf,
     callback = function(opt)
-      if peek.winid and api.nvim_win_is_valid(peek.winid) and api.nvim_get_current_win() ~= peek.winid then
-        api.nvim_win_close(peek.winid, true)
-        peek:clean()
-      end
-      api.nvim_del_autocmd(opt.id)
+      local success = pcall(function()
+        if peek.winid and api.nvim_win_is_valid(peek.winid) and api.nvim_get_current_win() ~= peek.winid then
+          api.nvim_win_close(peek.winid, true)
+          peek:clean()
+        end
+      end)
+      -- Always try to delete the autocmd even if callback failed
+      pcall(api.nvim_del_autocmd, opt.id)
     end,
     once = true,
   })
@@ -198,7 +201,7 @@ local function setup_peek_autocommands(curbuf)
   api.nvim_create_autocmd("BufWipeout", {
     buffer = peek.bufnr,
     callback = function()
-      peek:clean()
+      pcall(peek.clean, peek)
     end,
   })
 end
@@ -219,7 +222,7 @@ function M.peek_env_var(available_providers, var_name)
     filetype = "unknown"
   end
 
-  if #available_providers == 0 then
+  if #available_providers == 0 and not var_name then
     notify("EcologPeek is not available for " .. filetype .. " files", vim.log.levels.WARN)
     return
   end

@@ -294,6 +294,22 @@ function M.toggle_all()
   end
 end
 
+function M.toggle_feature(feature)
+  local state_module = get_state()
+  
+  if not tbl_contains(state_module.get_features(), feature) then
+    notify(
+      "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+  
+  local current_state = state_module.is_enabled(feature)
+  local new_command = current_state and "disable" or "enable"
+  M.set_state(new_command, feature)
+end
+
 function M.set_state(command, feature)
   local should_enable = command == "enable"
   local state_module = get_state()

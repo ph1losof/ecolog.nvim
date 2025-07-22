@@ -30,7 +30,14 @@ describe("previewer_utils", function()
     end)
 
     after_each(function()
-      pcall(api.nvim_buf_delete, bufnr, { force = true })
+      -- Ensure buffer is properly cleaned up
+      if bufnr and api.nvim_buf_is_valid(bufnr) then
+        pcall(api.nvim_buf_delete, bufnr, { force = true })
+      end
+      bufnr = nil
+      
+      -- Force garbage collection
+      collectgarbage("collect")
     end)
 
     it("should mask env values in preview buffer when enabled", function()
@@ -104,7 +111,14 @@ describe("previewer_utils", function()
     end)
 
     after_each(function()
-      pcall(api.nvim_buf_delete, bufnr, { force = true })
+      -- Ensure buffer is properly cleaned up
+      if bufnr and api.nvim_buf_is_valid(bufnr) then
+        pcall(api.nvim_buf_delete, bufnr, { force = true })
+      end
+      bufnr = nil
+      
+      -- Force garbage collection
+      collectgarbage("collect")
     end)
 
     it("should process buffer in chunks", function()

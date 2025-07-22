@@ -19,6 +19,14 @@
 local LRUCache = {}
 LRUCache.__index = LRUCache
 
+-- Add __gc metamethod to handle cleanup on garbage collection
+local function cleanup_on_gc(self)
+  if self.cleanup_timer then
+    vim.fn.timer_stop(self.cleanup_timer)
+    self.cleanup_timer = nil
+  end
+end
+
 ---Create a new LRU Cache
 ---@param capacity integer Maximum number of items to store
 ---@param config? table Optional configuration
@@ -26,7 +34,10 @@ LRUCache.__index = LRUCache
 function LRUCache.new(capacity, config)
   config = config or {}
   
-  local self = setmetatable({}, { __index = LRUCache })
+  local self = setmetatable({}, { 
+    __index = LRUCache,
+    __gc = cleanup_on_gc
+  })
   self.capacity = capacity
   self.size = 0
   self.cache = {}
@@ -353,6 +364,9 @@ function LRUCache:remove(key)
 end
 
 function LRUCache:clear()
+  -- Stop cleanup timer first
+  self:stop_cleanup_timer()
+  
   local current = self.head.next
   while current ~= self.tail do
     local next = current.next

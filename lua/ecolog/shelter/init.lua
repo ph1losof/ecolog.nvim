@@ -296,7 +296,7 @@ end
 
 function M.toggle_feature(feature)
   local state_module = get_state()
-  
+
   if not tbl_contains(state_module.get_features(), feature) then
     notify(
       "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
@@ -304,7 +304,7 @@ function M.toggle_feature(feature)
     )
     return
   end
-  
+
   local current_state = state_module.is_enabled(feature)
   local new_command = current_state and "disable" or "enable"
   M.set_state(new_command, feature)

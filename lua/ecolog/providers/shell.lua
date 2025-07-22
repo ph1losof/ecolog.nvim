@@ -46,17 +46,6 @@ M.providers = {
       return "${"
     end,
   },
-  -- ${VAR} pattern (anywhere in line)
-  {
-    pattern = "%${[%w_]+%}",
-    filetype = { "sh", "bash", "zsh" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "%${([%w_]+)%}")
-    end,
-    get_completion_trigger = function()
-      return "${"
-    end,
-  },
   -- ${VAR:-default} pattern
   {
     pattern = "%${[%w_]+:-[^}]*%}",
@@ -158,4 +147,5 @@ M.providers = {
   },
 }
 
-return M.providers 
+return M.providers
+

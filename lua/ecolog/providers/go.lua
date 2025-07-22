@@ -134,6 +134,39 @@ M.providers = {
       return "os.LookupEnv(`"
     end,
   },
+  -- syscall.Getenv with double quotes
+  {
+    pattern = 'syscall%.Getenv%(\"[%w_]+\"%)',
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'syscall%.Getenv%(\"([%w_]+)\"%)')
+    end,
+    get_completion_trigger = function()
+      return 'syscall.Getenv("'
+    end,
+  },
+  -- syscall.Getenv with single quotes
+  {
+    pattern = "syscall%.Getenv%('[%w_]+'%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "syscall%.Getenv%('([%w_]+)'%)")
+    end,
+    get_completion_trigger = function()
+      return "syscall.Getenv('"
+    end,
+  },
+  -- syscall.Getenv with backticks
+  {
+    pattern = "syscall%.Getenv%(`[%w_]+`%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "syscall%.Getenv%(`([%w_]+)`%)")
+    end,
+    get_completion_trigger = function()
+      return "syscall.Getenv(`"
+    end,
+  },
 }
 
 return M.providers

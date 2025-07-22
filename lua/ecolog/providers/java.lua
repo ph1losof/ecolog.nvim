@@ -40,10 +40,43 @@ M.providers = {
     pattern = "System%.getenv%('[%w_]+'%)?$",
     filetype = "java",
     extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]+'%)?$")
+      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]+)'%)?$")
     end,
     get_completion_trigger = function()
       return "System.getenv('"
+    end,
+  },
+  -- System.getenv() pattern (anywhere in line)
+  {
+    pattern = 'System%.getenv%("[%w_]+"%)',
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]+)"%)')
+    end,
+    get_completion_trigger = function()
+      return 'System.getenv("'
+    end,
+  },
+  -- System.getProperty() with double quotes
+  {
+    pattern = 'System%.getProperty%("[%w_.]+"%)',
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'System%.getProperty%("([%w_.]+)"%)')
+    end,
+    get_completion_trigger = function()
+      return 'System.getProperty("'
+    end,
+  },
+  -- System.getProperty() with single quotes
+  {
+    pattern = "System%.getProperty%('[%w_.]+'%)",
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "System%.getProperty%('([%w_.]+)'%)")
+    end,
+    get_completion_trigger = function()
+      return "System.getProperty('"
     end,
   },
   -- ProcessBuilder environment map with double quotes completion
@@ -84,7 +117,7 @@ M.providers = {
     pattern = "processBuilder%.environment%(%)%.get%('[%w_]+'%)?$",
     filetype = "java",
     extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "processBuilder%.environment%(%)%.get%('([%w_]+'%)?$")
+      return utils.extract_env_var(line, col, "processBuilder%.environment%(%)%.get%('([%w_]+)'%)?$")
     end,
     get_completion_trigger = function()
       return "processBuilder.environment().get('"
@@ -128,7 +161,7 @@ M.providers = {
     pattern = "env%.get%('[%w_]+'%)?$",
     filetype = "java",
     extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "env%.get%('([%w_]+'%)?$")
+      return utils.extract_env_var(line, col, "env%.get%('([%w_]+)'%)?$")
     end,
     get_completion_trigger = function()
       return "env.get('"

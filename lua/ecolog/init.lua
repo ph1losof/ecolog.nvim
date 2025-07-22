@@ -699,9 +699,14 @@ local function create_commands(config)
   local commands = {
     EcologPeek = {
       callback = function(args)
-        local filetype = vim.bo.filetype
-        local available_providers = get_providers().get_providers(filetype)
-        get_peek().peek_env_var(available_providers, args.args)
+        local success, err = pcall(function()
+          local filetype = vim.bo.filetype
+          local available_providers = get_providers().get_providers(filetype)
+          get_peek().peek_env_var(available_providers, args.args)
+        end)
+        if not success then
+          notify(string.format("EcologPeek error: %s", err), vim.log.levels.WARN)
+        end
       end,
       nargs = "?",
       desc = "Peek environment variable value",
@@ -711,9 +716,12 @@ local function create_commands(config)
         if args.args and args.args ~= "" then
           local file_path = vim.fn.expand(args.args)
           if vim.fn.filereadable(file_path) == 1 then
-            handle_env_file_selection(file_path, config)
+            local success, err = pcall(handle_env_file_selection, file_path, config)
+            if not success then
+              notify(string.format("Error selecting environment file: %s", err), vim.log.levels.ERROR)
+            end
           else
-            notify(string.format("Environment file not found: %s", file_path), vim.log.levels.ERROR)
+            notify(string.format("Environment file not found: %s", file_path), vim.log.levels.WARN)
           end
           return
         end
@@ -745,48 +753,77 @@ local function create_commands(config)
     EcologGenerateExample = {
       callback = function()
         if not state.selected_env_file then
-          notify("No environment file selected. Use :EcologSelect to select one.", vim.log.levels.ERROR)
+          notify("No environment file selected. Use :EcologSelect to select one.", vim.log.levels.WARN)
           return
         end
-        get_utils().generate_example_file(state.selected_env_file)
+        local success, err = pcall(get_utils().generate_example_file, state.selected_env_file)
+        if not success then
+          notify(string.format("Failed to generate example file: %s", err), vim.log.levels.ERROR)
+        end
       end,
       desc = "Generate .env.example file from selected .env file",
     },
     EcologShelterToggle = {
       callback = function(args)
-        local arg = args.args:lower()
-        if arg == "" then
-          get_shelter().toggle_all()
-          return
-        end
-        local parts = vim.split(arg, " ")
-        local command = parts[1]
-        local feature = parts[2]
-        if command ~= "enable" and command ~= "disable" then
-          notify("Invalid command. Use 'enable' or 'disable'", vim.log.levels.ERROR)
-          return
-        end
-        get_shelter().set_state(command, feature)
+        get_shelter().toggle_all()
       end,
-      nargs = "?",
-      desc = "Toggle all shelter modes or enable/disable specific features",
+      nargs = 0,
+      desc = "Toggle all shelter modes",
+    },
+    EcologShelter = {
+      callback = function(args)
+        local success, err = pcall(function()
+          local arg = args.args:lower()
+          if arg == "" then
+            notify("Usage: EcologShelter {enable|disable|toggle} [feature]", vim.log.levels.INFO)
+            return
+          end
+          local parts = vim.split(arg, " ")
+          local command = parts[1]
+          local feature = parts[2]
+          
+          if command == "toggle" then
+            if feature then
+              get_shelter().toggle_feature(feature)
+            else
+              get_shelter().toggle_all()
+            end
+            return
+          end
+          if command ~= "enable" and command ~= "disable" then
+            notify("Invalid command. Use 'enable', 'disable', or 'toggle'", vim.log.levels.WARN)
+            return
+          end
+          get_shelter().set_state(command, feature)
+        end)
+        if not success then
+          notify(string.format("EcologShelter error: %s", err), vim.log.levels.WARN)
+        end
+      end,
+      nargs = "*",
+      desc = "Enable/disable/toggle specific shelter features",
       complete = function(arglead, cmdline)
         local args = vim.split(cmdline, "%s+")
         if #args == 2 then
           return vim.tbl_filter(function(item)
             return item:find(arglead, 1, true)
-          end, { "enable", "disable" })
+          end, { "enable", "disable", "toggle" })
         elseif #args == 3 then
           return vim.tbl_filter(function(item)
             return item:find(arglead, 1, true)
-          end, { "cmp", "peek", "files" })
+          end, { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "snacks_previewer", "snacks" })
         end
-        return { "enable", "disable" }
+        return { "enable", "disable", "toggle" }
       end,
     },
     EcologRefresh = {
       callback = function()
-        M.refresh_env_vars(config)
+        local success, err = pcall(function()
+          M.refresh_env_vars(config)
+        end)
+        if not success then
+          notify(string.format("EcologRefresh error: %s", err), vim.log.levels.WARN)
+        end
       end,
       desc = "Refresh environment variables cache",
     },
@@ -1703,5 +1740,17 @@ end
 function M.cleanup_caches()
   cleanup_caches()
 end
+
+function M.stop_health_monitoring()
+  stop_health_monitoring()
+end
+
+-- Ensure cleanup on Vim exit
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  callback = function()
+    M.shutdown()
+  end,
+  desc = "Ecolog cleanup on exit"
+})
 
 return M

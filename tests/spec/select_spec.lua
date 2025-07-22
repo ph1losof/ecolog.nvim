@@ -10,6 +10,7 @@ describe("select window", function()
   local mock_lines
   local utils
   local keymaps = {}
+  local original_guicursor
 
   local function create_test_files(path)
     vim.fn.mkdir(path, "p")
@@ -48,6 +49,7 @@ describe("select window", function()
     stub(api, "nvim_open_win").returns(1)
     stub(api, "nvim_buf_set_option")
     stub(api, "nvim_win_set_option")
+    stub(api, "nvim_set_option_value")
     stub(api, "nvim_buf_set_lines", function(_, _, _, _, lines)
       mock_lines = lines
     end)
@@ -56,6 +58,12 @@ describe("select window", function()
     stub(api, "nvim_buf_add_highlight")
     stub(api, "nvim_create_augroup").returns(1)
     stub(api, "nvim_create_autocmd")
+    stub(api, "nvim_win_is_valid").returns(true)
+    stub(api, "nvim_win_close")
+    
+    -- Mock vim.opt.guicursor
+    original_guicursor = vim.opt.guicursor
+    vim.opt.guicursor = { get = function() return "" end }
 
     -- Mock keymap functions
     stub(vim.keymap, "set", function(mode, lhs, rhs, opts)
@@ -70,13 +78,19 @@ describe("select window", function()
     api.nvim_open_win:revert()
     api.nvim_buf_set_option:revert()
     api.nvim_win_set_option:revert()
+    api.nvim_set_option_value:revert()
     api.nvim_buf_set_lines:revert()
     api.nvim_win_set_cursor:revert()
     api.nvim_buf_clear_namespace:revert()
     api.nvim_buf_add_highlight:revert()
     api.nvim_create_augroup:revert()
     api.nvim_create_autocmd:revert()
+    api.nvim_win_is_valid:revert()
+    api.nvim_win_close:revert()
     vim.keymap.set:revert()
+    
+    -- Restore vim.opt.guicursor
+    vim.opt.guicursor = original_guicursor
   end)
 
   it("should respect custom env file patterns", function()

@@ -763,7 +763,7 @@ function M.handle_multi_line_continuation(line, state)
       end
 
       local final_value = table.concat(state.value_lines, "")
-      local final_comment = #state.comments > 0 and table.concat(state.comments, "\n") or nil
+      local final_comment = state.comments and #state.comments > 0 and table.concat(state.comments, "\n") or nil
 
       local key = state.key
 

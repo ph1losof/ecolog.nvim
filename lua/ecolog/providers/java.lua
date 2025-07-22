@@ -46,17 +46,6 @@ M.providers = {
       return "System.getenv('"
     end,
   },
-  -- System.getenv() pattern (anywhere in line)
-  {
-    pattern = 'System%.getenv%("[%w_]+"%)',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]+)"%)')
-    end,
-    get_completion_trigger = function()
-      return 'System.getenv("'
-    end,
-  },
   -- System.getProperty() with double quotes
   {
     pattern = 'System%.getProperty%("[%w_.]+"%)',
@@ -169,4 +158,5 @@ M.providers = {
   },
 }
 
-return M.providers 
+return M.providers
+

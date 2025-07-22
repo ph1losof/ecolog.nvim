@@ -46,17 +46,6 @@ M.providers = {
       return [[env::var("]]
     end,
   },
-  -- env::var pattern (anywhere in line)
-  {
-    pattern = 'env::var%("([%w_]+)"%)',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'env::var%("([%w_]+)"%)')
-    end,
-    get_completion_trigger = function()
-      return 'env::var("'
-    end,
-  },
   -- env::var_os with single quotes completion
   {
     pattern = [[env::var_os%('[%w_]*$]],
@@ -143,17 +132,6 @@ M.providers = {
     end,
     get_completion_trigger = function()
       return [[std::env::var("]]
-    end,
-  },
-  -- std::env::var pattern (anywhere in line)
-  {
-    pattern = 'std::env::var%("([%w_]+)"%)',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'std::env::var%("([%w_]+)"%)')
-    end,
-    get_completion_trigger = function()
-      return 'std::env::var("'
     end,
   },
   -- std::env::var_os with single quotes completion
@@ -247,3 +225,4 @@ M.providers = {
 }
 
 return M.providers
+

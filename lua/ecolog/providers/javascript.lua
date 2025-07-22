@@ -12,17 +12,6 @@ M.providers = {
       return "process.env."
     end,
   },
-  -- process.env.VARIABLE (anywhere in line)
-  {
-    pattern = "process%.env%.[%w_]+",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "process%.env%.([%w_]+)")
-    end,
-    get_completion_trigger = function()
-      return "process.env."
-    end,
-  },
   -- process.env square brackets with double quotes
   {
     pattern = 'process%.env%["[%w_]*$',
@@ -113,4 +102,3 @@ M.providers = {
 }
 
 return M.providers
-

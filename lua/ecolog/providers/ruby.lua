@@ -35,39 +35,6 @@ M.providers = {
       return "ENV[:"
     end,
   },
-  -- ENV[] with single quotes full pattern
-  {
-    pattern = "ENV%['[%w_]+'%]$",
-    filetype = "ruby",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "ENV%['([%w_]+)'%]$")
-    end,
-    get_completion_trigger = function()
-      return "ENV['"
-    end,
-  },
-  -- ENV[] with double quotes full pattern
-  {
-    pattern = 'ENV%["[%w_]+"%]$',
-    filetype = "ruby",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'ENV%["([%w_]+)"%]$')
-    end,
-    get_completion_trigger = function()
-      return 'ENV["'
-    end,
-  },
-  -- ENV[] with symbol full pattern
-  {
-    pattern = "ENV%[:[%w_]+%]$",
-    filetype = "ruby",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "ENV%[:([%w_]+)%]$")
-    end,
-    get_completion_trigger = function()
-      return "ENV[:"
-    end,
-  },
   -- ENV.fetch with single quotes completion
   {
     pattern = "ENV%.fetch%('[%w_]*$",
@@ -101,39 +68,7 @@ M.providers = {
       return "ENV.fetch(:"
     end,
   },
-  -- ENV.fetch with single quotes full pattern
-  {
-    pattern = "ENV%.fetch%('[%w_]+'[%)]*$",
-    filetype = "ruby",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "ENV%.fetch%('([%w_]+)'[%)]*$")
-    end,
-    get_completion_trigger = function()
-      return "ENV.fetch('"
-    end,
-  },
-  -- ENV.fetch with double quotes full pattern
-  {
-    pattern = 'ENV%.fetch%("[%w_]+"[%)]*$',
-    filetype = "ruby",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'ENV%.fetch%("([%w_]+)"[%)]*$')
-    end,
-    get_completion_trigger = function()
-      return 'ENV.fetch("'
-    end,
-  },
-  -- ENV.fetch with symbol full pattern
-  {
-    pattern = "ENV%.fetch%([%s]*:[%w_]+[%)]*$",
-    filetype = "ruby",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "ENV%.fetch%([%s]*:([%w_]+)[%)]*$")
-    end,
-    get_completion_trigger = function()
-      return "ENV.fetch(:"
-    end,
-  },
 }
 
-return M.providers 
+return M.providers
+

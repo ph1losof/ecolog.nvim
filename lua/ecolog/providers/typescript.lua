@@ -121,31 +121,6 @@ M.providers = {
       return "Deno.env.get('"
     end,
   },
-  -- Deno full pattern with double quotes
-  {
-    pattern = 'Deno%.env%.get%("[%w_]+"%)?$',
-    filetype = "typescript",
-    extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match('Deno%.env%.get%("([%w_]+)"%)?$')
-    end,
-    get_completion_trigger = function()
-      return 'Deno.env.get("'
-    end,
-  },
-  -- Deno full pattern with single quotes
-  {
-    pattern = "Deno%.env%.get%('[%w_]+'%)?$",
-    filetype = "typescript",
-    extract_var = function(line, col)
-      local before_cursor = line:sub(1, col)
-      return before_cursor:match("Deno%.env%.get%('([%w_]+)'%)?$")
-    end,
-    get_completion_trigger = function()
-      return "Deno.env.get('"
-    end,
-  }
 }
 
 return M.providers
-

@@ -35,39 +35,6 @@ M.providers = {
       return "os.Getenv(`"
     end,
   },
-  -- os.Getenv full pattern with double quotes
-  {
-    pattern = 'os%.Getenv%("[%w_]+"%)?$',
-    filetype = "go",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'os%.Getenv%("([%w_]+)"%)?$')
-    end,
-    get_completion_trigger = function()
-      return 'os.Getenv("'
-    end,
-  },
-  -- os.Getenv full pattern with single quotes
-  {
-    pattern = "os%.Getenv%('[%w_]+'%)?$",
-    filetype = "go",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "os%.Getenv%('([%w_]+)'%)?$")
-    end,
-    get_completion_trigger = function()
-      return "os.Getenv('"
-    end,
-  },
-  -- os.Getenv full pattern with backticks
-  {
-    pattern = "os%.Getenv%(`[%w_]+`%)?$",
-    filetype = "go",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "os%.Getenv%(`([%w_]+)`%)?$")
-    end,
-    get_completion_trigger = function()
-      return "os.Getenv(`"
-    end,
-  },
   -- os.LookupEnv with double quotes completion
   {
     pattern = 'os%.LookupEnv%("[%w_]*$',
@@ -101,45 +68,12 @@ M.providers = {
       return "os.LookupEnv(`"
     end,
   },
-  -- os.LookupEnv full pattern with double quotes
-  {
-    pattern = 'os%.LookupEnv%("[%w_]+"%)?$',
-    filetype = "go",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'os%.LookupEnv%("([%w_]+)"%)?$')
-    end,
-    get_completion_trigger = function()
-      return 'os.LookupEnv("'
-    end,
-  },
-  -- os.LookupEnv full pattern with single quotes
-  {
-    pattern = "os%.LookupEnv%('[%w_]+'%)?$",
-    filetype = "go",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "os%.LookupEnv%('([%w_]+)'%)?$")
-    end,
-    get_completion_trigger = function()
-      return "os.LookupEnv('"
-    end,
-  },
-  -- os.LookupEnv full pattern with backticks
-  {
-    pattern = "os%.LookupEnv%(`[%w_]+`%)?$",
-    filetype = "go",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "os%.LookupEnv%(`([%w_]+)`%)?$")
-    end,
-    get_completion_trigger = function()
-      return "os.LookupEnv(`"
-    end,
-  },
   -- syscall.Getenv with double quotes
   {
-    pattern = 'syscall%.Getenv%(\"[%w_]+\"%)',
+    pattern = 'syscall%.Getenv%("[%w_]+"%)',
     filetype = "go",
     extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'syscall%.Getenv%(\"([%w_]+)\"%)')
+      return utils.extract_env_var(line, col, 'syscall%.Getenv%("([%w_]+)"%)')
     end,
     get_completion_trigger = function()
       return 'syscall.Getenv("'

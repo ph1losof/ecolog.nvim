@@ -177,7 +177,7 @@ local function detect_pattern_type(pattern)
     return PATTERN_TYPES.EXTENDED_GLOB
   end
 
-  if pattern:match("[%^%$%(%)%+%|\\]") or pattern:match("%.%*") then
+  if pattern:match("[%^%$%(%)%+%|\\]") then
     return PATTERN_TYPES.REGEX
   end
 
@@ -217,13 +217,18 @@ local function convert_to_matching_pattern(pattern)
   local pattern_type = detect_pattern_type(pattern)
 
   if pattern_type == PATTERN_TYPES.EXACT then
-    return "^" .. vim.pesc(pattern) .. "$"
+    -- Use vim regex escaping for exact patterns
+    local escaped = pattern:gsub("([%.%[%]%(%)%+%-%^%$%*%?%\\])", "\\%1")
+    return "^" .. escaped .. "$"
   elseif pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
     return convert_extended_glob(pattern)
   elseif pattern_type == PATTERN_TYPES.REGEX then
     return pattern
   else
-    return vim.fn.glob2regpat(pattern)
+    -- For glob patterns, use vim.fn.glob2regpat but ensure proper anchoring
+    local glob_pattern = vim.fn.glob2regpat(pattern)
+    -- vim.fn.glob2regpat should handle the conversion properly
+    return glob_pattern
   end
 end
 
@@ -244,20 +249,23 @@ local function match_file_pattern(filename, pattern, base_path, config)
 
     local pattern_type = detect_pattern_type(pattern)
 
-    if pattern_type == PATTERN_TYPES.GLOB or pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
-      if pattern:find("**") then
-        local lua_pattern = convert_to_matching_pattern(full_pattern)
-        return vim.fn.match(filename, lua_pattern) >= 0
-      end
-
+    -- For directory patterns, always try glob matching first to handle path normalization
+    if not pattern:find("**", 1, true) then
       local matches = vim.fn.glob(full_pattern, false, true)
       if matches and #matches > 0 then
+        -- Normalize paths before comparison to handle symlinks like /var vs /private/var
+        local normalized_filename = vim.fn.resolve(vim.fn.fnamemodify(filename, ":p"))
         for _, match in ipairs(matches) do
-          if filename == match then
+          local normalized_match = vim.fn.resolve(vim.fn.fnamemodify(match, ":p"))
+          if normalized_filename == normalized_match then
             return true
           end
         end
       end
+    else
+      -- Handle ** patterns with regex matching
+      local lua_pattern = convert_to_matching_pattern(full_pattern)
+      return vim.fn.match(filename, lua_pattern) >= 0
     end
 
     local lua_pattern = convert_to_matching_pattern(full_pattern)

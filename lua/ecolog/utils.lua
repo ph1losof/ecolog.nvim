@@ -177,7 +177,7 @@ local function detect_pattern_type(pattern)
     return PATTERN_TYPES.EXTENDED_GLOB
   end
 
-  if pattern:match("[%^%$%(%)%+%|\\]") or pattern:match("%.%*") then
+  if pattern:match("[%^%$%(%)%+%|\\]") then
     return PATTERN_TYPES.REGEX
   end
 
@@ -217,13 +217,18 @@ local function convert_to_matching_pattern(pattern)
   local pattern_type = detect_pattern_type(pattern)
 
   if pattern_type == PATTERN_TYPES.EXACT then
-    return "^" .. vim.pesc(pattern) .. "$"
+    -- Use vim regex escaping for exact patterns
+    local escaped = pattern:gsub("([%.%[%]%(%)%+%-%^%$%*%?%\\])", "\\%1")
+    return "^" .. escaped .. "$"
   elseif pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
     return convert_extended_glob(pattern)
   elseif pattern_type == PATTERN_TYPES.REGEX then
     return pattern
   else
-    return vim.fn.glob2regpat(pattern)
+    -- For glob patterns, use vim.fn.glob2regpat but ensure proper anchoring
+    local glob_pattern = vim.fn.glob2regpat(pattern)
+    -- vim.fn.glob2regpat should handle the conversion properly
+    return glob_pattern
   end
 end
 

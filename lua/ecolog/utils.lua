@@ -249,20 +249,23 @@ local function match_file_pattern(filename, pattern, base_path, config)
 
     local pattern_type = detect_pattern_type(pattern)
 
-    if pattern_type == PATTERN_TYPES.GLOB or pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
-      if pattern:find("**") then
-        local lua_pattern = convert_to_matching_pattern(full_pattern)
-        return vim.fn.match(filename, lua_pattern) >= 0
-      end
-
+    -- For directory patterns, always try glob matching first to handle path normalization
+    if not pattern:find("**", 1, true) then
       local matches = vim.fn.glob(full_pattern, false, true)
       if matches and #matches > 0 then
+        -- Normalize paths before comparison to handle symlinks like /var vs /private/var
+        local normalized_filename = vim.fn.resolve(vim.fn.fnamemodify(filename, ":p"))
         for _, match in ipairs(matches) do
-          if filename == match then
+          local normalized_match = vim.fn.resolve(vim.fn.fnamemodify(match, ":p"))
+          if normalized_filename == normalized_match then
             return true
           end
         end
       end
+    else
+      -- Handle ** patterns with regex matching
+      local lua_pattern = convert_to_matching_pattern(full_pattern)
+      return vim.fn.match(filename, lua_pattern) >= 0
     end
 
     local lua_pattern = convert_to_matching_pattern(full_pattern)

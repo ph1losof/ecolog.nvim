@@ -906,7 +906,12 @@ end
 ---@param line string The line to extract from
 ---@return string|nil name The extracted variable name
 function M.extract_var_name(line)
-  return line:match("^(.-)%s*=")
+  if line:match("=") then
+    return line:match("^(.-)%s*=")
+  end
+
+  local var_name = line:match("^%s*([^%s]+)")
+  return var_name
 end
 
 ---Extract quoted value from a string

@@ -30,18 +30,42 @@ function M.format_env_vars_for_picker(module_name)
   local utils = require("ecolog.utils")
   local ecolog = require("ecolog")
   local config = ecolog.get_config()
-  
+
   local var_entries = M.get_sorted_vars()
+
+  local longest_name = 0
+  for _, entry in ipairs(var_entries) do
+    longest_name = math.max(longest_name, #entry.name)
+  end
 
   local result = {}
   for idx, entry in ipairs(var_entries) do
-    local masked_value = shelter.mask_value(entry.value, module_name, entry.name, entry.source)
-    
-    -- Generate display name with workspace context for the source
+    local shelter_feature = module_name
+    if module_name:find("telescope") then
+      shelter_feature = "telescope"
+    elseif module_name:find("fzf") then
+      shelter_feature = "fzf"
+    elseif module_name:find("snacks") then
+      shelter_feature = "snacks"
+    end
+
+    local raw_value = entry.value
+    local masked_value
+
+    if raw_value and raw_value:find("[\r\n]") then
+      local single_line_value = raw_value:gsub("[\r\n]+", " ")
+      masked_value = shelter.mask_value(single_line_value, shelter_feature, entry.name, entry.source)
+    else
+      masked_value = shelter.mask_value(raw_value, shelter_feature, entry.name, entry.source)
+    end
+
+    if not masked_value then
+      masked_value = ""
+    end
+
     local source_display = utils.get_env_file_display_name(entry.source, config)
-    
-    -- Format: "VAR_NAME (source.env) = value"
-    local display = string.format("%-30s (%s) = %s", entry.name, vim.fn.fnamemodify(source_display, ":t"), masked_value)
+
+    local display = string.format("%-" .. longest_name .. "s %s", entry.name, masked_value)
 
     table.insert(result, {
       name = entry.name,
@@ -52,6 +76,7 @@ function M.format_env_vars_for_picker(module_name)
       type = entry.type,
       display = display,
       idx = idx,
+      longest_name = longest_name,
     })
   end
 
@@ -59,4 +84,3 @@ function M.format_env_vars_for_picker(module_name)
 end
 
 return M
-

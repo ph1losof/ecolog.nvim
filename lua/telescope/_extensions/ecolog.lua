@@ -79,7 +79,15 @@ function TelescopePicker:open(opts)
         entry_maker = function(entry)
           return {
             value = entry,
-            display = entry.display,
+            display = function(entry_item)
+              local longest = entry_item.value.longest_name or 20
+              local name = entry_item.value.name
+              local masked_value = entry_item.value.masked_value or ""
+
+              local display_text = string.format("%-" .. longest .. "s %s", name, masked_value)
+
+              return display_text
+            end,
             ordinal = string.format("%04d_%s", entry.idx, entry.name),
           }
         end,

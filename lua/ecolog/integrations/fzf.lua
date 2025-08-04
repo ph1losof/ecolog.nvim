@@ -225,7 +225,12 @@ function FzfPicker:format_env_vars()
 
   local results = {}
   for _, item in ipairs(items) do
-    table.insert(results, item.display)
+    -- Add ANSI color codes for highlighting
+    -- White for variable name, green for value
+    local longest = item.longest_name or 20
+    local colored_display =
+      string.format("\027[37m%-" .. longest .. "s\027[0m \027[32m%s\027[0m", item.name, item.masked_value or "")
+    table.insert(results, colored_display)
   end
 
   return results
@@ -250,6 +255,9 @@ function FzfPicker:open()
   fzf.fzf_exec(results, {
     prompt = "Environment Variables> ",
     actions = self:create_actions(),
+    fzf_opts = {
+      ["--ansi"] = "",
+    },
   })
 end
 

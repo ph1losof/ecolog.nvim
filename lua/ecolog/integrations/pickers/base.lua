@@ -135,7 +135,7 @@ function BasePicker:add_custom_action(name, key, callback, opts)
     name = name,
     key = key,
     callback = callback,
-    opts = opts
+    opts = opts,
   }
 end
 
@@ -155,7 +155,7 @@ function BasePicker:run_custom_action(name, selection)
     self:notify(string.format("Custom action '%s' not found", name), vim.log.levels.ERROR)
     return nil
   end
-  
+
   return action.callback(selection, self)
 end
 
@@ -163,14 +163,14 @@ end
 ---@param opts table|nil
 function BasePicker:setup(opts)
   self._config = vim.tbl_deep_extend("force", self:get_default_config(), opts or {})
-  
+
   -- Add any custom actions defined in config
   if self._config.custom_actions then
     for name, action in pairs(self._config.custom_actions) do
       self:add_custom_action(name, action.key, action.callback, action.opts)
     end
   end
-  
+
   self._initialized = true
 end
 
@@ -179,4 +179,3 @@ function BasePicker:open()
 end
 
 return BasePicker
-

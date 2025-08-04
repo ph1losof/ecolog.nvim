@@ -131,6 +131,7 @@ local DEFAULT_CONFIG = {
 
 local state = {
   env_vars = {},
+  env_vars_overrides = {},
   cached_env_files = nil,
   last_opts = nil,
   file_cache_opts = nil,
@@ -524,18 +525,29 @@ function M.get_env_vars()
       for k, v in pairs(env_vars) do
         result[k] = v
       end
+      local overrides = safe_read_state("env_vars_overrides")
+      if overrides then
+        for k, v in pairs(overrides) do
+          result[k] = v
+        end
+      end
       return result
     end
   end
 
   if not acquire_state_lock(3000) then
-    -- Graceful fallback with user notification
     if next(env_vars or {}) == nil then
       vim.notify("Environment loading in progress - using cached data", vim.log.levels.INFO)
     end
     local result = {}
     if env_vars then
       for k, v in pairs(env_vars) do
+        result[k] = v
+      end
+    end
+    local overrides = safe_read_state("env_vars_overrides")
+    if overrides then
+      for k, v in pairs(overrides) do
         result[k] = v
       end
     end
@@ -578,6 +590,10 @@ function M.get_env_vars()
 
     result = {}
     for k, v in pairs(state.env_vars) do
+      result[k] = v
+    end
+
+    for k, v in pairs(state.env_vars_overrides) do
       result[k] = v
     end
   end)
@@ -781,7 +797,7 @@ local function create_commands(config)
           local parts = vim.split(arg, " ")
           local command = parts[1]
           local feature = parts[2]
-          
+
           if command == "toggle" then
             if feature then
               get_shelter().toggle_feature(feature)
@@ -811,7 +827,17 @@ local function create_commands(config)
         elseif #args == 3 then
           return vim.tbl_filter(function(item)
             return item:find(arglead, 1, true)
-          end, { "cmp", "peek", "files", "telescope", "fzf", "telescope_previewer", "snacks_previewer", "snacks" })
+          end, {
+            "cmp",
+            "peek",
+            "files",
+            "telescope",
+            "fzf",
+            "fzf_previewer",
+            "telescope_previewer",
+            "snacks_previewer",
+            "snacks",
+          })
         end
         return { "enable", "disable", "toggle" }
       end,
@@ -1750,7 +1776,37 @@ vim.api.nvim_create_autocmd("VimLeavePre", {
   callback = function()
     M.shutdown()
   end,
-  desc = "Ecolog cleanup on exit"
+  desc = "Ecolog cleanup on exit",
 })
+
+---Set an environment variable override for the current session
+---@param var_name string The environment variable name
+---@param value string The new value
+---@return boolean success True if the override was set successfully
+function M.set_env_override(var_name, value)
+  if not var_name or not value then
+    return false
+  end
+
+  if not state.env_vars_overrides then
+    state.env_vars_overrides = {}
+  end
+
+  local types = require("ecolog.types")
+  local type_name, transformed_value = types.detect_type(value)
+
+  state.env_vars_overrides[var_name] = {
+    value = transformed_value,
+    type = type_name,
+    raw_value = value,
+    source = "session_override",
+  }
+
+  if state._env_module and state._env_module.update_env_vars then
+    state._env_module.update_env_vars()
+  end
+
+  return true
+end
 
 return M

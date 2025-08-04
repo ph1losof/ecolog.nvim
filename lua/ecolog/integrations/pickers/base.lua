@@ -104,8 +104,14 @@ function BasePicker:edit_environment_var(var_name, current_value)
 
   vim.ui.input({ prompt = string.format("New value for %s (current: %s): ", var_name, current_value) }, function(input)
     if input then
-      vim.cmd(string.format("EcologEnvSet %s %s", var_name, input))
-      self:notify(string.format("Updated environment variable '%s'", var_name), vim.log.levels.INFO)
+      local ecolog = require("ecolog")
+      local success = ecolog.set_env_override(var_name, input)
+
+      if success then
+        self:notify(string.format("Updated environment variable '%s' for this session", var_name), vim.log.levels.INFO)
+      else
+        self:notify(string.format("Failed to update environment variable '%s'", var_name), vim.log.levels.ERROR)
+      end
     end
   end)
 

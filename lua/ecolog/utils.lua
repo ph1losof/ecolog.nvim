@@ -937,11 +937,24 @@ end
 ---@param pattern string The pattern to match
 ---@return string|nil var The extracted variable
 function M.extract_env_var(line, col, pattern)
-  if not line or not col then
+  if not line or not col or not pattern then
     return nil
   end
+  
+  if type(line) ~= "string" or type(col) ~= "number" or type(pattern) ~= "string" then
+    return nil
+  end
+  
+  if col < 0 or col > #line then
+    return nil
+  end
+  
   local before_cursor = line:sub(1, col)
-  return before_cursor:match(pattern)
+  local success, result = pcall(function()
+    return before_cursor:match(pattern)
+  end)
+  
+  return success and result or nil
 end
 
 ---Generate an example environment file

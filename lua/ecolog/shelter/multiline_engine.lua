@@ -32,7 +32,7 @@ local perf_config = {
   parsed_cache_size = 200,
   extmark_cache_size = 100,
   mask_cache_size = 150,
-  batch_size = 50,
+  batch_size = 100,
   hash_sample_rate = 16,
   estimated_vars_per_lines = 4,
   estimated_extmarks_multiplier = 2,
@@ -607,15 +607,24 @@ function M.apply_extmarks_batched(bufnr, extmarks, namespace, batch_size)
     end
 
     local end_idx = math_min(start_idx + batch_size - 1, #extmarks)
+    
+    -- Process multiple extmarks in a single scheduled call for better performance
+    local batch_success = 0
     for i = start_idx, end_idx do
       local extmark = extmarks[i]
-      pcall(api_buf_set_extmark, bufnr, namespace, extmark.line, extmark.col, extmark.opts)
+      local success = pcall(api_buf_set_extmark, bufnr, namespace, extmark.line, extmark.col, extmark.opts)
+      if success then
+        batch_success = batch_success + 1
+      end
     end
 
     if end_idx < #extmarks then
-      vim_schedule(function()
-        apply_batch(end_idx + 1)
-      end)
+      -- Only schedule next batch if current buffer is still valid
+      if api_buf_is_valid(bufnr) then
+        vim_schedule(function()
+          apply_batch(end_idx + 1)
+        end)
+      end
     end
   end
 

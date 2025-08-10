@@ -252,11 +252,14 @@ function FzfPicker:open()
   self:save_current_window()
   local results = self:format_env_vars()
 
+  local current_file = require("ecolog").get_state().selected_env_file
+  local file = current_file and vim.fn.fnamemodify(current_file, ":t")
+
   fzf.fzf_exec(results, {
     winopts = {
       title = "Environment Variables",
     },
-    prompt = "> ",
+    prompt = (file or "") .. "> ",
     actions = self:create_actions(),
     fzf_opts = {
       ["--ansi"] = "",

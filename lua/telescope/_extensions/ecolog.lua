@@ -71,9 +71,13 @@ function TelescopePicker:open(opts)
   local data = require("ecolog.integrations.pickers.data")
   local results = data.format_env_vars_for_picker(self:get_name():lower())
 
+  local current_file = require("ecolog").get_state().selected_env_file
+  local file = current_file and vim.fn.fnamemodify(current_file, ":t")
+
   pickers
     .new(opts, {
       prompt_title = "Environment Variables",
+      prompt_prefix = (file or "") .. "> ",
       finder = finders.new_table({
         results = results,
         entry_maker = function(entry)

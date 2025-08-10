@@ -253,7 +253,10 @@ function FzfPicker:open()
   local results = self:format_env_vars()
 
   fzf.fzf_exec(results, {
-    prompt = "Environment Variables> ",
+    winopts = {
+      title = "Environment Variables",
+    },
+    prompt = "> ",
     actions = self:create_actions(),
     fzf_opts = {
       ["--ansi"] = "",

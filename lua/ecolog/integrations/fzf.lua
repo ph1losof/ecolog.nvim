@@ -252,6 +252,11 @@ function FzfPicker:open()
   self:save_current_window()
   local results = self:format_env_vars()
 
+  if #results == 0 then
+    self:notify("No results", vim.log.levels.WARN)
+    return
+  end
+
   local current_file = require("ecolog").get_state().selected_env_file
   local file = current_file and vim.fn.fnamemodify(current_file, ":t")
 

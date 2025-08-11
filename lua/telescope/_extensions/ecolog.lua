@@ -71,6 +71,11 @@ function TelescopePicker:open(opts)
   local data = require("ecolog.integrations.pickers.data")
   local results = data.format_env_vars_for_picker(self:get_name():lower())
 
+  if #results == 0 then
+    self:notify("No results", vim.log.levels.WARN)
+    return
+  end
+
   local current_file = require("ecolog").get_state().selected_env_file
   local file = current_file and vim.fn.fnamemodify(current_file, ":t")
 

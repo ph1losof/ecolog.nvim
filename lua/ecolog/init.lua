@@ -929,6 +929,21 @@ local function create_commands(config)
       end,
       desc = "Open FZF environment variable picker",
     },
+    EcologTelescope = {
+      callback = function()
+        local has_telescope, telescope = pcall(require, "telescope")
+        if not has_telescope then
+          notify(
+            "Telescope is not installed. Install telescope.nvim to use this command",
+            vim.log.levels.ERROR
+          )
+          return
+        end
+        telescope.load_extension("ecolog")
+        telescope.extensions.ecolog.env()
+      end,
+      desc = "Open Telescope environment variable picker",
+    },
     EcologCopy = {
       callback = function(args)
         local filetype = vim.bo.filetype

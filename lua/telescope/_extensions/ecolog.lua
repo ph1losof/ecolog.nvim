@@ -8,6 +8,7 @@ local action_state = require("telescope.actions.state")
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local conf = require("telescope.config").values
+local entry_display = require("telescope.pickers.entry_display")
 local BasePicker = require("ecolog.integrations.pickers.base")
 
 ---@class TelescopePicker : BasePicker
@@ -71,22 +72,37 @@ function TelescopePicker:open(opts)
   local data = require("ecolog.integrations.pickers.data")
   local results = data.format_env_vars_for_picker(self:get_name():lower())
 
+  if #results == 0 then
+    self:notify("No results", vim.log.levels.WARN)
+    return
+  end
+
+  local current_file = require("ecolog").get_state().selected_env_file
+  local file = current_file and vim.fn.fnamemodify(current_file, ":t")
+
   pickers
     .new(opts, {
       prompt_title = "Environment Variables",
+      prompt_prefix = (file or "") .. "> ",
       finder = finders.new_table({
         results = results,
         entry_maker = function(entry)
+          local longest = entry.longest_name or 20
+          local displayer = entry_display.create({
+            separator = "",
+            items = {
+              { width = longest + 1 },
+              { remaining = true },
+            },
+          })
+
           return {
             value = entry,
             display = function(entry_item)
-              local longest = entry_item.value.longest_name or 20
-              local name = entry_item.value.name
-              local masked_value = entry_item.value.masked_value or ""
-
-              local display_text = string.format("%-" .. longest .. "s %s", name, masked_value)
-
-              return display_text
+              return displayer({
+                { entry_item.value.name, "TelescopeResultsIdentifier" },
+                { entry_item.value.masked_value or "", "TelescopeResultsString" },
+              })
             end,
             ordinal = string.format("%04d_%s", entry.idx, entry.name),
           }

@@ -216,8 +216,17 @@ function SnacksPicker:open()
 
   local items, longest = self:create_picker_items()
 
+  if #items == 0 then
+    self:notify("No results", vim.log.levels.WARN)
+    return
+  end
+
+  local current_file = require("ecolog").get_state().selected_env_file
+  local file = current_file and vim.fn.fnamemodify(current_file, ":t")
+
   snacks.pick({
     title = "Environment Variables",
+    prompt = (file or "") .. "> ",
     items = items,
     layout = self._config.layout,
     sort = {

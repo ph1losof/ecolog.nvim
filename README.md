@@ -1001,7 +1001,6 @@ The `provider_patterns` option controls how environment variables are extracted 
 The `extract` field controls how variables are extracted from code for features like peek, goto definition, etc:
 
 - When `true` (default): Only recognizes environment variables through language-specific patterns
-
   - Example: In JavaScript, only matches `process.env.MY_VAR` or `import.meta.env.MY_VAR`
   - Example: In Python, only matches `os.environ.get('MY_VAR')` or `os.environ['MY_VAR']`
 
@@ -1014,7 +1013,6 @@ The `extract` field controls how variables are extracted from code for features 
 The `cmp` field controls how completion behaves:
 
 - When `true` (default):
-
   - Uses language-specific triggers (e.g., `process.env.` in JavaScript)
   - Only completes in valid environment variable contexts
   - Formats completions according to language patterns
@@ -1484,7 +1482,6 @@ PS: If you're using lspsaga then don't use lsp integration use one or the other.
 The integration adds two commands that intelligently handle both environment variables and regular code:
 
 1. **EcologSagaHover**:
-
    - Shows environment variable value when hovering over env vars
    - Falls back to Saga's hover for other code elements
    - Automatically replaces existing Saga hover keymaps
@@ -2153,28 +2150,23 @@ require('ecolog').setup({
 #### Module-specific Masking
 
 1. **Completion Menu (`cmp = true`)**
-
    - Masks values in nvim-cmp completion menu
    - Protects sensitive data during autocompletion
 
 2. **Peek View (`peek = true`)**
-
    - Masks values when using EcologPeek command
    - Allows secure variable inspection
 
 3. **File View (`files = true`)**
-
    - Masks values directly in .env files
    - Use `:EcologShelterLinePeek` to temporarily reveal values
 
 4. **Telescope Preview (`telescope_previewer = true`)**
-
    - Masks values in telescope preview buffers
    - Automatically applies to any `.env` file previewed in telescope with support of custom env file patterns
    - Maintains masking state across buffer refreshes
 
 5. **FZF Preview (`fzf_previewer = true`)**
-
    - Masks values in fzf-lua preview buffers
    - Automatically applies to any `.env` file previewed in fzf-lua with support of custom env file patterns
    - Supports all fzf-lua commands that show previews (files, git_files, live_grep, etc.)
@@ -2182,11 +2174,9 @@ require('ecolog').setup({
    - Optimized for performance with buffer content caching
 
 6. **FZF Picker (`fzf = true`)**
-
    - Masks values in fzf-lua picker
 
 7. **Telescope Integration (`telescope = true`)**
-
    - Masks values in telescope picker from integration
 
 8. **Snacks Integration (`snacks = true`, `snacks_previewer = true`)**
@@ -2280,9 +2270,11 @@ When `mask_length` is not set (nil), the masked portion will match the length of
    ```
 
 4. Quick Value Reveal:
+
    ```vim
    :EcologShelterLinePeek           " Temporarily reveal value on current line
    ```
+
    - Shows the actual value for the current line
    - Value is hidden again when cursor moves away
    - Only works when shelter mode is enabled for files
@@ -2648,14 +2640,13 @@ It's author's (`ph1losof`) personal setup for ecolog.nvim, it is opionated. Howe
       { '<leader>eS', '<cmd>EcologSelect<cr>', desc = 'Switch env file' },
       { '<leader>es', '<cmd>EcologShelterToggle<cr>', desc = 'Shelter toggle' },
     },
-    lazy = false,
     opts = {
       preferred_environment = 'local',
       types = true,
       monorepo = {
         enabled = true,
         auto_switch = true,
-        notify_on_switch = true,
+        notify_on_switch = false,
       },
       providers = {
         {
@@ -2689,6 +2680,7 @@ It's author's (`ph1losof`) personal setup for ecolog.nvim, it is opionated. Howe
       integrations = {
         lspsaga = true,
         blink_cmp = true,
+        snacks = true,
         statusline = {
           hidden_mode = true,
           icons = { enabled = true, env = 'E', shelter = 'S' },
@@ -2697,7 +2689,6 @@ It's author's (`ph1losof`) personal setup for ecolog.nvim, it is opionated. Howe
             vars_count = 'Number',
           },
         },
-        snacks = true,
       },
       shelter = {
         configuration = {

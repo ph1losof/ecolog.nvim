@@ -55,8 +55,8 @@ M.NAMESPACE = NAMESPACE
 ---@return KeyValueResult?
 ---@return table? multi_line_state Updated multi-line state
 M.find_next_key_value = function(text, start_pos, multi_line_state)
-  vim.validate("text", text, "string")
-  vim.validate("start_pos", start_pos, "number", true)
+  vim.validate({ text = { text, "string" } })
+  vim.validate({ start_pos = { start_pos, "number" } }, true)
 
   start_pos = start_pos or 1
   if start_pos > #text then
@@ -139,7 +139,7 @@ end
 ---@return ProcessedItem[]
 ---@return table? multi_line_state Updated multi-line state
 function M.process_line(line, multi_line_state)
-  vim.validate("line", line, "string")
+  vim.validate({ line = { line, "string" } })
 
   local results = {}
   local comment_start = string_find(line, "#")
@@ -190,9 +190,9 @@ end
 ---@param bufname string
 ---@return ExtmarkData?
 local function get_cached_line(line, line_num, bufname)
-  vim.validate("line", line, "string")
-  vim.validate("line_num", line_num, "number")
-  vim.validate("bufname", bufname, "string")
+  vim.validate({ line = { line, "string" } })
+  vim.validate({ line_num = { line_num, "number" } })
+  vim.validate({ bufname = { bufname, "string" } })
 
   local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line))
   return line_cache:get(cache_key)
@@ -203,10 +203,10 @@ end
 ---@param bufname string
 ---@param extmark table
 local function cache_line(line, line_num, bufname, extmark)
-  vim.validate("line", line, "string")
-  vim.validate("line_num", line_num, "number")
-  vim.validate("bufname", bufname, "string")
-  vim.validate("extmark", extmark, "table")
+  vim.validate({ line = { line, "string" } })
+  vim.validate({ line_num = { line_num, "number" } })
+  vim.validate({ bufname = { bufname, "string" } })
+  vim.validate({ extmark = { extmark, "table" } })
 
   local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line))
   local existing = line_cache:get(cache_key)
@@ -659,8 +659,8 @@ end
 ---@param bufname string The buffer name
 ---@return boolean success Whether the cache was successfully cleared
 function M.clear_line_cache(line_num, bufname)
-  vim.validate("line_num", line_num, "number")
-  vim.validate("bufname", bufname, "string")
+  vim.validate({ line_num = { line_num, "number" } })
+  vim.validate({ bufname = { bufname, "string" } })
 
   local ok, line = pcall(api.nvim_buf_get_lines, 0, line_num - 1, line_num, false)
   if not ok or not line or #line == 0 then

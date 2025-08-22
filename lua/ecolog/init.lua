@@ -1471,6 +1471,12 @@ end
 
 ---@param config EcologConfig
 local function validate_config(config)
+  -- Ensure config is a table
+  if type(config) ~= "table" then
+    notify("Configuration must be a table", vim.log.levels.WARN)
+    return
+  end
+
   -- Handle deprecated env_file_pattern if it exists
   if config.env_file_pattern ~= nil then
     notify(
@@ -1487,6 +1493,24 @@ local function validate_config(config)
   if config.sort_fn ~= nil and config.sort_file_fn == nil then
     notify("sort_fn is deprecated, please use sort_file_fn instead", vim.log.levels.WARN)
     config.sort_file_fn = config.sort_fn
+  end
+
+  -- Validate types option
+  if config.types ~= nil and type(config.types) ~= "boolean" and type(config.types) ~= "table" then
+    notify("types must be boolean or table, got " .. type(config.types), vim.log.levels.WARN)
+    config.types = true -- fallback to default
+  end
+
+  -- Validate interpolation option
+  if config.interpolation ~= nil and type(config.interpolation) ~= "boolean" and type(config.interpolation) ~= "table" then
+    notify("interpolation must be boolean or table, got " .. type(config.interpolation), vim.log.levels.WARN)
+    config.interpolation = { enabled = true } -- fallback to default
+  end
+
+  -- Validate integrations
+  if config.integrations ~= nil and type(config.integrations) ~= "table" then
+    notify("integrations must be a table, got " .. type(config.integrations), vim.log.levels.WARN)
+    config.integrations = {}
   end
 
   if type(config.provider_patterns) == "boolean" then
@@ -1513,6 +1537,12 @@ function M.setup(opts)
       return
     end
     _setup_done = true
+
+    -- Handle invalid opts types gracefully
+    if opts ~= nil and type(opts) ~= "table" then
+      vim.notify("Configuration must be a table, got " .. type(opts) .. ". Using default configuration.", vim.log.levels.WARN)
+      opts = {}
+    end
 
     local config = vim.tbl_deep_extend("force", DEFAULT_CONFIG, opts or {})
 

@@ -133,6 +133,25 @@ local TYPE_DEFINITIONS = {
     end,
   },
 
+  email = {
+    pattern = "[%w%._%+%-]+@[%w%.%-]+%.[%w]+",
+    validate = function(value)
+      -- Basic email validation pattern
+      local local_part, domain = value:match("^([%w%._%+%-]+)@([%w%.%-]+%.[%w]+)$")
+      if not local_part or not domain then
+        return false
+      end
+      -- Check for valid characters and structure
+      if local_part:match("^%.") or local_part:match("%.$") or local_part:match("%.%.") then
+        return false
+      end
+      if domain:match("^%.") or domain:match("%.$") or domain:match("%.%.") then
+        return false
+      end
+      return true
+    end,
+  },
+
   iso_date = {
     pattern = "^%d%d%d%d%-%d%d%-%d%d$",
     validate = function(value)
@@ -287,6 +306,7 @@ function M.detect_type(value)
     "localhost",
     "database_url",
     "url",
+    "email",
     "iso_date",
     "iso_time",
     "hex_color",

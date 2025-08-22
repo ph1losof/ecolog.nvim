@@ -19,7 +19,7 @@ local ui = {
 local win = {}
 
 local function make_floating_popup_options(opts)
-  vim.validate("opts", opts, "table", true)
+  vim.validate({ opts = { opts, "table" } }, true)
   opts = opts or {}
 
   -- If relative is "editor", use direct positioning
@@ -39,8 +39,8 @@ local function make_floating_popup_options(opts)
   end
 
   -- Original positioning logic for cursor/window relative
-  vim.validate("opts.offset_x", opts.offset_x, "number", true)
-  vim.validate("opts.offset_y", opts.offset_y, "number", true)
+  vim.validate({ opts.offset_x = { opts.offset_x, "number" } }, true)
+  vim.validate({ opts.offset_y = { opts.offset_y, "number" } }, true)
 
   local anchor = ""
   local row, col
@@ -143,7 +143,7 @@ end
 
 --float window only
 function obj:winsetconf(config)
-  vim.validate("config", config, "table")
+  vim.validate({ config = { config, "table" } })
   api.nvim_win_set_config(self.winid, config)
   return self
 end
@@ -161,7 +161,7 @@ function obj:setheight(height)
 end
 
 function win:new_float(float_opt, enter, force)
-  vim.validate("float_opt", float_opt, "table", true)
+  vim.validate({ float_opt = { float_opt, "table" } }, true)
   enter = enter or false
 
   self.bufnr = float_opt.bufnr or api.nvim_create_buf(false, false)

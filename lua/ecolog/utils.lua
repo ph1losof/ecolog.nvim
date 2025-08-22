@@ -847,6 +847,22 @@ function M.parse_env_line(line)
 
   local key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
   local value = line:sub(eq_pos + 1) -- Don't trim the value to preserve whitespace
+  
+  -- Handle edge cases:
+  -- 1. Empty key (lines like "=value") - return nil
+  if not key or key == "" then
+    return nil, nil, nil
+  end
+  
+  -- 2. Lines with only equals signs (like "=" or "===") - return nil
+  if key:match("^=*$") then
+    return nil, nil, nil
+  end
+  
+  -- 3. Value can be empty string, nil, or contain content
+  if value == nil then
+    value = ""
+  end
 
   return key, value, eq_pos
 end
@@ -885,80 +901,139 @@ function M.parse_env_file(file_path)
     return env_vars
   end
   
-  -- Handle different line endings (CRLF, LF, CR)
+  -- Handle different line endings (CRLF, LF, CR) more robustly
   content = content:gsub("\r\n", "\n"):gsub("\r", "\n")
-  local lines = {}
-  for line in content:gmatch("([^\n]*)\n?") do
-    table.insert(lines, line)
-  end
   
-  -- Remove empty last line if present
-  if #lines > 0 and lines[#lines] == "" then
-    table.remove(lines)
+  -- Split lines more carefully to handle edge cases
+  local lines = {}
+  if content ~= "" then
+    for line in (content .. "\n"):gmatch("([^\n]*)\n") do
+      table.insert(lines, line)
+    end
+    -- Remove the extra empty line we might have added
+    if #lines > 0 and lines[#lines] == "" and content:sub(-1) ~= "\n" then
+      table.remove(lines)
+    end
   end
   
   local line_number = 0
   local in_multiline = false
   local multiline_key = nil
   local multiline_value = {}
+  local multiline_quote_char = nil
+  local multiline_start_line = 0
   
   for _, line in ipairs(lines) do
     line_number = line_number + 1
     
     if in_multiline then
-      -- Handle multiline quoted values
-      table.insert(multiline_value, line)
-      if line:match('"$') then
+      -- Handle multiline quoted values more robustly
+      local found_end_quote = false
+      local i = 1
+      while i <= #line do
+        if line:sub(i, i) == multiline_quote_char then
+          -- Check if it's escaped
+          local escape_count = 0
+          local j = i - 1
+          while j >= 1 and line:sub(j, j) == "\\" do
+            escape_count = escape_count + 1
+            j = j - 1
+          end
+          
+          -- If even number of backslashes (including 0), quote is not escaped
+          if escape_count % 2 == 0 then
+            found_end_quote = true
+            table.insert(multiline_value, line:sub(1, i - 1))
+            break
+          end
+        end
+        i = i + 1
+      end
+      
+      if found_end_quote then
         in_multiline = false
         local full_value = table.concat(multiline_value, "\n")
-        -- Remove surrounding quotes and handle escape sequences
-        full_value = full_value:gsub('^"', ''):gsub('"$', '')
-        full_value = full_value:gsub('\\n', '\n'):gsub('\\t', '\t'):gsub('\\r', '\r'):gsub('\\"', '"'):gsub('\\\\', '\\')
+        -- Handle escape sequences more comprehensively
+        full_value = M.process_escape_sequences(full_value)
         env_vars[multiline_key] = {
           value = full_value,
-          line = line_number,
+          line = multiline_start_line,
         }
         multiline_key = nil
         multiline_value = {}
+        multiline_quote_char = nil
+        multiline_start_line = 0
+      else
+        table.insert(multiline_value, line)
       end
     else
       local key, value = M.parse_env_line(line)
       
       if key and key ~= "" then
-        -- Handle quoted values
-        if value and value:match('^".*[^"]$') then
-          -- Start of multiline quoted value (or mismatched quotes)
-          if not value:match('\\"$') then -- not an escaped quote
-            in_multiline = true
-            multiline_key = key
-            multiline_value = {value:gsub('^"', '')}
+        -- Handle quoted values more robustly
+        if value then
+          local first_char = value:sub(1, 1)
+          if first_char == '"' or first_char == "'" then
+            -- Look for matching end quote
+            local end_quote_pos = nil
+            local i = 2
+            while i <= #value do
+              if value:sub(i, i) == first_char then
+                -- Check if it's escaped
+                local escape_count = 0
+                local j = i - 1
+                while j >= 1 and value:sub(j, j) == "\\" do
+                  escape_count = escape_count + 1
+                  j = j - 1
+                end
+                
+                -- If even number of backslashes, quote is not escaped
+                if escape_count % 2 == 0 then
+                  end_quote_pos = i
+                  break
+                end
+              end
+              i = i + 1
+            end
+            
+            if end_quote_pos then
+              -- Complete quoted value on single line
+              local quoted_value = value:sub(2, end_quote_pos - 1)
+              quoted_value = M.process_escape_sequences(quoted_value)
+              env_vars[key] = {
+                value = quoted_value,
+                line = line_number,
+              }
+            else
+              -- Start of multiline quoted value
+              in_multiline = true
+              multiline_key = key
+              multiline_value = {value:sub(2)} -- Remove opening quote
+              multiline_quote_char = first_char
+              multiline_start_line = line_number
+            end
           else
-            -- Mismatched quotes - treat as regular value
+            -- Unquoted value - preserve original but handle trailing whitespace consistently
+            local trimmed_value = value
+            -- Don't trim leading whitespace to preserve user intent, but trim trailing whitespace after comments
+            local comment_pos = value:find("#")
+            if comment_pos then
+              -- Only trim if there's whitespace before the comment
+              local before_comment = value:sub(1, comment_pos - 1)
+              if before_comment:match("%s$") then
+                trimmed_value = before_comment:match("^(.-)%s*$")
+              end
+            end
+            
             env_vars[key] = {
-              value = value,
+              value = trimmed_value,
               line = line_number,
             }
           end
-        elseif value and value:match('^".*"$') then
-          -- Complete quoted value on single line
-          local unquoted = value:gsub('^"', ''):gsub('"$', '')
-          unquoted = unquoted:gsub('\\n', '\n'):gsub('\\t', '\t'):gsub('\\r', '\r'):gsub('\\"', '"'):gsub('\\\\', '\\')
-          env_vars[key] = {
-            value = unquoted,
-            line = line_number,
-          }
-        elseif value and value:match("^'.*'$") then
-          -- Handle single quotes (process some escape sequences)
-          local unquoted = value:gsub("^'", ""):gsub("'$", "")
-          unquoted = unquoted:gsub("\\'", "'")
-          env_vars[key] = {
-            value = unquoted,
-            line = line_number,
-          }
         else
-          -- Unquoted value or mismatched quotes - preserve original
+          -- Empty value
           env_vars[key] = {
-            value = value or "",
+            value = "",
             line = line_number,
           }
         end
@@ -966,7 +1041,41 @@ function M.parse_env_file(file_path)
     end
   end
   
+  -- Handle case where file ends in middle of multiline value
+  if in_multiline and multiline_key then
+    local full_value = table.concat(multiline_value, "\n")
+    full_value = M.process_escape_sequences(full_value)
+    env_vars[multiline_key] = {
+      value = full_value,
+      line = multiline_start_line,
+    }
+  end
+  
   return env_vars
+end
+
+---Process escape sequences in a string
+---@param str string The string to process
+---@return string The processed string
+function M.process_escape_sequences(str)
+  if not str then
+    return ""
+  end
+  
+  -- Handle escape sequences comprehensively
+  local result = str
+  result = result:gsub("\\n", "\n")
+  result = result:gsub("\\t", "\t")
+  result = result:gsub("\\r", "\r")
+  result = result:gsub("\\v", "\v")
+  result = result:gsub("\\f", "\f")
+  result = result:gsub("\\a", "\a")
+  result = result:gsub("\\b", "\b")
+  result = result:gsub('\\"', '"')
+  result = result:gsub("\\'", "'")
+  result = result:gsub("\\\\", "\\")
+  
+  return result
 end
 
 ---Find word boundaries in a line of text

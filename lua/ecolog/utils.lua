@@ -9,7 +9,7 @@ local M = {}
 ---@field word string Pattern for matching word characters
 ---@field env_var string Pattern for matching environment variable names
 M.PATTERNS = {
-  env_file_combined = "^.+/%.env[^.]*$",
+  env_file_combined = "^.+/%.env[%.%w]*$",
   env_line = "^[^#](.+)$",
   key_value = "([^=]+)=(.+)",
   quoted = "^['\"](.*)['\"]$",
@@ -548,6 +548,29 @@ local function default_sort_file_fn(a, b, opts)
   local b_is_env = b:match(M.PATTERNS.env_file_combined) ~= nil
   if a_is_env ~= b_is_env then
     return a_is_env
+  end
+
+  -- Handle specific env file priorities (base files first, then specific ones)
+  -- This ensures that when files are merged, more specific files override base files
+  local a_base = a:match("%.env$") ~= nil
+  local b_base = b:match("%.env$") ~= nil
+  local a_specific = a:match("%.env%.%w+") ~= nil or a:match("%.env%.local") ~= nil
+  local b_specific = b:match("%.env%.%w+") ~= nil or b:match("%.env%.local") ~= nil
+  
+  -- Base .env files should come before specific ones (so specific ones override)
+  if a_base and b_specific then
+    return true
+  elseif a_specific and b_base then
+    return false
+  end
+  
+  -- Among specific files, prioritize .local files last (highest priority)
+  if a_specific and b_specific then
+    local a_local = a:match("%.env%.local") ~= nil
+    local b_local = b:match("%.env%.local") ~= nil
+    if a_local ~= b_local then
+      return not a_local -- .local files come after others
+    end
   end
 
   if opts and opts._monorepo_root and opts._current_workspace_info then

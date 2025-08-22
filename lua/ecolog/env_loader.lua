@@ -391,7 +391,15 @@ function M.load_environment(opts, state, force)
     end
   else
     if state.selected_env_file then
-      env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {}, env_vars, opts)
+      -- Load all environment files and merge them in priority order
+      local env_files = utils.find_env_files(opts)
+      env_vars = {}
+      
+      -- Load files in order (base files first, then more specific ones override)
+      for i = 1, #env_files do
+        local file_vars = load_env_file(env_files[i], state._env_line_cache or {}, {}, opts)
+        merge_vars(env_vars, file_vars, true) -- Allow overriding
+      end
     end
 
     if shell_enabled then

@@ -182,12 +182,10 @@ ACCENTED_VAR=café naïve résumé
     end)
 
     it("should handle special control characters", function()
-      local content = [[
-NULL_CHAR=before]] .. "\0" .. [[after
-BELL_CHAR=]] .. "\a" .. [[
-FORM_FEED=]] .. "\f" .. [[
-VERTICAL_TAB=]] .. "\v" .. [[
-]]
+      local content = "NULL_CHAR=before" .. "\0" .. "after\n" ..
+                      "BELL_CHAR=" .. "\a" .. "\n" ..
+                      "FORM_FEED=" .. "\f" .. "\n" ..
+                      "VERTICAL_TAB=" .. "\v" .. "\n"
       create_test_file(test_dir .. "/.env", content)
 
       local result = utils.parse_env_file(test_dir .. "/.env")

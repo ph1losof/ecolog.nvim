@@ -1005,12 +1005,48 @@ function M.parse_env_file(file_path)
                 line = line_number,
               }
             else
-              -- Start of multiline quoted value
-              in_multiline = true
-              multiline_key = key
-              multiline_value = {value:sub(2)} -- Remove opening quote
-              multiline_quote_char = first_char
-              multiline_start_line = line_number
+              -- No closing quote found - check if it contains a different quote character (mismatched)
+              local other_quote = (first_char == '"') and "'" or '"'
+              if value:find(other_quote) then
+                -- Mismatched quotes - treat as unquoted but process escape sequences
+                local unquoted_value = value:sub(2) -- Remove opening quote
+                unquoted_value = M.process_escape_sequences(unquoted_value)
+                env_vars[key] = {
+                  value = unquoted_value,
+                  line = line_number,
+                }
+              else
+                -- Could be unclosed quote for single line or multiline
+                -- Check if the next line looks like a new variable assignment
+                local rest_of_value = value:sub(2)
+                local should_be_multiline = false
+                
+                -- Check if there are more lines and if the next line doesn't look like a variable assignment
+                if line_number < #lines then
+                  local next_line = lines[line_number + 1]
+                  -- If next line doesn't contain '=' or is empty/comment, might be multiline
+                  if next_line and not next_line:match("^%s*$") and not next_line:match("^%s*#") and not next_line:find("=") then
+                    should_be_multiline = true
+                  end
+                end
+                
+                if should_be_multiline then
+                  -- Enter multiline mode
+                  in_multiline = true
+                  multiline_key = key
+                  multiline_value = {rest_of_value} -- Remove opening quote
+                  multiline_quote_char = first_char
+                  multiline_start_line = line_number
+                else
+                  -- Treat as unclosed quote and remove the opening quote
+                  local unquoted_value = rest_of_value
+                  unquoted_value = M.process_escape_sequences(unquoted_value)
+                  env_vars[key] = {
+                    value = unquoted_value,
+                    line = line_number,
+                  }
+                end
+              end
             end
           else
             -- Unquoted value - preserve original but handle trailing whitespace consistently
@@ -1063,7 +1099,9 @@ function M.process_escape_sequences(str)
   end
   
   -- Handle escape sequences comprehensively
+  -- NOTE: Order matters! Process \\ first, then other escapes
   local result = str
+  result = result:gsub("\\\\", "\1") -- Temporary marker for escaped backslash
   result = result:gsub("\\n", "\n")
   result = result:gsub("\\t", "\t")
   result = result:gsub("\\r", "\r")
@@ -1073,7 +1111,7 @@ function M.process_escape_sequences(str)
   result = result:gsub("\\b", "\b")
   result = result:gsub('\\"', '"')
   result = result:gsub("\\'", "'")
-  result = result:gsub("\\\\", "\\")
+  result = result:gsub("\1", "\\") -- Restore escaped backslashes
   
   return result
 end

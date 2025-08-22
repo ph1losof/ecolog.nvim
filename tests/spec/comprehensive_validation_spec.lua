@@ -241,7 +241,7 @@ PASSWORD=supersecret
       local shelter = require("ecolog.shelter")
 
       -- Test masking functionality
-      local masked_secret = shelter.mask_value("secret123456")
+      local masked_secret = shelter.mask_value("secret123456", "files")
       assert.is_true(masked_secret:find("*") ~= nil, "Should mask sensitive values")
 
       -- Test feature toggles

@@ -22,6 +22,13 @@ describe("ecolog.nvim comprehensive validation", function()
   end
 
   before_each(function()
+    -- Fix package.path to ensure ecolog is available even after directory changes
+    local ecolog_dir = "/home/runner/work/ecolog.nvim/ecolog.nvim"
+    local ecolog_lua_path = ecolog_dir .. "/lua/?.lua;" .. ecolog_dir .. "/lua/?/init.lua"
+    if not package.path:find(ecolog_lua_path, 1, true) then
+      package.path = ecolog_lua_path .. ";" .. package.path
+    end
+    
     package.loaded["ecolog"] = nil
     package.loaded["ecolog.init"] = nil
 

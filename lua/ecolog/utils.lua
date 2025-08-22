@@ -846,9 +846,127 @@ function M.parse_env_line(line)
   end
 
   local key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
-  local value = line:sub(eq_pos + 1):match("^%s*(.-)%s*$")
+  local value = line:sub(eq_pos + 1) -- Don't trim the value to preserve whitespace
 
   return key, value, eq_pos
+end
+
+---Parse an environment file
+---@param file_path string The path to the .env file
+---@return table env_vars A table of environment variables with structure {key = {value = string, line = number}}
+function M.parse_env_file(file_path)
+  local env_vars = {}
+  
+  if not file_path or file_path == "" then
+    return env_vars
+  end
+  
+  -- Check if path exists and is a file
+  local stat = vim.loop.fs_stat(file_path)
+  if not stat then
+    return env_vars
+  end
+  
+  if stat.type ~= "file" then
+    -- Return empty table for directories instead of throwing error
+    return env_vars
+  end
+  
+  local file = io.open(file_path, "r")
+  if not file then
+    return env_vars
+  end
+  
+  -- Read entire file to handle different line endings
+  local content = file:read("*all")
+  file:close()
+  
+  if not content then
+    return env_vars
+  end
+  
+  -- Handle different line endings (CRLF, LF, CR)
+  content = content:gsub("\r\n", "\n"):gsub("\r", "\n")
+  local lines = {}
+  for line in content:gmatch("([^\n]*)\n?") do
+    table.insert(lines, line)
+  end
+  
+  -- Remove empty last line if present
+  if #lines > 0 and lines[#lines] == "" then
+    table.remove(lines)
+  end
+  
+  local line_number = 0
+  local in_multiline = false
+  local multiline_key = nil
+  local multiline_value = {}
+  
+  for _, line in ipairs(lines) do
+    line_number = line_number + 1
+    
+    if in_multiline then
+      -- Handle multiline quoted values
+      table.insert(multiline_value, line)
+      if line:match('"$') then
+        in_multiline = false
+        local full_value = table.concat(multiline_value, "\n")
+        -- Remove surrounding quotes and handle escape sequences
+        full_value = full_value:gsub('^"', ''):gsub('"$', '')
+        full_value = full_value:gsub('\\n', '\n'):gsub('\\t', '\t'):gsub('\\r', '\r'):gsub('\\"', '"'):gsub('\\\\', '\\')
+        env_vars[multiline_key] = {
+          value = full_value,
+          line = line_number,
+        }
+        multiline_key = nil
+        multiline_value = {}
+      end
+    else
+      local key, value = M.parse_env_line(line)
+      
+      if key and key ~= "" then
+        -- Handle quoted values
+        if value and value:match('^".*[^"]$') then
+          -- Start of multiline quoted value (or mismatched quotes)
+          if not value:match('\\"$') then -- not an escaped quote
+            in_multiline = true
+            multiline_key = key
+            multiline_value = {value:gsub('^"', '')}
+          else
+            -- Mismatched quotes - treat as regular value
+            env_vars[key] = {
+              value = value,
+              line = line_number,
+            }
+          end
+        elseif value and value:match('^".*"$') then
+          -- Complete quoted value on single line
+          local unquoted = value:gsub('^"', ''):gsub('"$', '')
+          unquoted = unquoted:gsub('\\n', '\n'):gsub('\\t', '\t'):gsub('\\r', '\r'):gsub('\\"', '"'):gsub('\\\\', '\\')
+          env_vars[key] = {
+            value = unquoted,
+            line = line_number,
+          }
+        elseif value and value:match("^'.*'$") then
+          -- Handle single quotes (process some escape sequences)
+          local unquoted = value:gsub("^'", ""):gsub("'$", "")
+          unquoted = unquoted:gsub("\\'", "'")
+          env_vars[key] = {
+            value = unquoted,
+            line = line_number,
+          }
+        else
+          -- Unquoted value or mismatched quotes - preserve original
+          env_vars[key] = {
+            value = value or "",
+            line = line_number,
+          }
+        end
+      end
+    end
+  end
+  
+  return env_vars
 end
 
 ---Find word boundaries in a line of text

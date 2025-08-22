@@ -36,6 +36,10 @@ describe("error handling and edge cases", function()
     vim.fn.mkdir(test_dir, "p")
     
     vim.cmd("cd " .. test_dir)
+    
+    -- Fix package.path for module loading after changing directory
+    local ecolog_dir = vim.fn.fnamemodify(debug.getinfo(1).source:sub(2), ":p:h:h:h")
+    package.path = ecolog_dir .. "/lua/?.lua;" .. ecolog_dir .. "/lua/?/init.lua;" .. package.path
   end)
 
   after_each(function()

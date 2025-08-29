@@ -346,9 +346,9 @@ function M.toggle_feature(feature)
   if not tbl_contains(state_module.get_features(), feature) then
     notify(
       "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
-      vim.log.levels.ERROR
+      vim.log.levels.WARN
     )
-    return
+    return false
   end
 
   local current_state = state_module.is_enabled(feature)
@@ -357,7 +357,12 @@ function M.toggle_feature(feature)
 end
 
 function M.set_state(command, feature)
-  local should_enable = command == "enable"
+  local should_enable
+  if command == "toggle" then
+    should_enable = not get_state().is_enabled(feature)
+  else
+    should_enable = command == "enable"
+  end
   local state_module = get_state()
   local buffer_module = get_buffer()
 
@@ -365,9 +370,9 @@ function M.set_state(command, feature)
     if not tbl_contains(state_module.get_features(), feature) then
       notify(
         "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
-        vim.log.levels.ERROR
+        vim.log.levels.WARN
       )
-      return
+      return false
     end
 
     state_module.set_feature_state(feature, should_enable)
@@ -400,6 +405,7 @@ function M.set_state(command, feature)
       string.format("Shelter mode for %s is now %s", feature:upper(), should_enable and "enabled" or "disabled"),
       vim.log.levels.INFO
     )
+    return true
   else
     for _, f in ipairs(state_module.get_features()) do
       state_module.set_feature_state(f, should_enable)
@@ -429,6 +435,7 @@ function M.set_state(command, feature)
       string.format("All shelter modes are now %s", should_enable and "enabled" or "disabled"),
       vim.log.levels.INFO
     )
+    return true
   end
 end
 

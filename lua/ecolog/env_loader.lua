@@ -409,25 +409,12 @@ function M.load_environment(opts, state, force)
       env_vars = {}
       local env_files = utils.find_env_files(opts)
       
-      -- Check if a preferred environment is specified
-      if opts.preferred_environment and opts.preferred_environment ~= "" then
-        -- With preferred environment: load all files with preferred files overriding base files
-        for i = 1, #env_files do
-          local file_vars = load_env_file(env_files[i], state._env_line_cache or {}, {}, opts)
-          merge_vars(env_vars, file_vars, true) -- Allow overriding
-        end
-      else
-        -- No preferred environment: base files should take precedence
-        -- Sort files so that specific files come first, then base files override them
-        local reversed_files = {}
-        for i = #env_files, 1, -1 do
-          table.insert(reversed_files, env_files[i])
-        end
-        
-        for i = 1, #reversed_files do
-          local file_vars = load_env_file(reversed_files[i], state._env_line_cache or {}, {}, opts)
-          merge_vars(env_vars, file_vars, true) -- Allow overriding
-        end
+      -- For normal (non-monorepo) setups, we load all found files but ensure proper precedence
+      -- Base files (.env) are loaded first, then more specific files (.env.local) override them
+      -- This maintains backward compatibility while ensuring correct priority order
+      for i = 1, #env_files do
+        local file_vars = load_env_file(env_files[i], state._env_line_cache or {}, {}, opts)
+        merge_vars(env_vars, file_vars, true) -- Allow overriding for proper precedence
       end
     end
 

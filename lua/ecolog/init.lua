@@ -805,12 +805,12 @@ local function create_commands(config)
               get_shelter().toggle_all()
             end
             return
-          end
-          if command ~= "enable" and command ~= "disable" then
+          elseif command == "enable" or command == "disable" then
+            get_shelter().set_state(command, feature)
+          else
             notify("Invalid command. Use 'enable', 'disable', or 'toggle'", vim.log.levels.WARN)
             return
           end
-          get_shelter().set_state(command, feature)
         end)
         if not success then
           notify(string.format("EcologShelter error: %s", err), vim.log.levels.WARN)

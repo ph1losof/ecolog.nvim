@@ -2,7 +2,30 @@ local M = {}
 local utils = require("ecolog.utils")
 
 M.providers = {
-  -- getenv completion
+  -- Complete expressions (for detection anywhere in code)
+  {
+    pattern = "getenv%(['\"][%w_]+['\"]%)",
+    filetype = "php",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "getenv%(['\"]([%w_]+)['\"]%)")
+    end,
+  },
+  {
+    pattern = "%$_ENV%[['\"][%w_]+['\"]%]",
+    filetype = "php",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "%$_ENV%[['\"]([%w_]+)['\"]%]")
+    end,
+  },
+  {
+    pattern = "%$_SERVER%[['\"][%w_]+['\"]%]",
+    filetype = "php",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "%$_SERVER%[['\"]([%w_]+)['\"]%]")
+    end,
+  },
+
+  -- Completion patterns (for autocomplete)
   {
     pattern = "getenv%(['\"][%w_]*$",
     filetype = "php",

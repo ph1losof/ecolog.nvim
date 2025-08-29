@@ -2,7 +2,72 @@ local M = {}
 local utils = require("ecolog.utils")
 
 M.providers = {
-  -- os.Getenv with double quotes completion
+  -- Complete expressions (for detection anywhere in code)
+  {
+    pattern = 'os%.Getenv%("[%w_]+"%)',
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.Getenv%("([%w_]+)"%)')
+    end,
+  },
+  {
+    pattern = "os%.Getenv%('[%w_]+'%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.Getenv%('([%w_]+)'%)")
+    end,
+  },
+  {
+    pattern = "os%.Getenv%(`[%w_]+`%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.Getenv%(`([%w_]+)`%)")
+    end,
+  },
+  {
+    pattern = 'os%.LookupEnv%("[%w_]+"%)',
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.LookupEnv%("([%w_]+)"%)')
+    end,
+  },
+  {
+    pattern = "os%.LookupEnv%('[%w_]+'%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.LookupEnv%('([%w_]+)'%)")
+    end,
+  },
+  {
+    pattern = "os%.LookupEnv%(`[%w_]+`%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.LookupEnv%(`([%w_]+)`%)")
+    end,
+  },
+  {
+    pattern = 'syscall%.Getenv%("[%w_]+"%)',
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'syscall%.Getenv%("([%w_]+)"%)')
+    end,
+  },
+  {
+    pattern = "syscall%.Getenv%('[%w_]+'%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "syscall%.Getenv%('([%w_]+)'%)")
+    end,
+  },
+  {
+    pattern = "syscall%.Getenv%(`[%w_]+`%)",
+    filetype = "go",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "syscall%.Getenv%(`([%w_]+)`%)")
+    end,
+  },
+
+  -- Completion patterns (for autocomplete)
   {
     pattern = 'os%.Getenv%("[%w_]*$',
     filetype = "go",

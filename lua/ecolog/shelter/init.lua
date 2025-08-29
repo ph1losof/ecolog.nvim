@@ -77,6 +77,13 @@ function M.setup(opts)
   end
 
   local partial = opts.partial or {}
+  
+  -- If patterns are configured but no features are explicitly enabled,
+  -- enable cmp feature by default to make masking work
+  if opts.config and opts.config.patterns and vim.tbl_isempty(partial) then
+    partial.cmp = true
+  end
+  
   for _, feature in ipairs(state_module.get_features()) do
     local value = type(partial[feature]) == "boolean" and partial[feature] or false
     if feature == "files" then
@@ -236,20 +243,59 @@ function M.setup(opts)
   })
 end
 
-function M.mask_value(value, feature, key, source)
+function M.mask_value(value, arg2, arg3, arg4)
   if not value then
     return ""
   end
+  
+  local feature, key, source, opts
+  
+  -- Handle different calling patterns:
+  -- 1. mask_value(value, { key = "KEY" }) - options table as second arg
+  -- 2. mask_value(value, "KEY") - key as second arg (backward compatibility)
+  -- 3. mask_value(value, "feature", "key", "source") - original signature
+  if type(arg2) == "table" then
+    -- Pattern 1: options table
+    opts = arg2
+    feature = "cmp" -- default feature
+    key = opts.key
+    source = opts.source
+  elseif type(arg2) == "string" and not arg3 then
+    -- Pattern 2: key as second argument (test compatibility)
+    feature = "cmp" -- default feature
+    key = arg2
+    source = nil
+  else
+    -- Pattern 3: original signature
+    feature = arg2 or "cmp"
+    key = arg3
+    source = arg4
+  end
+  
   local state_module = get_state()
   if not state_module.is_enabled(feature) then
     return value
   end
 
-  return get_utils().determine_masked_value(value, {
+  local settings = {
     partial_mode = state_module.get_config().partial_mode,
     key = key,
     source = source,
-  })
+    patterns = state_module.get_config().patterns,
+    sources = state_module.get_config().sources,
+    default_mode = state_module.get_config().default_mode,
+  }
+  
+  -- If opts were provided, merge them
+  if opts then
+    for k, v in pairs(opts) do
+      if k ~= "key" and k ~= "source" then -- key and source already handled
+        settings[k] = v
+      end
+    end
+  end
+
+  return get_utils().determine_masked_value(value, settings)
 end
 
 function M.is_enabled(feature)
@@ -424,6 +470,36 @@ function M.restore_initial_settings()
     if ok then
       snacks_integration.setup_snacks_shelter()
     end
+  end
+end
+
+-- Line reveal functionality for peek operations
+function M.is_line_revealed(line_num)
+  local state_module = get_state()
+  return state_module.is_line_revealed(line_num)
+end
+
+function M.set_revealed_line(line_num, revealed)
+  local state_module = get_state()
+  return state_module.set_revealed_line(line_num, revealed)
+end
+
+function M.reset_revealed_lines()
+  local state_module = get_state()
+  return state_module.reset_revealed_lines()
+end
+
+-- Context-specific masking functionality
+function M.mask_value_for_context(value, context, feature)
+  -- Use context-specific logic for masking
+  feature = feature or "cmp"
+  
+  if context == "completion" then
+    return M.mask_value(value, "cmp")
+  elseif context == "preview" then 
+    return M.mask_value(value, "peek")
+  else
+    return M.mask_value(value, feature)
   end
 end
 

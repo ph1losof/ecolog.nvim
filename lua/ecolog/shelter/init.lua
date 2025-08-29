@@ -386,4 +386,45 @@ function M.set_state(command, feature)
   end
 end
 
+function M.restore_initial_settings()
+  local state_module = get_state()
+  local buffer_module = get_buffer()
+  
+  -- Restore each feature to its initial state
+  local initial_state = state_module.get_state().features.initial
+  for feature, initial_enabled in pairs(initial_state) do
+    state_module.set_feature_state(feature, initial_enabled)
+  end
+  
+  -- Handle buffer shelter based on files feature initial state
+  if initial_state.files then
+    buffer_module.setup_file_shelter()
+    buffer_module.shelter_buffer()
+  else
+    buffer_module.unshelter_buffer()
+  end
+  
+  -- Setup integrations based on initial state
+  if initial_state.telescope_previewer then
+    local ok, telescope_integration = pcall(require, "ecolog.shelter.integrations.telescope")
+    if ok then
+      telescope_integration.setup_telescope_shelter()
+    end
+  end
+  
+  if initial_state.fzf_previewer then
+    local ok, fzf_integration = pcall(require, "ecolog.shelter.integrations.fzf")
+    if ok then
+      fzf_integration.setup_fzf_shelter()
+    end
+  end
+  
+  if initial_state.snacks_previewer then
+    local ok, snacks_integration = pcall(require, "ecolog.shelter.integrations.snacks")
+    if ok then
+      snacks_integration.setup_snacks_shelter()
+    end
+  end
+end
+
 return M

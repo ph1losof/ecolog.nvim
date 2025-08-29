@@ -66,10 +66,15 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts, 
 
   local type_name, transformed_value = types.detect_type(value)
 
+  local final_value = value
+  if transformed_value ~= nil then
+    final_value = transformed_value
+  end
+
   local result = {
     key,
     {
-      value = transformed_value or value,
+      value = final_value,
       type = type_name,
       raw_value = value,
       source = file_path,
@@ -156,8 +161,13 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
         local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
         if interpolated_value ~= var_info.raw_value then
           local type_name, transformed_value = types.detect_type(interpolated_value)
+          local final_value = interpolated_value
+          if transformed_value ~= nil then
+            final_value = transformed_value
+          end
+          
           env_vars_result[key] = {
-            value = transformed_value or interpolated_value,
+            value = final_value,
             type = type_name,
             raw_value = var_info.raw_value,
             source = var_info.source,
@@ -231,8 +241,13 @@ local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, c
           local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
           if interpolated_value ~= var_info.raw_value then
             local type_name, transformed_value = types.detect_type(interpolated_value)
+            local final_value = interpolated_value
+            if transformed_value ~= nil then
+              final_value = transformed_value
+            end
+            
             env_vars_result[key] = {
-              value = transformed_value or interpolated_value,
+              value = final_value,
               type = type_name,
               raw_value = var_info.raw_value,
               source = var_info.source,

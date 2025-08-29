@@ -71,8 +71,14 @@ function AsyncEnvLoader._parse_single_file(file_path, content, opts)
       if key and value then
         local type_name, transformed_value = types.detect_type(value)
 
+        -- Use explicit nil check to handle boolean false correctly
+        local final_value = value
+        if transformed_value ~= nil then
+          final_value = transformed_value
+        end
+
         env_vars[key] = {
-          value = transformed_value or value,
+          value = final_value,
           type = type_name,
           raw_value = value,
           source = file_path,
@@ -104,8 +110,13 @@ function AsyncEnvLoader._apply_interpolation(env_vars, interpolation_opts)
       local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars, interpolation_opts)
       if interpolated_value ~= var_info.raw_value then
         local type_name, transformed_value = types.detect_type(interpolated_value)
+        local final_value = interpolated_value
+        if transformed_value ~= nil then
+          final_value = transformed_value
+        end
+        
         env_vars[key] = {
-          value = transformed_value or interpolated_value,
+          value = final_value,
           type = type_name,
           raw_value = var_info.raw_value,
           source = var_info.source,

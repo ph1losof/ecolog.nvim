@@ -20,13 +20,16 @@ local TYPE_DEFINITIONS = {
     transform = function(value)
       local lower = value:lower()
       if lower == "yes" or lower == "1" or lower == "true" then
-        return "true"
+        return true
       end
-      return "false"
+      return false
     end,
   },
   number = {
     pattern = "^-?%d+%.?%d*$",
+    transform = function(value)
+      return tonumber(value)
+    end,
   },
   json = {
     pattern = "^%s*[{%[].*[%]}]%s*$",

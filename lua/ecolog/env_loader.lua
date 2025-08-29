@@ -406,14 +406,28 @@ function M.load_environment(opts, state, force)
     end
   else
     if state.selected_env_file then
-      -- Load all environment files and merge them in priority order
-      local env_files = utils.find_env_files(opts)
       env_vars = {}
+      local env_files = utils.find_env_files(opts)
       
-      -- Load files in order (base files first, then more specific ones override)
-      for i = 1, #env_files do
-        local file_vars = load_env_file(env_files[i], state._env_line_cache or {}, {}, opts)
-        merge_vars(env_vars, file_vars, true) -- Allow overriding
+      -- Check if a preferred environment is specified
+      if opts.preferred_environment and opts.preferred_environment ~= "" then
+        -- With preferred environment: load all files with preferred files overriding base files
+        for i = 1, #env_files do
+          local file_vars = load_env_file(env_files[i], state._env_line_cache or {}, {}, opts)
+          merge_vars(env_vars, file_vars, true) -- Allow overriding
+        end
+      else
+        -- No preferred environment: base files should take precedence
+        -- Sort files so that specific files come first, then base files override them
+        local reversed_files = {}
+        for i = #env_files, 1, -1 do
+          table.insert(reversed_files, env_files[i])
+        end
+        
+        for i = 1, #reversed_files do
+          local file_vars = load_env_file(reversed_files[i], state._env_line_cache or {}, {}, opts)
+          merge_vars(env_vars, file_vars, true) -- Allow overriding
+        end
       end
     end
 

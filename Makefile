@@ -29,9 +29,7 @@ deps:
 
 test: deps
 	@echo "Running all tests..."
-	@nvim --headless -u tests/minimal_init.lua \
-		-c "lua require('plenary.test_harness').test_directory('tests/spec/', {minimal_init='tests/minimal_init.lua'})" \
-		-c "qa!"
+	@./scripts/simple_test_runner.sh
 
 test-file: deps
 	@if [ -z "$(FILE)" ]; then \

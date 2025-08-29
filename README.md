@@ -490,11 +490,13 @@ The provider will be automatically loaded when editing files of the specified fi
 
 ## 📝 Environment File Priority
 
-Files are loaded in the following priority order:
+Only one environment file is selected and loaded at a time, based on the following priority order:
 
 1. `.env.{preferred_environment}` (if preferred_environment is set)
 2. `.env`
 3. Other `.env.*` files (alphabetically)
+
+The first available file in this priority order will be selected. Environment variables from shell and secret managers may still be merged with the selected file's variables.
 
 ## 🔌 Shell Variables Integration
 
@@ -763,7 +765,6 @@ Each provider defines its own environment file resolution strategy:
 1. **`workspace_first`** (default): Workspace files take precedence over root files
 2. **`root_first`**: Root files take precedence over workspace files
 3. **`workspace_only`**: Only load workspace environment files
-4. **`merge`**: Merge files based on override order
 
 #### Provider-Specific Resolution
 

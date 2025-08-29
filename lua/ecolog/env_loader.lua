@@ -406,9 +406,7 @@ function M.load_environment(opts, state, force)
     end
   else
     if state.selected_env_file then
-      -- For normal (non-monorepo) setups, load only the selected environment file
-      -- This ensures that when a user explicitly selects a file, only that file is used
-      env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {}, {}, opts)
+      env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {}, env_vars, opts)
     end
 
     if shell_enabled then

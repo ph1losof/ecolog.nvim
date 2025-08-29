@@ -33,7 +33,7 @@ run_all_tests() {
     echo -e "${GREEN}Running all tests...${NC}"
     nvim --headless -u tests/minimal_init.lua \
         -c "lua require('plenary.test_harness').test_directory('tests/spec/', {minimal_init='tests/minimal_init.lua'})" \
-        -c "qa!" || true
+        -c "qa!"
     echo -e "${GREEN}Tests completed. Check output above for any failures.${NC}"
 }
 
@@ -56,7 +56,7 @@ run_pattern_tests() {
         exit 1
     fi
     echo -e "${GREEN}Running tests matching pattern: $1${NC}"
-    
+
     nvim --headless -u tests/minimal_init.lua \
         -c "lua require('plenary.test_harness').test_directory('tests/spec/', {minimal_init='tests/minimal_init.lua', pattern='$1'})" \
         -c "qa!"
@@ -79,35 +79,35 @@ clean_deps() {
 }
 
 case "${1:-all}" in
-    all)
-        install_deps
-        run_all_tests
-        ;;
-    file)
-        install_deps
-        run_test_file "$2"
-        ;;
-    pattern)
-        install_deps
-        run_pattern_tests "$2"
-        ;;
-    coverage)
-        install_deps
-        run_coverage
-        ;;
-    watch)
-        install_deps
-        run_watch
-        ;;
-    clean)
-        clean_deps
-        ;;
-    help)
-        usage
-        ;;
-    *)
-        echo -e "${RED}Unknown option: $1${NC}"
-        usage
-        exit 1
-        ;;
+all)
+    install_deps
+    run_all_tests
+    ;;
+file)
+    install_deps
+    run_test_file "$2"
+    ;;
+pattern)
+    install_deps
+    run_pattern_tests "$2"
+    ;;
+coverage)
+    install_deps
+    run_coverage
+    ;;
+watch)
+    install_deps
+    run_watch
+    ;;
+clean)
+    clean_deps
+    ;;
+help)
+    usage
+    ;;
+*)
+    echo -e "${RED}Unknown option: $1${NC}"
+    usage
+    exit 1
+    ;;
 esac

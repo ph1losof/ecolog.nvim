@@ -406,16 +406,9 @@ function M.load_environment(opts, state, force)
     end
   else
     if state.selected_env_file then
-      env_vars = {}
-      local env_files = utils.find_env_files(opts)
-      
-      -- For normal (non-monorepo) setups, we load all found files but ensure proper precedence
-      -- Base files (.env) are loaded first, then more specific files (.env.local) override them
-      -- This maintains backward compatibility while ensuring correct priority order
-      for i = 1, #env_files do
-        local file_vars = load_env_file(env_files[i], state._env_line_cache or {}, {}, opts)
-        merge_vars(env_vars, file_vars, true) -- Allow overriding for proper precedence
-      end
+      -- For normal (non-monorepo) setups, load only the selected environment file
+      -- This ensures that when a user explicitly selects a file, only that file is used
+      env_vars = load_env_file(state.selected_env_file, state._env_line_cache or {}, {}, opts)
     end
 
     if shell_enabled then

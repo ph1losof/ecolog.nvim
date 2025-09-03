@@ -32,8 +32,17 @@ jobs:
         make test
     
     - name: Upload test results
-      if: failure()
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.neovim }}
         path: test-results/
+        if-no-files-found: ignore
+    
+    - name: Upload test report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: junit-results-${{ matrix.os }}-${{ matrix.neovim }}
+        path: test-results/junit.xml
+        if-no-files-found: ignore

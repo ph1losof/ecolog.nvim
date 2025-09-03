@@ -2,6 +2,7 @@ local M = {}
 local utils = require("ecolog.utils")
 
 M.providers = {
+  -- process.env dot notation (completion - at end of line)
   {
     pattern = "process%.env%.[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
@@ -12,7 +13,15 @@ M.providers = {
       return "process.env."
     end,
   },
-  -- process.env square brackets with double quotes
+  -- process.env dot notation (anywhere in line)
+  {
+    pattern = "process%.env%.[%w_]+",
+    filetype = { "javascript", "javascriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "process%.env%.([%w_]+)")
+    end,
+  },
+  -- process.env square brackets with double quotes (completion)
   {
     pattern = 'process%.env%["[%w_]*$',
     filetype = { "javascript", "javascriptreact" },
@@ -23,7 +32,7 @@ M.providers = {
       return 'process.env["'
     end,
   },
-  -- process.env square brackets with single quotes
+  -- process.env square brackets with single quotes (completion)
   {
     pattern = "process%.env%['[%w_]*$",
     filetype = { "javascript", "javascriptreact" },
@@ -34,7 +43,23 @@ M.providers = {
       return "process.env['"
     end,
   },
-  -- process.env square brackets with single quotes (complete)
+  -- process.env square brackets with double quotes (complete expression)
+  {
+    pattern = 'process%.env%["[%w_]+"%]',
+    filetype = { "javascript", "javascriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'process%.env%["([%w_]+)"%]')
+    end,
+  },
+  -- process.env square brackets with single quotes (complete expression)
+  {
+    pattern = "process%.env%['[%w_]+'%]",
+    filetype = { "javascript", "javascriptreact" },
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "process%.env%['([%w_]+)'%]")
+    end,
+  },
+  -- import.meta.env (completion)
   {
     pattern = "import%.meta%.env%.[%w_]*$",
     filetype = { "javascript", "javascriptreact" },

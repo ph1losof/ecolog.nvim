@@ -2,7 +2,79 @@ local M = {}
 local utils = require("ecolog.utils")
 
 M.providers = {
-  -- os.environ.get with double quotes completion
+  -- Complete expressions (for detection anywhere in code)
+  {
+    pattern = 'os%.environ%["[%w_]+"%]',
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.environ%["([%w_]+)"%]')
+    end,
+  },
+  {
+    pattern = "os%.environ%['[%w_]+']",
+    filetype = "python", 
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.environ%['([%w_]+)']")
+    end,
+  },
+  {
+    pattern = 'os%.environ%.get%("[%w_]+"%)',
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.environ%.get%("([%w_]+)"%)')
+    end,
+  },
+  {
+    pattern = "os%.environ%.get%('[%w_]+'%)",
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.environ%.get%('([%w_]+)'%)")
+    end,
+  },
+  {
+    pattern = 'os%.environ%.get%("[%w_]+", [^)]+%)',
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.environ%.get%("([%w_]+)", [^)]+%)')
+    end,
+  },
+  {
+    pattern = "os%.environ%.get%('[%w_]+', [^)]+%)",
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.environ%.get%('([%w_]+)', [^)]+%)")
+    end,
+  },
+  {
+    pattern = 'os%.getenv%("[%w_]+"%)',
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.getenv%("([%w_]+)"%)')
+    end,
+  },
+  {
+    pattern = "os%.getenv%('[%w_]+'%)",
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.getenv%('([%w_]+)'%)")
+    end,
+  },
+  {
+    pattern = 'os%.getenv%("[%w_]+", [^)]+%)',
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'os%.getenv%("([%w_]+)", [^)]+%)')
+    end,
+  },
+  {
+    pattern = "os%.getenv%('[%w_]+', [^)]+%)",
+    filetype = "python",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "os%.getenv%('([%w_]+)', [^)]+%)")
+    end,
+  },
+
+  -- Completion patterns (for autocomplete)
   {
     pattern = 'os%.environ%.get%("[%w_]*$',
     filetype = "python",

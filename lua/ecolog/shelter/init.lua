@@ -77,6 +77,13 @@ function M.setup(opts)
   end
 
   local partial = opts.partial or {}
+  
+  -- If patterns are configured but no features are explicitly enabled,
+  -- enable cmp feature by default to make masking work
+  if opts.config and opts.config.patterns and vim.tbl_isempty(partial) then
+    partial.cmp = true
+  end
+  
   for _, feature in ipairs(state_module.get_features()) do
     local value = type(partial[feature]) == "boolean" and partial[feature] or false
     if feature == "files" then
@@ -236,20 +243,59 @@ function M.setup(opts)
   })
 end
 
-function M.mask_value(value, feature, key, source)
+function M.mask_value(value, arg2, arg3, arg4)
   if not value then
     return ""
   end
+  
+  local feature, key, source, opts
+  
+  -- Handle different calling patterns:
+  -- 1. mask_value(value, { key = "KEY" }) - options table as second arg
+  -- 2. mask_value(value, "KEY") - key as second arg (backward compatibility)
+  -- 3. mask_value(value, "feature", "key", "source") - original signature
+  if type(arg2) == "table" then
+    -- Pattern 1: options table
+    opts = arg2
+    feature = "cmp" -- default feature
+    key = opts.key
+    source = opts.source
+  elseif type(arg2) == "string" and not arg3 then
+    -- Pattern 2: key as second argument (test compatibility)
+    feature = "cmp" -- default feature
+    key = arg2
+    source = nil
+  else
+    -- Pattern 3: original signature
+    feature = arg2 or "cmp"
+    key = arg3
+    source = arg4
+  end
+  
   local state_module = get_state()
   if not state_module.is_enabled(feature) then
     return value
   end
 
-  return get_utils().determine_masked_value(value, {
+  local settings = {
     partial_mode = state_module.get_config().partial_mode,
     key = key,
     source = source,
-  })
+    patterns = state_module.get_config().patterns,
+    sources = state_module.get_config().sources,
+    default_mode = state_module.get_config().default_mode,
+  }
+  
+  -- If opts were provided, merge them
+  if opts then
+    for k, v in pairs(opts) do
+      if k ~= "key" and k ~= "source" then -- key and source already handled
+        settings[k] = v
+      end
+    end
+  end
+
+  return get_utils().determine_masked_value(value, settings)
 end
 
 function M.is_enabled(feature)
@@ -302,7 +348,7 @@ function M.toggle_feature(feature)
       "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'",
       vim.log.levels.ERROR
     )
-    return
+    return false
   end
 
   local current_state = state_module.is_enabled(feature)
@@ -311,7 +357,12 @@ function M.toggle_feature(feature)
 end
 
 function M.set_state(command, feature)
-  local should_enable = command == "enable"
+  local should_enable
+  if command == "toggle" then
+    should_enable = not get_state().is_enabled(feature)
+  else
+    should_enable = command == "enable"
+  end
   local state_module = get_state()
   local buffer_module = get_buffer()
 
@@ -321,7 +372,7 @@ function M.set_state(command, feature)
         "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'",
         vim.log.levels.ERROR
       )
-      return
+      return false
     end
 
     state_module.set_feature_state(feature, should_enable)
@@ -354,6 +405,7 @@ function M.set_state(command, feature)
       string.format("Shelter mode for %s is now %s", feature:upper(), should_enable and "enabled" or "disabled"),
       vim.log.levels.INFO
     )
+    return true
   else
     for _, f in ipairs(state_module.get_features()) do
       state_module.set_feature_state(f, should_enable)
@@ -383,6 +435,78 @@ function M.set_state(command, feature)
       string.format("All shelter modes are now %s", should_enable and "enabled" or "disabled"),
       vim.log.levels.INFO
     )
+    return true
+  end
+end
+
+function M.restore_initial_settings()
+  local state_module = get_state()
+  local buffer_module = get_buffer()
+  
+  -- Restore each feature to its initial state
+  local initial_state = state_module.get_state().features.initial
+  for feature, initial_enabled in pairs(initial_state) do
+    state_module.set_feature_state(feature, initial_enabled)
+  end
+  
+  -- Handle buffer shelter based on files feature initial state
+  if initial_state.files then
+    buffer_module.setup_file_shelter()
+    buffer_module.shelter_buffer()
+  else
+    buffer_module.unshelter_buffer()
+  end
+  
+  -- Setup integrations based on initial state
+  if initial_state.telescope_previewer then
+    local ok, telescope_integration = pcall(require, "ecolog.shelter.integrations.telescope")
+    if ok then
+      telescope_integration.setup_telescope_shelter()
+    end
+  end
+  
+  if initial_state.fzf_previewer then
+    local ok, fzf_integration = pcall(require, "ecolog.shelter.integrations.fzf")
+    if ok then
+      fzf_integration.setup_fzf_shelter()
+    end
+  end
+  
+  if initial_state.snacks_previewer then
+    local ok, snacks_integration = pcall(require, "ecolog.shelter.integrations.snacks")
+    if ok then
+      snacks_integration.setup_snacks_shelter()
+    end
+  end
+end
+
+-- Line reveal functionality for peek operations
+function M.is_line_revealed(line_num)
+  local state_module = get_state()
+  return state_module.is_line_revealed(line_num)
+end
+
+function M.set_revealed_line(line_num, revealed)
+  local state_module = get_state()
+  return state_module.set_revealed_line(line_num, revealed)
+end
+
+function M.reset_revealed_lines()
+  local state_module = get_state()
+  return state_module.reset_revealed_lines()
+end
+
+-- Context-specific masking functionality
+function M.mask_value_for_context(value, context, feature)
+  -- Use context-specific logic for masking
+  feature = feature or "cmp"
+  
+  if context == "completion" then
+    return M.mask_value(value, "cmp")
+  elseif context == "preview" then 
+    return M.mask_value(value, "peek")
+  else
+    return M.mask_value(value, feature)
   end
 end
 

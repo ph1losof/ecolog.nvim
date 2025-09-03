@@ -76,9 +76,8 @@ local function load_provider(name)
 end
 
 function M.load_providers_for_filetype(filetype)
-  -- Validate input
+  -- Validate input - empty filetype is normal for some buffers, so don't log as error
   if not filetype or type(filetype) ~= "string" or filetype == "" then
-    vim.notify("Invalid filetype provided to load_providers_for_filetype: " .. tostring(filetype), vim.log.levels.ERROR)
     return
   end
 
@@ -327,9 +326,8 @@ function M.register_many(providers)
 end
 
 function M.get_providers(filetype)
-  -- Validate input
+  -- Validate input - empty filetype is normal for some buffers, so don't log as error
   if not filetype or type(filetype) ~= "string" or filetype == "" then
-    vim.notify("Invalid filetype provided to get_providers: " .. tostring(filetype), vim.log.levels.ERROR)
     return {}
   end
 

@@ -137,6 +137,7 @@ local state = {
   file_cache_opts = nil,
   current_watcher_group = nil,
   selected_env_file = nil,
+  manual_file_selection = false,  -- Track if the user manually selected a file
   _env_module = nil,
   _file_watchers = {},
   _env_line_cache = setmetatable({}, { __mode = "kv" }),
@@ -617,6 +618,7 @@ local function handle_env_file_selection(file, config)
   -- so we don't need to acquire the lock here again to avoid deadlocks
   local success, err = pcall(function()
     state.selected_env_file = file
+    state.manual_file_selection = true  -- Mark this as a manual selection
     config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
     get_file_watcher().setup_watcher(config, state, M.refresh_env_vars)
     state.cached_env_files = nil
@@ -627,6 +629,20 @@ local function handle_env_file_selection(file, config)
     state.file_cache_opts = nil
     local base_opts = state.last_opts or DEFAULT_CONFIG
     local opts = vim.tbl_deep_extend("force", base_opts, config or {})
+    
+    -- Preserve monorepo flags when selecting files
+    if base_opts._is_monorepo_workspace then
+      opts._is_monorepo_workspace = base_opts._is_monorepo_workspace
+      opts._workspace_info = base_opts._workspace_info
+      opts._monorepo_root = base_opts._monorepo_root
+      opts._detected_info = base_opts._detected_info
+    end
+    if base_opts._is_monorepo_manual_mode then
+      opts._is_monorepo_manual_mode = base_opts._is_monorepo_manual_mode
+      opts._all_workspaces = base_opts._all_workspaces
+      opts._current_workspace_info = base_opts._current_workspace_info
+    end
+    
     get_env_loader().load_environment(opts, state, true)
 
     if state._env_module then
@@ -1327,7 +1343,10 @@ end
 function M._clear_environment_cache()
   state.cached_env_files = nil
   state.file_cache_opts = nil
-  state.selected_env_file = nil
+  -- Only clear selected_env_file if it wasn't manually selected
+  if state.manual_file_selection ~= true then
+    state.selected_env_file = nil
+  end
   state.env_vars = {}
 end
 

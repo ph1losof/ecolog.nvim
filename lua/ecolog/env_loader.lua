@@ -333,9 +333,10 @@ end
 ---@return table<string, EnvVarInfo>
 function M.load_environment(opts, state, force)
   if force then
-    -- Preserve selected_env_file if workspace file transition was handled
+    -- Preserve selected_env_file in monorepo mode or if workspace file transition was handled
     local preserved_file = opts._workspace_selected_file
       or (opts._workspace_file_handled and state.selected_env_file or nil)
+      or ((opts._is_monorepo_workspace or opts._is_monorepo_manual_mode) and state.selected_env_file or nil)
     state.env_vars = {}
     state._env_line_cache = {}
     if preserved_file then
@@ -580,9 +581,22 @@ function M.load_monorepo_environment(opts, state)
     return {}
   end
 
-  -- For monorepo environments, select only the FIRST file (highest priority)
-  -- based on the provider's resolution strategy and priority rules
-  local selected_file = env_files[1]
+  -- Respect the user's selected file if it exists in the available files
+  local selected_file = nil
+  if state.selected_env_file then
+    -- Check if the previously selected file is still available
+    for _, file in ipairs(env_files) do
+      if file == state.selected_env_file then
+        selected_file = state.selected_env_file
+        break
+      end
+    end
+  end
+
+  -- If no previously selected file or it's not available, use the first file (highest priority)
+  if not selected_file then
+    selected_file = env_files[1]
+  end
 
   -- Update state with selected file for compatibility
   state.selected_env_file = selected_file

@@ -64,10 +64,10 @@ end
 
 vim.o.swapfile = false
 
--- Load required plugins
-require('telescope')
-require('fzf-lua')
-require('snacks')
+-- Try to load optional plugins if they exist
+pcall(require, 'telescope')
+pcall(require, 'fzf-lua')
+pcall(require, 'snacks')
 
 -- Try to load completion engines if they exist
 pcall(require, 'cmp')

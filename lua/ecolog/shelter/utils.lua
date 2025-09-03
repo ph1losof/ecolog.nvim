@@ -122,9 +122,9 @@ function M.determine_masked_value(value, settings)
     return M.mask_multi_line_value(value, settings, conf, mode, mask_length)
   end
 
-  mask_length = mask_length or #value
-
+  -- Only default mask_length for full mode
   if mode == "full" or not conf.partial_mode then
+    mask_length = mask_length or #value
     local result
     if not mask_length then
       result = string_rep(conf.mask_char, #value)

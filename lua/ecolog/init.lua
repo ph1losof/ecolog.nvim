@@ -1555,7 +1555,6 @@ function M.setup(opts)
     if _setup_done then
       return
     end
-    _setup_done = true
 
     -- Handle invalid opts types gracefully
     if opts ~= nil and type(opts) ~= "table" then
@@ -1675,6 +1674,9 @@ function M.setup(opts)
         get_env_module()
       end)
     end
+    
+    -- Mark setup as done only after successful completion
+    _setup_done = true
   end)
 
   release_state_lock()

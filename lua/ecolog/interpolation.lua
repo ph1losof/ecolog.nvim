@@ -4,7 +4,7 @@ local PATTERNS = {
   SINGLE_QUOTED = "^'(.*)'$",
   DOUBLE_QUOTED = '^"(.*)"$',
   BRACE_VAR = "${([^}]+)}",
-  SIMPLE_VAR = "$([%w_]+)",
+  SIMPLE_VAR = "$([%a_][%w_]*)",
   CMD_SUBST = "%$%((.-)%)",
   VAR_PARTS = "([%w_]+)([:%-+]?[%-+]?)(.*)",
 }
@@ -131,21 +131,29 @@ local function process_var_substitution(match, env_vars, opts)
 
   if operator == OPERATORS.DEFAULT and is_empty then
     if not opts.features or opts.features.defaults then
-      return handle_escapes(value, opts)
+      -- Recursively interpolate the default value
+      local M = require("ecolog.interpolation")
+      return M.interpolate(value, env_vars, opts)
     end
   elseif operator == OPERATORS.ALTERNATE and not is_set then
     if not opts.features or opts.features.defaults then
-      return handle_escapes(value, opts)
+      -- Recursively interpolate the alternate value
+      local M = require("ecolog.interpolation")
+      return M.interpolate(value, env_vars, opts)
     end
   end
 
   if operator == OPERATORS.ALT_IF_SET_NON_EMPTY and not is_empty then
     if not opts.features or opts.features.alternates then
-      return handle_escapes(value, opts)
+      -- Recursively interpolate the alternate value
+      local M = require("ecolog.interpolation")
+      return M.interpolate(value, env_vars, opts)
     end
   elseif operator == OPERATORS.ALT_IF_SET and is_set then
     if not opts.features or opts.features.alternates then
-      return handle_escapes(value, opts)
+      -- Recursively interpolate the alternate value
+      local M = require("ecolog.interpolation")
+      return M.interpolate(value, env_vars, opts)
     end
   end
 
@@ -165,7 +173,9 @@ local function process_cmd_substitution(cmd, opts)
 
   -- Sanitize command to prevent injection attacks (unless disabled)
   if not opts.disable_security then
-    local sanitized_cmd = cmd:gsub("[;&|`$()]", "")
+    -- Allow pipes but sanitize other dangerous characters
+    -- Keep single quotes, pipes, and parentheses for basic shell operations
+    local sanitized_cmd = cmd:gsub("[;&`$]", "")
     if sanitized_cmd ~= cmd then
       vim.notify("Command contains potentially dangerous characters, sanitizing: " .. cmd, vim.log.levels.WARN)
       cmd = sanitized_cmd

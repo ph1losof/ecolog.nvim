@@ -31,6 +31,10 @@ test: deps
 	@echo "Running all tests..."
 	@./scripts/simple_test_runner.sh
 
+test-direct: deps
+	@echo "Running tests with direct output..."
+	@./scripts/test_direct.sh
+
 test-file: deps
 	@if [ -z "$(FILE)" ]; then \
 		echo "Usage: make test-file FILE=tests/spec/your_test.lua"; \

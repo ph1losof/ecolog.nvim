@@ -6,12 +6,12 @@ mkdir -p test-results
 
 echo "Running tests..."
 
-# Run tests and capture output
+# Run tests with real-time output while also capturing to file
 nvim --headless -u tests/minimal_init.lua \
     -c "lua require('plenary.test_harness').test_directory('tests/spec/', {minimal_init='tests/minimal_init.lua'})" \
-    -c "qa!" > test-results/output.txt 2>&1 &
+    -c "qa!" 2>&1 | tee test-results/output.txt &
 
-# Get the PID
+# Get the PID of the tee process
 TEST_PID=$!
 
 # Wait for tests to complete (with timeout)

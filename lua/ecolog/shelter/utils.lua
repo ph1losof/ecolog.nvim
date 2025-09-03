@@ -164,7 +164,8 @@ function M.determine_masked_value(value, settings)
   end
 
   local available_mask_space = #value - show_start - show_end
-  local effective_mask_length = math.max(math.min(mask_length or available_mask_space, available_mask_space), min_mask)
+  -- In partial mode, don't use mask_length config - use available space limited by min_mask
+  local effective_mask_length = math.max(available_mask_space, min_mask)
 
   local result = string_sub(value, 1, show_start)
     .. string_rep(conf.mask_char, effective_mask_length)

@@ -3,7 +3,7 @@ local M = {}
 local PATTERNS = {
   SINGLE_QUOTED = "^'(.*)'$",
   DOUBLE_QUOTED = '^"(.*)"$',
-  BRACE_VAR = "${([^}]+)}",
+  BRACE_VAR = "${([^}]+)}",  -- Keep for backward compatibility but won't be used for nested
   SIMPLE_VAR = "$([%a_][%w_]*)",
   CMD_SUBST = "%$%((.-)%)",
   VAR_PARTS = "([%w_]+)([:%-+]?[%-+]?)(.*)",
@@ -59,6 +59,52 @@ end
 local function extract_quoted_content(value, pattern, opts)
   local inner = value:match(pattern)
   return inner and handle_escapes(inner, opts)
+end
+
+---Find and extract balanced brace variables like ${...}
+---Handles nested braces properly
+---@param str string The string to search in
+---@return table Array of {start_pos, end_pos, content} for each variable found
+local function find_balanced_brace_vars(str)
+  local results = {}
+  local i = 1
+  
+  while i <= #str do
+    -- Look for ${
+    local start = str:find("${", i, true)
+    if not start then break end
+    
+    -- Find the matching closing brace
+    local depth = 1
+    local pos = start + 2
+    local content_start = pos
+    
+    while pos <= #str and depth > 0 do
+      local char = str:sub(pos, pos)
+      if char == "{" then
+        depth = depth + 1
+      elseif char == "}" then
+        depth = depth - 1
+      end
+      pos = pos + 1
+    end
+    
+    if depth == 0 then
+      -- Found matching closing brace
+      local content = str:sub(content_start, pos - 2)
+      table.insert(results, {
+        start_pos = start,
+        end_pos = pos - 1,
+        content = content
+      })
+      i = pos
+    else
+      -- No matching brace found, skip this ${
+      i = start + 2
+    end
+  end
+  
+  return results
 end
 
 -- Environment variable cache for optimization
@@ -131,15 +177,23 @@ local function process_var_substitution(match, env_vars, opts)
 
   if operator == OPERATORS.DEFAULT and is_empty then
     if not opts.features or opts.features.defaults then
-      -- Recursively interpolate the default value
-      local M = require("ecolog.interpolation")
-      return M.interpolate(value, env_vars, opts)
+      -- Recursively interpolate the default value if it contains variables
+      if value:match("%$") then
+        local M = require("ecolog.interpolation")
+        return M.interpolate(value, env_vars, opts)
+      else
+        return handle_escapes(value, opts)
+      end
     end
   elseif operator == OPERATORS.ALTERNATE and not is_set then
     if not opts.features or opts.features.defaults then
-      -- Recursively interpolate the alternate value
-      local M = require("ecolog.interpolation")
-      return M.interpolate(value, env_vars, opts)
+      -- Recursively interpolate the alternate value if it contains variables  
+      if value:match("%$") then
+        local M = require("ecolog.interpolation")
+        return M.interpolate(value, env_vars, opts)
+      else
+        return handle_escapes(value, opts)
+      end
     end
   end
 
@@ -173,9 +227,10 @@ local function process_cmd_substitution(cmd, opts)
 
   -- Sanitize command to prevent injection attacks (unless disabled)
   if not opts.disable_security then
-    -- Allow pipes but sanitize other dangerous characters
-    -- Keep single quotes, pipes, and parentheses for basic shell operations
-    local sanitized_cmd = cmd:gsub("[;&`$]", "")
+    -- Sanitize dangerous characters for security
+    -- Note: This includes pipes which breaks some legitimate commands
+    -- Use disable_security option if you need full shell features
+    local sanitized_cmd = cmd:gsub("[;&|`$()]", "")
     if sanitized_cmd ~= cmd then
       vim.notify("Command contains potentially dangerous characters, sanitizing: " .. cmd, vim.log.levels.WARN)
       cmd = sanitized_cmd
@@ -258,9 +313,16 @@ function M.interpolate(value, env_vars, opts)
   repeat
     prev_value = value
     if opts.features.variables then
-      value = value:gsub(PATTERNS.BRACE_VAR, function(match)
-        return process_var_substitution(match, env_vars, opts)
-      end)
+      -- Process balanced brace variables first (handles nested properly)
+      local brace_vars = find_balanced_brace_vars(value)
+      -- Process from end to start to maintain positions
+      for i = #brace_vars, 1, -1 do
+        local var = brace_vars[i]
+        local replacement = process_var_substitution(var.content, env_vars, opts)
+        value = value:sub(1, var.start_pos - 1) .. replacement .. value:sub(var.end_pos + 1)
+      end
+      
+      -- Then process simple variables
       value = value:gsub(PATTERNS.SIMPLE_VAR, function(match)
         return process_var_substitution(match, env_vars, opts)
       end)

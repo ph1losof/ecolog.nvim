@@ -138,7 +138,7 @@ describe("complex interpolation scenarios", function()
     end)
 
     it("should handle command substitution with pipes", function()
-      local result = interpolation.interpolate("$(echo 'hello world' | tr ' ' '_')", {})
+      local result = interpolation.interpolate("$(echo 'hello world' | tr ' ' '_')", {}, { disable_security = true })
       assert.equals("hello_world", result:gsub("%s+$", ""))
     end)
 
@@ -149,7 +149,7 @@ describe("complex interpolation scenarios", function()
     end)
 
     it("should handle commands with special characters", function()
-      local result = interpolation.interpolate("$(echo 'special: !@#$%^&*()')", {})
+      local result = interpolation.interpolate("$(echo 'special: !@#$%^&*()')", {}, { disable_security = true })
       assert.equals("special: !@#$%^&*()", result:gsub("%s+$", ""))
     end)
 

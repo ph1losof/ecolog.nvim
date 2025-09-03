@@ -353,12 +353,11 @@ function M.load_environment(opts, state, force)
     return M.load_monorepo_environment(opts, state)
   end
 
-  -- Only auto-select highest priority file if not handled by workspace transition
+  -- Only auto-select file if not handled by workspace transition
   if not state.selected_env_file and not opts._workspace_file_handled then
     local env_files = utils.find_env_files(opts)
     if #env_files > 0 then
-      -- Select the last file (highest priority) in single-file mode
-      state.selected_env_file = env_files[#env_files]
+      state.selected_env_file = env_files[1]
     end
   end
 
@@ -371,10 +370,9 @@ function M.load_environment(opts, state, force)
       state._env_line_cache = {}
       local env_files = utils.find_env_files(opts)
       if #env_files > 0 then
-        -- Select the last file (highest priority) in single-file mode
-        state.selected_env_file = env_files[#env_files]
+        state.selected_env_file = env_files[1]
         local utils = require("ecolog.utils")
-        local new_display_name = utils.get_env_file_display_name(env_files[#env_files], opts)
+        local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
         vim.notify(
           string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),
@@ -452,8 +450,7 @@ function M.load_environment_async(opts, state, callback, force)
     if not state.selected_env_file then
       local env_files = utils.find_env_files(opts)
       if #env_files > 0 then
-        -- Select the last file (highest priority) in single-file mode
-        state.selected_env_file = env_files[#env_files]
+        state.selected_env_file = env_files[1]
       end
     end
 
@@ -464,10 +461,9 @@ function M.load_environment_async(opts, state, callback, force)
       state._env_line_cache = {}
       local env_files = utils.find_env_files(opts)
       if #env_files > 0 then
-        -- Select the last file (highest priority) in single-file mode
-        state.selected_env_file = env_files[#env_files]
+        state.selected_env_file = env_files[1]
         local utils = require("ecolog.utils")
-        local new_display_name = utils.get_env_file_display_name(env_files[#env_files], opts)
+        local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
         vim.notify(
           string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),

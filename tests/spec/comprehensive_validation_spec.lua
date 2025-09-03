@@ -88,13 +88,13 @@ LOCAL_VAR=local_only
       assert.is_not_nil(env_vars.PORT)
       assert.is_not_nil(env_vars.DATABASE_URL)
 
-      -- Verify file priority (local should override)
-      assert.equals("local_secret", env_vars.API_KEY.value)
-      assert.equals("local_only", env_vars.LOCAL_VAR.value)
-
-      -- Verify source tracking
+      -- In single-file mode, only .env is loaded by default
+      assert.equals("secret123", env_vars.API_KEY.value)
+      assert.is_nil(env_vars.LOCAL_VAR) -- LOCAL_VAR is only in .env.local
+      
+      -- Verify source tracking - all from .env since that's what's loaded
       assert.equals(test_dir .. "/.env", env_vars.APP_NAME.source)
-      assert.equals(test_dir .. "/.env.local", env_vars.API_KEY.source)
+      assert.equals(test_dir .. "/.env", env_vars.API_KEY.source)
     end)
 
     it("should handle interpolation correctly", function()
@@ -487,10 +487,10 @@ API_KEY=dev_api_key
 
       local env_vars = ecolog.get_env_vars()
 
-      -- Verify expected behavior
-      assert.equals("true", env_vars.DEBUG.value) -- Local override
-      assert.equals("postgresql://localhost:5432/myapp_dev", env_vars.DATABASE_URL.value) -- Local override
-      assert.equals("dev_api_key", env_vars.API_KEY.value) -- Local override
+      -- Verify expected behavior - in single-file mode, only .env is loaded by default
+      assert.equals("false", env_vars.DEBUG.value) -- From .env, not .env.local
+      assert.equals("postgresql://localhost:5432/myapp", env_vars.DATABASE_URL.value) -- From .env
+      assert.equals("sk-1234567890abcdef", env_vars.API_KEY.value) -- From .env
       assert.equals("3000", env_vars.PORT.value) -- From main .env
       assert.equals("development", env_vars.NODE_ENV.value) -- From main .env
 

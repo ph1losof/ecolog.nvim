@@ -194,7 +194,7 @@ local function get_cached_line(line, line_num, bufname)
   vim.validate({ line_num = { line_num, "number" } })
   vim.validate({ bufname = { bufname, "string" } })
 
-  local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line))
+  local cache_key = string.format("%s:%d:%d", bufname, line_num, vim.fn.hash(line))
   return line_cache:get(cache_key)
 end
 
@@ -208,7 +208,7 @@ local function cache_line(line, line_num, bufname, extmark)
   vim.validate({ bufname = { bufname, "string" } })
   vim.validate({ extmark = { extmark, "table" } })
 
-  local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line))
+  local cache_key = string.format("%s:%d:%d", bufname, line_num, vim.fn.hash(line))
   local existing = line_cache:get(cache_key)
   if existing then
     if not existing.extmarks then
@@ -667,7 +667,7 @@ function M.clear_line_cache(line_num, bufname)
     return false
   end
 
-  local cache_key = string.format("%s:%d:%s", bufname, line_num, vim.fn.sha256(line[1]))
+  local cache_key = string.format("%s:%d:%d", bufname, line_num, vim.fn.hash(line[1]))
   line_cache:remove(cache_key)
   return true
 end

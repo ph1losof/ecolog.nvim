@@ -31,8 +31,8 @@ local ESCAPE_MAP = {
 ---@class InterpolationOptions
 ---@field max_iterations? number Maximum number of iterations for variable interpolation
 ---@field warn_on_undefined? boolean Whether to warn on undefined variables
----@field fail_on_cmd_error? boolean Whether to fail on command substitution errors
 ---@field disable_security? boolean Whether to disable security sanitization for command substitution
+---@field fail_on_cmd_error? boolean Whether to fail on command substitution errors
 ---@field features? table Control specific interpolation features
 ---@field features.variables? boolean Enable variable interpolation ($VAR, ${VAR})
 ---@field features.defaults? boolean Enable default value syntax (${VAR:-default})
@@ -111,6 +111,7 @@ end
 local _env_cache = {}
 local _env_cache_timestamp = 0
 local ENV_CACHE_TTL = 1000 -- 1 second TTL
+local ENV_CACHE_MAX_SIZE = 100 -- Maximum number of cached entries
 
 ---Get a variable's value from env_vars or shell environment (optimized)
 ---@param var_name string The name of the variable
@@ -119,6 +120,14 @@ local ENV_CACHE_TTL = 1000 -- 1 second TTL
 ---@param suppress_warning boolean? Whether to suppress the undefined variable warning
 ---@return table? var The variable info if found
 local function get_variable(var_name, env_vars, opts, suppress_warning)
+  if not var_name or type(var_name) ~= "string" or var_name == "" then
+    return nil
+  end
+  
+  if not env_vars or type(env_vars) ~= "table" then
+    return nil
+  end
+  
   local var = env_vars[var_name]
   if not var then
     -- Check cache first for shell variables
@@ -142,6 +151,14 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
 
       if shell_value and shell_value ~= vim.NIL and shell_value ~= "" then
         var = { value = shell_value }
+        -- Cache for future use with size limit
+        if vim.tbl_count(_env_cache) >= ENV_CACHE_MAX_SIZE then
+          -- Clear half the cache when it gets too large
+          local keys = vim.tbl_keys(_env_cache)
+          for i = 1, math.floor(#keys / 2) do
+            _env_cache[keys[i]] = nil
+          end
+        end
         _env_cache[var_name] = var
       elseif opts.warn_on_undefined and not suppress_warning then
         vim.notify(string.format("Undefined variable: %s", var_name), vim.log.levels.WARN)
@@ -282,6 +299,14 @@ end
 function M.interpolate(value, env_vars, opts)
   if not value then
     return ""
+  end
+  
+  if type(value) ~= "string" then
+    return tostring(value) or ""
+  end
+  
+  if not env_vars or type(env_vars) ~= "table" then
+    env_vars = {}
   end
 
   opts = vim.tbl_deep_extend("force", {

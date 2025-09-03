@@ -11,6 +11,10 @@ local M = {}
 ---@param config boolean|LoadShellConfig
 ---@return table<string, table>
 function M.load_shell_vars(config)
+  if config == nil then
+    config = { enabled = false, override = false }
+  end
+  
   local shell_config = type(config) == "table" and config or { enabled = config, override = false }
 
   local shell_vars = {}

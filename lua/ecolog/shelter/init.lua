@@ -345,8 +345,8 @@ function M.toggle_feature(feature)
 
   if not tbl_contains(state_module.get_features(), feature) then
     notify(
-      "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
-      vim.log.levels.WARN
+      "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'",
+      vim.log.levels.ERROR
     )
     return false
   end
@@ -369,8 +369,8 @@ function M.set_state(command, feature)
   if feature then
     if not tbl_contains(state_module.get_features(), feature) then
       notify(
-        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'snacks_previewer', or 'snacks'",
-        vim.log.levels.WARN
+        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'",
+        vim.log.levels.ERROR
       )
       return false
     end

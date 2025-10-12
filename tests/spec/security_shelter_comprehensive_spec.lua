@@ -66,7 +66,7 @@ describe("security features and shelter mode", function()
 
       -- Test partial masking for URLs
       local url_masked = shelter.mask_value("https://api.example.com/v1/users", "DATABASE_URL")
-      assert.equals("htt****ers", url_masked)
+      assert.equals("htt**************************ers", url_masked)  -- Preserve length: 32 chars
 
       -- Test no masking for debug vars
       local debug_masked = shelter.mask_value("verbose", "DEBUG_MODE")
@@ -139,22 +139,22 @@ describe("security features and shelter mode", function()
         {
           config = { show_start = 2, show_end = 2, min_mask = 3 },
           input = "secret123",
-          expected_pattern = "se***23"
+          expected_pattern = "se*****23"  -- 9 chars: preserve length with available space (5)
         },
         {
           config = { show_start = 4, show_end = 1, min_mask = 2 },
           input = "verylongsecret",
-          expected_pattern = "very*********t"
+          expected_pattern = "very*********t"  -- 14 chars: preserve length
         },
         {
           config = { show_start = 0, show_end = 3, min_mask = 5 },
           input = "password",
-          expected_pattern = "*****ord"
+          expected_pattern = "*****ord"  -- 8 chars: preserve length with available space (5)
         },
         {
           config = { show_start = 3, show_end = 0, min_mask = 4 },
           input = "token123",
-          expected_pattern = "tok*****"
+          expected_pattern = "tok*****"  -- 8 chars: preserve length with available space (5)
         },
       }
 
@@ -446,7 +446,7 @@ describe("security features and shelter mode", function()
 
       local value = "secret123"
       local masked = shelter.mask_value_for_context(value, "cmp")
-      assert.equals("se****23", masked)
+      assert.equals("se*****23", masked)  -- Preserve length: 9 chars
     end)
 
     it("should respect disabled modules", function()

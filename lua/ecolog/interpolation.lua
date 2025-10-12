@@ -68,17 +68,17 @@ end
 local function find_balanced_brace_vars(str)
   local results = {}
   local i = 1
-  
+
   while i <= #str do
     -- Look for ${
     local start = str:find("${", i, true)
     if not start then break end
-    
+
     -- Find the matching closing brace
     local depth = 1
     local pos = start + 2
     local content_start = pos
-    
+
     while pos <= #str and depth > 0 do
       local char = str:sub(pos, pos)
       if char == "{" then
@@ -88,7 +88,7 @@ local function find_balanced_brace_vars(str)
       end
       pos = pos + 1
     end
-    
+
     if depth == 0 then
       -- Found matching closing brace
       local content = str:sub(content_start, pos - 2)
@@ -103,7 +103,68 @@ local function find_balanced_brace_vars(str)
       i = start + 2
     end
   end
-  
+
+  return results
+end
+
+---Find and extract balanced command substitutions like $(...)
+---Handles parentheses inside quotes properly
+---@param str string The string to search in
+---@return table Array of {start_pos, end_pos, content} for each command found
+local function find_balanced_command_substs(str)
+  local results = {}
+  local i = 1
+
+  while i <= #str do
+    local start = str:find("$(", i, true)
+    if not start then break end
+
+    local pos = start + 2
+    local content_start = pos
+    local depth = 1
+    local in_single_quote = false
+    local in_double_quote = false
+    local prev_char = nil
+
+    while pos <= #str and depth > 0 do
+      local char = str:sub(pos, pos)
+
+      if prev_char == "\\" then
+        prev_char = nil
+        pos = pos + 1
+        goto continue
+      end
+
+      if char == "'" and not in_double_quote then
+        in_single_quote = not in_single_quote
+      elseif char == '"' and not in_single_quote then
+        in_double_quote = not in_double_quote
+      elseif not in_single_quote and not in_double_quote then
+        if char == "(" then
+          depth = depth + 1
+        elseif char == ")" then
+          depth = depth - 1
+        end
+      end
+
+      prev_char = char
+      pos = pos + 1
+      ::continue::
+    end
+
+    if depth == 0 then
+      local content = str:sub(content_start, pos - 2)
+      table.insert(results, {
+        start_pos = start,
+        end_pos = pos - 1,
+        content = content
+      })
+      i = pos
+    else
+      i = start + 2
+    end
+  end
+
   return results
 end
 
@@ -123,11 +184,11 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
   if not var_name or type(var_name) ~= "string" or var_name == "" then
     return nil
   end
-  
+
   if not env_vars or type(env_vars) ~= "table" then
     return nil
   end
-  
+
   local var = env_vars[var_name]
   if not var then
     -- Check cache first for shell variables
@@ -179,8 +240,16 @@ local function process_var_substitution(match, env_vars, opts)
   end
 
   local var_name, operator, value = match:match(PATTERNS.VAR_PARTS)
-  if not var_name then
-    return ""
+
+  if not var_name or var_name == "" then
+    local has_operator = match:find("[:%-+]")
+    if not has_operator then
+      var_name = match
+      operator = ""
+      value = ""
+    else
+      return ""
+    end
   end
 
   local suppress_warning = operator == OPERATORS.DEFAULT
@@ -204,7 +273,6 @@ local function process_var_substitution(match, env_vars, opts)
     end
   elseif operator == OPERATORS.ALTERNATE and not is_set then
     if not opts.features or opts.features.defaults then
-      -- Recursively interpolate the alternate value if it contains variables  
       if value:match("%$") then
         local M = require("ecolog.interpolation")
         return M.interpolate(value, env_vars, opts)
@@ -343,11 +411,12 @@ function M.interpolate(value, env_vars, opts)
       -- Process from end to start to maintain positions
       for i = #brace_vars, 1, -1 do
         local var = brace_vars[i]
-        local replacement = process_var_substitution(var.content, env_vars, opts)
-        value = value:sub(1, var.start_pos - 1) .. replacement .. value:sub(var.end_pos + 1)
+        if var.content and var.content ~= "" then
+          local replacement = process_var_substitution(var.content, env_vars, opts)
+          value = value:sub(1, var.start_pos - 1) .. replacement .. value:sub(var.end_pos + 1)
+        end
       end
-      
-      -- Then process simple variables
+
       value = value:gsub(PATTERNS.SIMPLE_VAR, function(match)
         return process_var_substitution(match, env_vars, opts)
       end)
@@ -361,9 +430,11 @@ function M.interpolate(value, env_vars, opts)
 
   if opts.features.commands then
     local success, result = pcall(function()
-      return value:gsub(PATTERNS.CMD_SUBST, function(cmd)
+      local cmd_substs = find_balanced_command_substs(value)
+      for i = #cmd_substs, 1, -1 do
+        local cmd_info = cmd_substs[i]
         local cmd_success, cmd_result = pcall(function()
-          return process_cmd_substitution(cmd, opts)
+          return process_cmd_substitution(cmd_info.content, opts)
         end)
 
         if not cmd_success then
@@ -371,12 +442,13 @@ function M.interpolate(value, env_vars, opts)
             error(cmd_result)
           else
             vim.notify("Command substitution error: " .. tostring(cmd_result), vim.log.levels.ERROR)
-            return ""
+            cmd_result = ""
           end
         end
 
-        return cmd_result
-      end)
+        value = value:sub(1, cmd_info.start_pos - 1) .. cmd_result .. value:sub(cmd_info.end_pos + 1)
+      end
+      return value
     end)
 
     if not success then

@@ -71,7 +71,12 @@ end
 ---@param search_start number Starting search position
 ---@return number key_start Position where key starts
 local function find_key_start(text, eq_pos, search_start)
-  local key_start = eq_pos
+  local key_end = eq_pos - 1
+  while key_end > search_start and is_whitespace(text:sub(key_end, key_end)) do
+    key_end = key_end - 1
+  end
+
+  local key_start = key_end + 1
   while key_start > search_start do
     local char = text:sub(key_start - 1, key_start - 1)
     if is_whitespace(char) then

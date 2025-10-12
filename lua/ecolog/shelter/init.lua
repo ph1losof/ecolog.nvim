@@ -33,6 +33,8 @@ function M.setup(opts)
 
   local state_module = get_state()
 
+  get_utils().clear_caches()
+
   if opts.config then
     if type(opts.config.partial_mode) == "boolean" then
       state_module.get_config().partial_mode = opts.config.partial_mode and state_module.get_default_partial_mode()
@@ -76,14 +78,14 @@ function M.setup(opts)
     end
   end
 
-  local partial = opts.partial or {}
-  
-  -- If patterns are configured but no features are explicitly enabled,
-  -- enable cmp feature by default to make masking work
-  if opts.config and opts.config.patterns and vim.tbl_isempty(partial) then
-    partial.cmp = true
+  local partial = opts.partial or opts.modules or {}
+
+  if opts.config and vim.tbl_isempty(partial) then
+    if opts.config.patterns or opts.config.default_mode or opts.config.sources or opts.config.partial_mode then
+      partial = { cmp = true }
+    end
   end
-  
+
   for _, feature in ipairs(state_module.get_features()) do
     local value = type(partial[feature]) == "boolean" and partial[feature] or false
     if feature == "files" then
@@ -153,8 +155,8 @@ function M.setup(opts)
     state_cmd.reset_revealed_lines()
     state_cmd.set_revealed_line(current_line, true)
 
-    local multiline_engine = require("ecolog.shelter.multiline_engine")
-    multiline_engine.clear_caches()
+    local masking_engine = require("ecolog.shelter.masking_engine")
+    masking_engine.clear_caches()
 
     get_buffer().shelter_buffer()
 
@@ -166,10 +168,9 @@ function M.setup(opts)
       end
 
       state_cmd.reset_revealed_lines()
-      get_buffer().clear_line_cache(current_line, api.nvim_buf_get_name(bufnr))
 
-      local multiline_engine = require("ecolog.shelter.multiline_engine")
-      multiline_engine.clear_caches()
+      local masking_engine = require("ecolog.shelter.masking_engine")
+      masking_engine.clear_caches()
 
       get_buffer().shelter_buffer()
 
@@ -189,9 +190,9 @@ function M.setup(opts)
       end
 
       local all_lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      local multiline_engine = require("ecolog.shelter.multiline_engine")
+      local masking_engine = require("ecolog.shelter.masking_engine")
       local content_hash = vim.fn.sha256(table.concat(all_lines, "\n"))
-      local parsed_vars = multiline_engine.parse_lines_cached(all_lines, content_hash)
+      local parsed_vars = masking_engine.parse_lines_cached(all_lines, content_hash)
 
       local current_var = nil
       for _, var_info in pairs(parsed_vars) do
@@ -247,9 +248,9 @@ function M.mask_value(value, arg2, arg3, arg4)
   if not value then
     return ""
   end
-  
+
   local feature, key, source, opts
-  
+
   -- Handle different calling patterns:
   -- 1. mask_value(value, { key = "KEY" }) - options table as second arg
   -- 2. mask_value(value, "KEY") - key as second arg (backward compatibility)
@@ -271,7 +272,7 @@ function M.mask_value(value, arg2, arg3, arg4)
     key = arg3
     source = arg4
   end
-  
+
   local state_module = get_state()
   if not state_module.is_enabled(feature) then
     return value
@@ -285,7 +286,7 @@ function M.mask_value(value, arg2, arg3, arg4)
     sources = state_module.get_config().sources,
     default_mode = state_module.get_config().default_mode,
   }
-  
+
   -- If opts were provided, merge them
   if opts then
     for k, v in pairs(opts) do
@@ -442,13 +443,13 @@ end
 function M.restore_initial_settings()
   local state_module = get_state()
   local buffer_module = get_buffer()
-  
+
   -- Restore each feature to its initial state
   local initial_state = state_module.get_state().features.initial
   for feature, initial_enabled in pairs(initial_state) do
     state_module.set_feature_state(feature, initial_enabled)
   end
-  
+
   -- Handle buffer shelter based on files feature initial state
   if initial_state.files then
     buffer_module.setup_file_shelter()
@@ -456,7 +457,7 @@ function M.restore_initial_settings()
   else
     buffer_module.unshelter_buffer()
   end
-  
+
   -- Setup integrations based on initial state
   if initial_state.telescope_previewer then
     local ok, telescope_integration = pcall(require, "ecolog.shelter.integrations.telescope")
@@ -464,14 +465,14 @@ function M.restore_initial_settings()
       telescope_integration.setup_telescope_shelter()
     end
   end
-  
+
   if initial_state.fzf_previewer then
     local ok, fzf_integration = pcall(require, "ecolog.shelter.integrations.fzf")
     if ok then
       fzf_integration.setup_fzf_shelter()
     end
   end
-  
+
   if initial_state.snacks_previewer then
     local ok, snacks_integration = pcall(require, "ecolog.shelter.integrations.snacks")
     if ok then
@@ -500,10 +501,10 @@ end
 function M.mask_value_for_context(value, context, feature)
   -- Use context-specific logic for masking
   feature = feature or "cmp"
-  
+
   if context == "completion" then
     return M.mask_value(value, "cmp")
-  elseif context == "preview" then 
+  elseif context == "preview" then
     return M.mask_value(value, "peek")
   else
     return M.mask_value(value, feature)

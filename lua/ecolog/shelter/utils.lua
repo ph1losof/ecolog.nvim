@@ -9,6 +9,11 @@ local lru_cache = require("ecolog.shelter.lru_cache")
 local mode_cache = lru_cache.new(1000)
 local value_cache = lru_cache.new(1000)
 
+function M.clear_caches()
+  mode_cache = lru_cache.new(1000)
+  value_cache = lru_cache.new(1000)
+end
+
 ---@param key string|nil
 ---@param source string|nil
 ---@param patterns table|nil
@@ -37,12 +42,21 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
 
   local result
   if key and patterns then
+    local matches = {}
     for pattern, mode in pairs(patterns) do
       local lua_pattern = utils.convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
-        result = mode
-        break
+        local wildcard_count = select(2, pattern:gsub("[*]", ""))
+        local specificity = (#pattern * 100) - (wildcard_count * 50)
+        table.insert(matches, { pattern = pattern, mode = mode, specificity = specificity })
       end
+    end
+
+    if #matches > 0 then
+      table.sort(matches, function(a, b)
+        return a.specificity > b.specificity
+      end)
+      result = matches[1].mode
     end
   end
 
@@ -149,13 +163,25 @@ function M.determine_masked_value(value, settings)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
   local min_mask = math.max(1, settings.min_mask or partial_mode.min_mask or 1)
 
-  if #value <= (show_start + show_end) or #value < (show_start + show_end + min_mask) then
-    local result
-    if not mask_length then
-      result = string_rep(conf.mask_char, #value)
-    else
-      result = string_rep(conf.mask_char, mask_length)
+  if #value < (show_start + show_end + min_mask) then
+    if #value <= show_start or #value <= show_end or #value <= (show_start + show_end) then
+      local start_chars = math.min(show_start, #value)
+      local remaining_after_start = math.max(0, #value - show_start)
+      local end_chars = math.min(show_end, remaining_after_start)
+      local full_mask_length = start_chars + min_mask + end_chars
+
+      local result = string_rep(conf.mask_char, full_mask_length)
+      value_cache:put(cache_key, result)
+      if settings.quote_char then
+        return settings.quote_char .. result .. settings.quote_char
+      end
+      return result
     end
+
+    local start_part = string_sub(value, 1, show_start)
+    local end_part = show_end > 0 and string_sub(value, -show_end) or ""
+
+    local result = start_part .. string_rep(conf.mask_char, min_mask) .. end_part
     value_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
@@ -164,12 +190,9 @@ function M.determine_masked_value(value, settings)
   end
 
   local available_mask_space = #value - show_start - show_end
-  -- In partial mode, don't use mask_length config - use available space limited by min_mask
-  local effective_mask_length = math.max(available_mask_space, min_mask)
 
-  local result = string_sub(value, 1, show_start)
-    .. string_rep(conf.mask_char, effective_mask_length)
-    .. string_sub(value, -show_end)
+  local end_part = show_end > 0 and string_sub(value, -show_end) or ""
+  local result = string_sub(value, 1, show_start) .. string_rep(conf.mask_char, available_mask_space) .. end_part
 
   value_cache:put(cache_key, result)
   if settings.quote_char then

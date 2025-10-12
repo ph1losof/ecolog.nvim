@@ -32,18 +32,14 @@ local pcall = pcall
 local state = require("ecolog.shelter.state")
 local shelter_utils = require("ecolog.shelter.utils")
 local main_utils = require("ecolog.utils")
-local lru_cache = require("ecolog.shelter.lru_cache")
 
 local NAMESPACE = api.nvim_create_namespace("ecolog_shelter")
-local CHUNK_SIZE = 1000
 local CLEANUP_INTERVAL = 300000
 local BUFFER_TIMEOUT = 3600000
-local COMMENT_PATTERN = "^#"
 local KEY_PATTERN = "^%s*(.-)%s*$"
 local VALUE_PATTERN = "^%s*(.-)%s*$"
 local BATCH_SIZE = 100
 
-local line_cache = lru_cache.new(1000)
 local active_buffers = setmetatable({}, { __mode = "k" })
 local string_buffer = table.new and table.new(1000, 0) or {}
 
@@ -134,99 +130,11 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
     multi_line_state
 end
 
----@param line string
----@param multi_line_state table? Multi-line parsing state
----@return ProcessedItem[]
----@return table? multi_line_state Updated multi-line state
-function M.process_line(line, multi_line_state)
-  vim.validate({ line = { line, "string" } })
-
-  local results = {}
-  local comment_start = string_find(line, "#")
-  local is_comment_line = comment_start == 1
-
-  if not is_comment_line then
-    local kv, updated_state = M.find_next_key_value(line, nil, multi_line_state)
-    if kv and (not comment_start or kv.eq_pos < comment_start) then
-      table_insert(results, {
-        key = kv.key,
-        value = kv.value,
-        quote_char = kv.quote_char,
-        eq_pos = kv.eq_pos,
-        is_comment = false,
-      })
-    end
-    multi_line_state = updated_state
-  end
-
-  if comment_start then
-    local comment_text = string_sub(line, comment_start + 1)
-    local pos = 1
-
-    while true do
-      local kv, updated_state = M.find_next_key_value(comment_text, pos, multi_line_state)
-      if not kv then
-        break
-      end
-
-      table_insert(results, {
-        key = kv.key,
-        value = kv.value,
-        quote_char = kv.quote_char,
-        eq_pos = comment_start + kv.eq_pos,
-        is_comment = true,
-      })
-
-      pos = kv.next_pos
-      multi_line_state = updated_state
-    end
-  end
-
-  return results, multi_line_state
-end
-
----@param line string
----@param line_num number
----@param bufname string
----@return ExtmarkData?
-local function get_cached_line(line, line_num, bufname)
-  vim.validate({ line = { line, "string" } })
-  vim.validate({ line_num = { line_num, "number" } })
-  vim.validate({ bufname = { bufname, "string" } })
-
-  local cache_key = string.format("%s:%d:%d", bufname, line_num, vim.fn.hash(line))
-  return line_cache:get(cache_key)
-end
-
----@param line string
----@param line_num number
----@param bufname string
----@param extmark table
-local function cache_line(line, line_num, bufname, extmark)
-  vim.validate({ line = { line, "string" } })
-  vim.validate({ line_num = { line_num, "number" } })
-  vim.validate({ bufname = { bufname, "string" } })
-  vim.validate({ extmark = { extmark, "table" } })
-
-  local cache_key = string.format("%s:%d:%d", bufname, line_num, vim.fn.hash(line))
-  local existing = line_cache:get(cache_key)
-  if existing then
-    if not existing.extmarks then
-      existing.extmarks = {}
-    end
-    table_insert(existing.extmarks, extmark)
-    line_cache:put(cache_key, existing)
-  else
-    line_cache:put(cache_key, { extmarks = { extmark } })
-  end
-end
-
 local function cleanup_invalid_buffers()
   local current_time = vim.loop.now()
   for bufnr, timestamp in pairs(active_buffers) do
     if not api.nvim_buf_is_valid(bufnr) or (current_time - timestamp) > BUFFER_TIMEOUT then
       pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
-      line_cache:remove(bufnr)
       active_buffers[bufnr] = nil
     end
   end
@@ -307,50 +215,84 @@ function M.create_extmark(value, item, config, bufname, line_num)
   local is_revealed = state.is_line_revealed(line_num)
   local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
 
-  -- vim.notify("DEBUG: Single-line var " .. (item.key or "unknown") .. " on line " .. line_num .. " revealed: " .. tostring(is_revealed) .. " (revealed_lines: " .. vim.inspect(state.get_buffer_state().revealed_lines) .. ")", vim.log.levels.INFO)
+  local is_multi_line = value:find("\n") ~= nil
+  if is_multi_line then
+    local masked_value = is_revealed and raw_value
+      or shelter_utils.determine_masked_value(value, {
+        partial_mode = config.partial_mode,
+        key = item.key,
+        source = bufname,
+        quote_char = item.quote_char,
+      })
+    return M.create_multi_line_extmarks(raw_value, masked_value, item, config, line_num)
+  end
 
-  local masked_value = is_revealed and raw_value
-    or shelter_utils.determine_masked_value(value, {
-      partial_mode = config.partial_mode,
-      key = item.key,
-      source = bufname,
-      quote_char = item.quote_char,
-    })
+  if is_revealed then
+    local extmark_opts = {
+      virt_text = {
+        { raw_value, "String" },
+      },
+      virt_text_pos = "overlay",
+      hl_mode = "combine",
+      priority = item.is_comment and 10000 or 9999,
+      strict = false,
+    }
+    return {
+      line_num - 1,
+      item.eq_pos,
+      extmark_opts,
+    }
+  end
 
-  -- if is_revealed then
-  --   vim.notify("DEBUG: Using raw value for " .. (item.key or "unknown") .. ": " .. raw_value, vim.log.levels.INFO)
-  -- else
-  --   vim.notify("DEBUG: Using masked value for " .. (item.key or "unknown") .. ": " .. (masked_value or "nil"), vim.log.levels.INFO)
-  -- end
+  local mask_length = config.mask_length
+  local quote_char = item.quote_char
+
+  local masked_value = shelter_utils.determine_masked_value(value, {
+    partial_mode = config.partial_mode,
+    key = item.key,
+    source = bufname,
+    quote_char = nil,
+  })
 
   if not masked_value or #masked_value == 0 then
     return nil
   end
 
-  local mask_length = state.get_config().mask_length
+  local display_text = masked_value
 
-  -- Check if this is a multi-line value
-  local is_multi_line = masked_value:find("\n") ~= nil
-  if is_multi_line then
-    return M.create_multi_line_extmarks(raw_value, masked_value, item, config, line_num)
+  if mask_length and #masked_value > mask_length then
+    if config.partial_mode and type(config.partial_mode) == "table" then
+      local show_end = config.partial_mode.show_end or 0
+      if show_end > 0 and mask_length > show_end then
+        local end_chars = masked_value:sub(-show_end)
+        local start_part = masked_value:sub(1, mask_length - show_end)
+        display_text = start_part .. end_chars
+      else
+        display_text = masked_value:sub(1, mask_length)
+      end
+    else
+      display_text = masked_value:sub(1, mask_length)
+    end
+  end
+
+  if quote_char then
+    display_text = quote_char .. display_text .. quote_char
+  end
+
+  local padding_needed = math.max(0, #raw_value - #display_text)
+  if padding_needed > 0 then
+    display_text = display_text .. string.rep(" ", padding_needed)
   end
 
   local extmark_opts = {
     virt_text = {
-      { masked_value, (is_revealed or masked_value == raw_value) and "String" or config.highlight_group },
+      { display_text, config.highlight_group },
     },
     virt_text_pos = "overlay",
     hl_mode = "combine",
     priority = item.is_comment and 10000 or 9999,
     strict = false,
   }
-
-  if mask_length then
-    local padding = string.rep(" ", math.max(0, #raw_value - #masked_value))
-    extmark_opts.virt_text = {
-      { masked_value .. padding, (is_revealed or masked_value == raw_value) and "String" or config.highlight_group },
-    }
-  end
 
   return {
     line_num - 1,
@@ -402,24 +344,6 @@ function M.create_multi_line_extmarks(raw_value, masked_value, item, config, sta
   return extmarks
 end
 
----@param bufnr number
----@param extmarks table[]
-local function apply_extmarks(bufnr, extmarks)
-  if #extmarks == 0 then
-    return
-  end
-
-  pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
-
-  for i = 1, #extmarks, BATCH_SIZE do
-    local batch_end = math.min(i + BATCH_SIZE - 1, #extmarks)
-    for j = i, batch_end do
-      local mark = extmarks[j]
-      pcall(api.nvim_buf_set_extmark, bufnr, NAMESPACE, mark[1], mark[2], mark[3])
-    end
-  end
-end
-
 function M.shelter_buffer()
   -- local stack_trace = debug.traceback("", 2):match("stack traceback:\n(.-)$"):gsub("\n", " | ")
   -- vim.notify("DEBUG: shelter_buffer() called, revealed_lines: " .. vim.inspect(state.get_buffer_state().revealed_lines) .. " | Called from: " .. stack_trace, vim.log.levels.INFO)
@@ -443,6 +367,7 @@ function M.shelter_buffer()
   local masking_config = {
     partial_mode = state.get_config().partial_mode,
     highlight_group = state.get_config().highlight_group,
+    mask_length = state.get_config().mask_length,
   }
   local skip_comments = state.get_config().skip_comments
 
@@ -453,9 +378,8 @@ function M.shelter_buffer()
     return
   end
 
-  -- Use the optimized multi-line engine
-  local multiline_engine = require("ecolog.shelter.multiline_engine")
-  multiline_engine.process_buffer_optimized(bufnr, all_lines, masking_config, bufname, NAMESPACE, skip_comments)
+  local masking_engine = require("ecolog.shelter.masking_engine")
+  masking_engine.process_buffer_optimized(bufnr, all_lines, masking_config, bufname, NAMESPACE, skip_comments)
 end
 
 ---@param config table
@@ -542,9 +466,9 @@ local function setup_buffer_autocmds(config, group)
     callback = function(ev)
       if shelter_utils.match_env_file(ev.file, config) then
         if state.is_enabled("files") then
-          -- Clear multiline engine caches on text changes to ensure fresh parsing
-          local multiline_engine = require("ecolog.shelter.multiline_engine")
-          multiline_engine.clear_buffer_cache(ev.buf, ev.file)
+          -- Clear masking engine caches on text changes to ensure fresh parsing
+          local masking_engine = require("ecolog.shelter.masking_engine")
+          masking_engine.clear_buffer_cache(ev.buf, ev.file)
           vim.cmd('noautocmd lua require("ecolog.shelter.buffer").shelter_buffer()')
         else
           M.unshelter_buffer()
@@ -653,23 +577,6 @@ function M.refresh_shelter_for_monorepo()
       M.shelter_buffer()
     end)
   end
-end
-
----@param line_num number The line number to clear from cache
----@param bufname string The buffer name
----@return boolean success Whether the cache was successfully cleared
-function M.clear_line_cache(line_num, bufname)
-  vim.validate({ line_num = { line_num, "number" } })
-  vim.validate({ bufname = { bufname, "string" } })
-
-  local ok, line = pcall(api.nvim_buf_get_lines, 0, line_num - 1, line_num, false)
-  if not ok or not line or #line == 0 then
-    return false
-  end
-
-  local cache_key = string.format("%s:%d:%d", bufname, line_num, vim.fn.hash(line[1]))
-  line_cache:remove(cache_key)
-  return true
 end
 
 return M

@@ -16,18 +16,17 @@ local PATTERNS = {
 ---@param line string The line to parse
 ---@param start_pos number? Start position (for first line after equals)
 ---@return string content The content before backslash
----@return string suffix Everything from backslash onward (backslash + comment)
+---@return string suffix Only the backslash (comments are masked separately)
 local function parse_backslash_line(line, start_pos)
   local search_text = start_pos and line:sub(start_pos) or line
 
-  if search_text:match(PATTERNS.backslash_with_comment) then
-    local before = search_text:match("^(.-)\\")
-    local after = search_text:match(PATTERNS.backslash_part)
-    return before or "", "\\" .. (after or "")
-  end
+  -- Find backslash position
+  local backslash_pos = search_text:find("\\")
 
-  local before = search_text:match(PATTERNS.backslash_only)
-  if before then
+  if backslash_pos then
+    local before = search_text:sub(1, backslash_pos - 1)
+    -- Only preserve the backslash itself, not any comments after it
+    -- Comments will be masked by separate inline comment extmarks
     return before, "\\"
   end
 
@@ -37,14 +36,15 @@ end
 -- Parse comment from last line (no backslash)
 ---@param line string The line to parse
 ---@return string content The content before comment
----@return string comment_part The comment part including spacing
+---@return string spacing Only preserve spacing (comments masked separately)
 local function parse_last_line_comment(line)
   local comment_pos = line:find(PATTERNS.comment_start)
   if comment_pos and comment_pos > 1 and line:sub(comment_pos - 1, comment_pos - 1):match("%s") then
     local content_with_space = line:sub(1, comment_pos - 1)
     local content = content_with_space:match(PATTERNS.content_trim_both) or ""
     local space_before = content_with_space:match(PATTERNS.trailing_spaces) or ""
-    return content, space_before .. line:sub(comment_pos)
+    -- Only preserve spacing, not the comment text (will be masked by inline comment extmark)
+    return content, space_before
   end
   return line:match(PATTERNS.content_trim_both) or line, ""
 end
@@ -155,14 +155,8 @@ function M.distribute_mask_length_masks(var_info, lines, final_mask, eq_pos)
       if is_last then
         content, suffix = parse_last_line_comment(line)
       else
-        local before_backslash = line:match("^(.-)\\")
-        if before_backslash then
-          suffix = line:match("(\\%s*#?.*)$") or ""
-          content = before_backslash
-        else
-          content = line
-          suffix = ""
-        end
+        -- Use parse_backslash_line to only preserve the backslash
+        content, suffix = parse_backslash_line(line)
       end
 
       distributed_masks[line_idx] = string.rep(" ", #content) .. suffix

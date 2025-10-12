@@ -171,8 +171,8 @@ function M.set_feature_state(feature, enabled)
   if feature == "files" and enabled then
     M.reset_revealed_lines()
     vim.schedule(function()
-      local multiline_engine = require("ecolog.shelter.multiline_engine")
-      multiline_engine.clear_caches()
+      local masking_engine = require("ecolog.shelter.masking_engine")
+      masking_engine.clear_caches()
 
       local buffer = require("ecolog.shelter.buffer")
       if buffer and buffer.shelter_buffer then

@@ -1,4 +1,4 @@
----@class EcologMultilineEngine
+---@class EcologMaskingEngine
 ---@field private cache table LRU cache for parsed results
 local M = {}
 
@@ -159,6 +159,7 @@ local PATTERNS = {
 ---@field is_multi_line boolean Whether this is a multi-line value
 ---@field has_newlines boolean Whether the value contains newlines
 ---@field content_hash string Hash of the content for caching
+---@field is_comment boolean Whether this variable is from a comment line
 
 ---@class ExtmarkSpec
 ---@field line number 0-based line number
@@ -189,13 +190,115 @@ function M.parse_lines_cached(lines, content_hash)
   while current_line_idx <= #lines do
     local line = lines[current_line_idx]
 
-
-    if line == EMPTY_STRING or line:find(PATTERNS.comment) then
+    -- Skip empty lines
+    if line == EMPTY_STRING then
       current_line_idx = current_line_idx + 1
       goto continue
     end
 
+    -- Check if line is a comment
+    local is_comment_line = line:find(PATTERNS.comment)
 
+    if is_comment_line then
+      -- Parse comment lines for key-value pairs like: # API_KEY=secret KEY2=value2
+      -- Comments can have MULTIPLE key-value pairs on a single line
+      local comment_start_pos = line:find("#")
+      local comment_text = line:sub(comment_start_pos + 1) -- Everything after #
+      local search_pos = 1
+
+      -- Loop to find ALL key-value pairs in the comment
+      while search_pos <= #comment_text do
+        local eq_pos_in_comment = comment_text:find(PATTERNS.equals, search_pos)
+        if not eq_pos_in_comment then
+          break -- No more = signs
+        end
+
+        -- Find the start of the key by scanning backwards from =
+        local key_start = eq_pos_in_comment
+        while key_start > search_pos do
+          local char = comment_text:sub(key_start - 1, key_start - 1)
+          if char:match("[%s]") then
+            break
+          end
+          key_start = key_start - 1
+        end
+
+        local potential_key = comment_text:sub(key_start, eq_pos_in_comment - 1):match("^%s*(.-)%s*$")
+
+        if not potential_key or #potential_key == 0 then
+          search_pos = eq_pos_in_comment + 1
+          goto continue_comment_parse
+        end
+
+        -- Extract value after the = sign
+        local value_start_pos = eq_pos_in_comment + 1
+        local value, quote_char, value_end_pos
+
+        -- Skip leading whitespace
+        while value_start_pos <= #comment_text and comment_text:sub(value_start_pos, value_start_pos):match("%s") do
+          value_start_pos = value_start_pos + 1
+        end
+
+        if value_start_pos > #comment_text then
+          search_pos = eq_pos_in_comment + 1
+          goto continue_comment_parse
+        end
+
+        -- Check if value is quoted
+        local first_char = comment_text:sub(value_start_pos, value_start_pos)
+        if first_char == '"' or first_char == "'" then
+          quote_char = first_char
+          local end_quote_pos = comment_text:find(quote_char, value_start_pos + 1, true)
+
+          if end_quote_pos then
+            value = comment_text:sub(value_start_pos + 1, end_quote_pos - 1)
+            value_end_pos = end_quote_pos
+          else
+            -- No closing quote - take rest of line
+            value = comment_text:sub(value_start_pos + 1)
+            value_end_pos = #comment_text
+          end
+        else
+          -- Unquoted value - take until space or end of line
+          local space_pos = comment_text:find("%s", value_start_pos)
+          if space_pos then
+            value = comment_text:sub(value_start_pos, space_pos - 1)
+            value_end_pos = space_pos - 1
+          else
+            value = comment_text:sub(value_start_pos)
+            value_end_pos = #comment_text
+          end
+        end
+
+        if value and #value > 0 then
+          -- Calculate eq_pos in the ORIGINAL line (not in comment_text)
+          local eq_pos_in_line = comment_start_pos + eq_pos_in_comment
+
+          local unique_key = potential_key .. "_line_" .. current_line_idx .. "_pos_" .. eq_pos_in_comment
+          parsed_vars[unique_key] = {
+            key = potential_key,
+            value = value,
+            quote_char = quote_char,
+            start_line = current_line_idx,
+            end_line = current_line_idx,
+            eq_pos = eq_pos_in_line,
+            is_multi_line = false,
+            has_newlines = false,
+            content_hash = content_hash,
+            is_comment = true,
+          }
+        end
+
+        -- Move search position past this key-value pair
+        search_pos = value_end_pos + 1
+        ::continue_comment_parse::
+      end
+
+      current_line_idx = current_line_idx + 1
+      goto continue
+    end
+
+    -- Handle regular (non-comment) lines
     if not multi_line_state.in_multi_line then
       local eq_pos = line:find(PATTERNS.equals)
       if eq_pos then
@@ -212,6 +315,9 @@ function M.parse_lines_cached(lines, content_hash)
       end
     end
 
+    -- Save the state before extraction to check if we were in multi-line mode
+    local was_in_multi_line = multi_line_state.in_multi_line
+
     local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, multi_line_state)
     if updated_state then
       multi_line_state = updated_state
@@ -223,6 +329,119 @@ function M.parse_lines_cached(lines, content_hash)
 
         if not line_start_positions[updated_state.key] then
           line_start_positions[updated_state.key] = current_line_idx
+        end
+      end
+    end
+
+    -- For multi-line continuation lines, extract inline comments manually
+    -- because extract_line_parts doesn't return them until the multi-line value is complete
+    -- Do this for all lines that are part of a multi-line value:
+    -- - Lines that were already in multi-line mode (continuation lines)
+    -- - Lines that just entered multi-line mode (first line)
+    -- - Final lines that return concatenated comments (we need the single-line comment instead)
+    if (was_in_multi_line or multi_line_state.in_multi_line) and (not comment or comment:find("\n")) then
+      local hash_pos = line:find("#")
+      if hash_pos and hash_pos > 1 then
+        -- Extract the comment portion after # from THIS line only
+        comment = line:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+      end
+    end
+
+    -- Parse inline comments for key-value pairs
+    -- e.g., "VALUE=something\ #key1='value1' key2='value2'"
+    -- Skip concatenated multi-line comments (they contain newlines and have already been parsed line-by-line)
+    if comment and #comment > 0 and not comment:find("\n") then
+      local comment_start_pos = line:find("#")
+      if comment_start_pos then
+        local search_pos = 1
+
+        -- Loop to find ALL key-value pairs in the inline comment
+        while search_pos <= #comment do
+          local eq_pos_in_comment = comment:find(PATTERNS.equals, search_pos)
+          if not eq_pos_in_comment then
+            break -- No more = signs
+          end
+
+          -- Find the start of the key by scanning backwards from =
+          local key_start = eq_pos_in_comment
+          while key_start > search_pos do
+            local char = comment:sub(key_start - 1, key_start - 1)
+            if char:match("[%s]") then
+              break
+            end
+            key_start = key_start - 1
+          end
+
+          local potential_key = comment:sub(key_start, eq_pos_in_comment - 1):match("^%s*(.-)%s*$")
+
+          if not potential_key or #potential_key == 0 then
+            search_pos = eq_pos_in_comment + 1
+            goto continue_inline_comment_parse
+          end
+
+          -- Extract value after the = sign
+          local value_start_pos = eq_pos_in_comment + 1
+          local inline_value, inline_quote_char, value_end_pos
+
+          -- Skip leading whitespace
+          while value_start_pos <= #comment and comment:sub(value_start_pos, value_start_pos):match("%s") do
+            value_start_pos = value_start_pos + 1
+          end
+
+          if value_start_pos > #comment then
+            search_pos = eq_pos_in_comment + 1
+            goto continue_inline_comment_parse
+          end
+
+          -- Check if value is quoted
+          local first_char = comment:sub(value_start_pos, value_start_pos)
+          if first_char == '"' or first_char == "'" then
+            inline_quote_char = first_char
+            local end_quote_pos = comment:find(inline_quote_char, value_start_pos + 1, true)
+
+            if end_quote_pos then
+              inline_value = comment:sub(value_start_pos + 1, end_quote_pos - 1)
+              value_end_pos = end_quote_pos
+            else
+              -- No closing quote - take rest of line
+              inline_value = comment:sub(value_start_pos + 1)
+              value_end_pos = #comment
+            end
+          else
+            -- Unquoted value - take until space or end of line
+            local space_pos = comment:find("%s", value_start_pos)
+            if space_pos then
+              inline_value = comment:sub(value_start_pos, space_pos - 1)
+              value_end_pos = space_pos - 1
+            else
+              inline_value = comment:sub(value_start_pos)
+              value_end_pos = #comment
+            end
+          end
+
+          if inline_value and #inline_value > 0 then
+            -- Calculate eq_pos in the ORIGINAL line (not in comment text)
+            local eq_pos_in_line = comment_start_pos + eq_pos_in_comment
+
+            local unique_key = potential_key .. "_line_" .. current_line_idx .. "_pos_" .. eq_pos_in_comment
+            parsed_vars[unique_key] = {
+              key = potential_key,
+              value = inline_value,
+              quote_char = inline_quote_char,
+              start_line = current_line_idx,
+              end_line = current_line_idx,
+              eq_pos = eq_pos_in_line,
+              is_multi_line = false,
+              has_newlines = false,
+              content_hash = content_hash,
+              is_comment = true,
+              is_inline_comment = true,  -- Mark as inline comment to distinguish from comment line
+            }
+          end
+
+          -- Move search position past this key-value pair
+          search_pos = value_end_pos + 1
+          ::continue_inline_comment_parse::
         end
       end
     end
@@ -244,6 +463,7 @@ function M.parse_lines_cached(lines, content_hash)
         is_multi_line = start_line < end_line,
         has_newlines = value:find(NEWLINE) ~= nil,
         content_hash = content_hash,
+        is_comment = false,
       }
       multi_line_state = {}
     end

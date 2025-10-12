@@ -9,23 +9,30 @@ local LRUCache = require("ecolog.shelter.lru_cache")
 local namespace = api.nvim_create_namespace("ecolog_shelter")
 local processed_buffers = LRUCache.new(100)
 
----Process buffer with optimized multi-line support
+---Process buffer with optimized masking engine
 ---@param bufnr number Buffer number
 ---@param lines string[] Lines to process
 ---@param content_hash string Content hash
 ---@param filename string Filename
 ---@param on_complete? function Optional callback when processing is complete
-local function process_buffer_with_multiline(bufnr, lines, content_hash, filename, on_complete)
+local function process_buffer_with_masking(bufnr, lines, content_hash, filename, on_complete)
   if not api.nvim_buf_is_valid(bufnr) then
     return
   end
 
-  local config = state.get_config()
+  local state_config = state.get_config()
   local skip_comments = state.get_buffer_state().skip_comments
-  
-  -- Use the optimized multi-line engine
-  local multiline_engine = require("ecolog.shelter.multiline_engine")
-  multiline_engine.process_buffer_optimized(
+
+  -- Build config with all necessary masking parameters
+  local config = {
+    partial_mode = state_config.partial_mode,
+    highlight_group = state_config.highlight_group,
+    mask_length = state_config.mask_length,
+  }
+
+  -- Use the optimized masking engine
+  local masking_engine = require("ecolog.shelter.masking_engine")
+  masking_engine.process_buffer_optimized(
     bufnr,
     lines,
     config,
@@ -163,7 +170,7 @@ function M.process_buffer(bufnr, source_filename, cache, on_complete)
   pcall(api.nvim_buf_set_var, bufnr, "ecolog_masked", true)
 
   M.setup_preview_buffer(bufnr, filename)
-  process_buffer_with_multiline(bufnr, lines, content_hash, filename, on_complete)
+  process_buffer_with_masking(bufnr, lines, content_hash, filename, on_complete)
 end
 
 ---@param bufnr number

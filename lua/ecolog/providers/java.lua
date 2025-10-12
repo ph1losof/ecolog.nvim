@@ -2,7 +2,37 @@ local M = {}
 local utils = require("ecolog.utils")
 
 M.providers = {
-  -- System.getenv() with double quotes completion
+  -- Complete expressions (for detection anywhere in code)
+  {
+    pattern = 'System%.getenv%("[%w_]+"%)',
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]+)"%)')
+    end,
+  },
+  {
+    pattern = "System%.getenv%('[%w_]+'%)",
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]+)'%)")
+    end,
+  },
+  {
+    pattern = 'System%.getProperty%("[%w_.]+"%)',
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, 'System%.getProperty%("([%w_.]+)"%)')
+    end,
+  },
+  {
+    pattern = "System%.getProperty%('[%w_.]+'%)",
+    filetype = "java",
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, "System%.getProperty%('([%w_.]+)'%)")
+    end,
+  },
+
+  -- Completion patterns (for autocomplete)
   {
     pattern = 'System%.getenv%("[%w_]*$',
     filetype = "java",

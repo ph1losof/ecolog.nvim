@@ -66,10 +66,15 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts, 
 
   local type_name, transformed_value = types.detect_type(value)
 
+  local final_value = value
+  if transformed_value ~= nil then
+    final_value = transformed_value
+  end
+
   local result = {
     key,
     {
-      value = transformed_value or value,
+      value = final_value,
       type = type_name,
       raw_value = value,
       source = file_path,
@@ -156,8 +161,13 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
         local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
         if interpolated_value ~= var_info.raw_value then
           local type_name, transformed_value = types.detect_type(interpolated_value)
+          local final_value = interpolated_value
+          if transformed_value ~= nil then
+            final_value = transformed_value
+          end
+          
           env_vars_result[key] = {
-            value = transformed_value or interpolated_value,
+            value = final_value,
             type = type_name,
             raw_value = var_info.raw_value,
             source = var_info.source,
@@ -231,8 +241,13 @@ local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, c
           local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
           if interpolated_value ~= var_info.raw_value then
             local type_name, transformed_value = types.detect_type(interpolated_value)
+            local final_value = interpolated_value
+            if transformed_value ~= nil then
+              final_value = transformed_value
+            end
+            
             env_vars_result[key] = {
-              value = transformed_value or interpolated_value,
+              value = final_value,
               type = type_name,
               raw_value = var_info.raw_value,
               source = var_info.source,
@@ -318,9 +333,10 @@ end
 ---@return table<string, EnvVarInfo>
 function M.load_environment(opts, state, force)
   if force then
-    -- Preserve selected_env_file if workspace file transition was handled
+    -- Preserve selected_env_file in monorepo mode or if workspace file transition was handled
     local preserved_file = opts._workspace_selected_file
       or (opts._workspace_file_handled and state.selected_env_file or nil)
+      or ((opts._is_monorepo_workspace or opts._is_monorepo_manual_mode) and state.selected_env_file or nil)
     state.env_vars = {}
     state._env_line_cache = {}
     if preserved_file then
@@ -337,7 +353,7 @@ function M.load_environment(opts, state, force)
     return M.load_monorepo_environment(opts, state)
   end
 
-  -- Only auto-select first file if not handled by workspace transition
+  -- Only auto-select file if not handled by workspace transition
   if not state.selected_env_file and not opts._workspace_file_handled then
     local env_files = utils.find_env_files(opts)
     if #env_files > 0 then
@@ -565,9 +581,22 @@ function M.load_monorepo_environment(opts, state)
     return {}
   end
 
-  -- For monorepo environments, select only the FIRST file (highest priority)
-  -- based on the provider's resolution strategy and priority rules
-  local selected_file = env_files[1]
+  -- Respect the user's selected file if it exists in the available files
+  local selected_file = nil
+  if state.selected_env_file then
+    -- Check if the previously selected file is still available
+    for _, file in ipairs(env_files) do
+      if file == state.selected_env_file then
+        selected_file = state.selected_env_file
+        break
+      end
+    end
+  end
+
+  -- If no previously selected file or it's not available, use the first file (highest priority)
+  if not selected_file then
+    selected_file = env_files[1]
+  end
 
   -- Update state with selected file for compatibility
   state.selected_env_file = selected_file

@@ -27,6 +27,9 @@ local TYPE_DEFINITIONS = {
   },
   number = {
     pattern = "^-?%d+%.?%d*$",
+    transform = function(value)
+      return tostring(tonumber(value))
+    end,
   },
   json = {
     pattern = "^%s*[{%[].*[%]}]%s*$",
@@ -128,6 +131,25 @@ local TYPE_DEFINITIONS = {
         if not num or num < 0 or num > 255 then
           return false
         end
+      end
+      return true
+    end,
+  },
+
+  email = {
+    pattern = "[%w%._%+%-]+@[%w%.%-]+%.[%w]+",
+    validate = function(value)
+      -- Basic email validation pattern
+      local local_part, domain = value:match("^([%w%._%+%-]+)@([%w%.%-]+%.[%w]+)$")
+      if not local_part or not domain then
+        return false
+      end
+      -- Check for valid characters and structure
+      if local_part:match("^%.") or local_part:match("%.$") or local_part:match("%.%.") then
+        return false
+      end
+      if domain:match("^%.") or domain:match("%.$") or domain:match("%.%.") then
+        return false
       end
       return true
     end,
@@ -287,6 +309,7 @@ function M.detect_type(value)
     "localhost",
     "database_url",
     "url",
+    "email",
     "iso_date",
     "iso_time",
     "hex_color",

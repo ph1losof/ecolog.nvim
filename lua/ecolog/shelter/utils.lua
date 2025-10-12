@@ -122,9 +122,9 @@ function M.determine_masked_value(value, settings)
     return M.mask_multi_line_value(value, settings, conf, mode, mask_length)
   end
 
-  mask_length = mask_length or #value
-
+  -- Only default mask_length for full mode
   if mode == "full" or not conf.partial_mode then
+    mask_length = mask_length or #value
     local result
     if not mask_length then
       result = string_rep(conf.mask_char, #value)
@@ -164,7 +164,8 @@ function M.determine_masked_value(value, settings)
   end
 
   local available_mask_space = #value - show_start - show_end
-  local effective_mask_length = math.max(math.min(mask_length or available_mask_space, available_mask_space), min_mask)
+  -- In partial mode, don't use mask_length config - use available space limited by min_mask
+  local effective_mask_length = math.max(available_mask_space, min_mask)
 
   local result = string_sub(value, 1, show_start)
     .. string_rep(conf.mask_char, effective_mask_length)
@@ -403,6 +404,10 @@ function M.mask_comment(comment_value, source, shelter, feature)
     end
 
     local masked = shelter.mask_value(kv.value, feature, kv.key, source)
+
+    if kv.quote_char then
+      masked = kv.quote_char .. masked .. kv.quote_char
+    end
 
     result = result:sub(1, kv.eq_pos) .. masked .. result:sub(kv.next_pos)
 

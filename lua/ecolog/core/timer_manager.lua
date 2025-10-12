@@ -11,8 +11,20 @@ local _debounce_timers = {}
 ---@param repeat_interval number? Repeat interval in milliseconds (optional)
 ---@return table timer The created timer object
 function TimerManager.create_timer(callback, delay, repeat_interval)
+  -- Validate inputs
+  if not callback or type(callback) ~= "function" then
+    vim.notify("Timer callback must be a function", vim.log.levels.ERROR)
+    return nil
+  end
+  
+  if not delay or type(delay) ~= "number" or delay < 0 then
+    vim.notify("Timer delay must be a positive number", vim.log.levels.ERROR)
+    return nil
+  end
+  
   local timer = vim.loop.new_timer()
   if not timer then
+    vim.notify("Failed to create timer", vim.log.levels.ERROR)
     return nil
   end
 
@@ -94,6 +106,7 @@ end
 function TimerManager.cancel_all_debounced()
   for timer_id, timer in pairs(_debounce_timers) do
     TimerManager.cancel_timer(timer)
+    _debounce_timers[timer_id] = nil
   end
   _debounce_timers = {}
 end

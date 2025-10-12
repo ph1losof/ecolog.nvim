@@ -1,4 +1,4 @@
----@class EcologMultilineEngine
+---@class EcologMaskingEngine
 ---@field private cache table LRU cache for parsed results
 local M = {}
 
@@ -19,6 +19,7 @@ local lru_cache = require("ecolog.shelter.lru_cache")
 local common = require("ecolog.shelter.common")
 local utils = require("ecolog.utils")
 local shelter_utils = require("ecolog.shelter.utils")
+local comment_parser = require("ecolog.shelter.comment_parser")
 
 local multiline_parsing
 local function get_multiline_parser()
@@ -32,7 +33,7 @@ local perf_config = {
   parsed_cache_size = 200,
   extmark_cache_size = 100,
   mask_cache_size = 150,
-  batch_size = 50,
+  batch_size = 100,
   hash_sample_rate = 16,
   estimated_vars_per_lines = 4,
   estimated_extmarks_multiplier = 2,
@@ -149,6 +150,33 @@ local PATTERNS = {
   quote_chars = "[\"']",
 }
 
+---Extract inline comment from a line if in multi-line context
+---@param line string The line to check
+---@param was_in_multi_line boolean Whether we were in multi-line mode before this line
+---@param multi_line_state table Current multi-line state
+---@return string? comment The extracted comment text or nil
+local function extract_inline_comment(line, was_in_multi_line, multi_line_state)
+  if not (was_in_multi_line or multi_line_state.in_multi_line) then
+    return nil
+  end
+
+  local hash_pos = line:find("#", 1, true)
+  if not hash_pos or hash_pos == 1 then
+    return nil
+  end
+
+  return line:sub(hash_pos + 1):match("^%s*(.-)%s*$")
+end
+
+---Merge parsed variables from comment parser into main table
+---@param target table Target parsed_vars table
+---@param source table Source parsed_vars from comment parser
+local function merge_parsed_vars(target, source)
+  for key, var in pairs(source) do
+    target[key] = var
+  end
+end
+
 ---@class ParsedVariable
 ---@field key string The variable key
 ---@field value string The variable value
@@ -159,6 +187,7 @@ local PATTERNS = {
 ---@field is_multi_line boolean Whether this is a multi-line value
 ---@field has_newlines boolean Whether the value contains newlines
 ---@field content_hash string Hash of the content for caching
+---@field is_comment boolean Whether this variable is from a comment line
 
 ---@class ExtmarkSpec
 ---@field line number 0-based line number
@@ -189,15 +218,23 @@ function M.parse_lines_cached(lines, content_hash)
   while current_line_idx <= #lines do
     local line = lines[current_line_idx]
 
-
-    if line == EMPTY_STRING or line:find(PATTERNS.comment) then
+    if line == EMPTY_STRING then
       current_line_idx = current_line_idx + 1
       goto continue
     end
 
+    local is_comment_line = line:find(PATTERNS.comment)
+
+    if is_comment_line then
+      local comment_vars = comment_parser.parse_comment_line(line, current_line_idx, content_hash)
+      merge_parsed_vars(parsed_vars, comment_vars)
+
+      current_line_idx = current_line_idx + 1
+      goto continue
+    end
 
     if not multi_line_state.in_multi_line then
-      local eq_pos = line:find(PATTERNS.equals)
+      local eq_pos = line:find("=", 1, true)
       if eq_pos then
         local potential_key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
         if potential_key and #potential_key > 0 then
@@ -211,6 +248,8 @@ function M.parse_lines_cached(lines, content_hash)
         end
       end
     end
+
+    local was_in_multi_line = multi_line_state.in_multi_line
 
     local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, multi_line_state)
     if updated_state then
@@ -227,6 +266,17 @@ function M.parse_lines_cached(lines, content_hash)
       end
     end
 
+    if comment and not comment:find("\n") then
+      local inline_vars = comment_parser.parse_inline_comment(comment, line, current_line_idx, content_hash)
+      merge_parsed_vars(parsed_vars, inline_vars)
+    end
+
+    local inline_comment = extract_inline_comment(line, was_in_multi_line, multi_line_state)
+    if inline_comment and not inline_comment:find("\n") then
+      local inline_vars = comment_parser.parse_inline_comment(inline_comment, line, current_line_idx, content_hash)
+      merge_parsed_vars(parsed_vars, inline_vars)
+    end
+
     if key and value then
 
       local unique_tracking_key = key .. "_line_" .. current_line_idx
@@ -240,10 +290,11 @@ function M.parse_lines_cached(lines, content_hash)
         quote_char = quote_char,
         start_line = start_line,
         end_line = end_line,
-        eq_pos = lines[start_line]:find(PATTERNS.equals) or 1,
+        eq_pos = lines[start_line]:find("=", 1, true) or 1,
         is_multi_line = start_line < end_line,
         has_newlines = value:find(NEWLINE) ~= nil,
         content_hash = content_hash,
+        is_comment = false,
       }
       multi_line_state = {}
     end
@@ -265,7 +316,7 @@ end
 ---@param mask_config table Mask configuration
 ---@return string[] distributed_masks Array of masks for each line
 function M.create_mask_length_masks(var_info, lines, config, source_filename, mask_length, mask_config)
-  get_constants() -- Initialize constants
+  get_constants() 
   local state = require("ecolog.shelter.state")
   
   local has_revealed_line = false
@@ -393,7 +444,7 @@ end
 ---@param source_filename string Source filename for masking
 ---@return string[] distributed_masks Array of masks for each line
 function M.generate_multiline_masks(var_info, lines, config, source_filename)
-  get_constants() -- Initialize constants
+  get_constants() 
   local state = require("ecolog.shelter.state")
   local mask_length = state.get_config().mask_length
   if not mask_length then
@@ -496,7 +547,14 @@ end
 ---@return ExtmarkSpec[] extmarks Array of extmark specifications
 function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, skip_comments)
   local extmarks = {}
-  local extmark_cache_key = table_concat({source_filename, fast_hash(lines)}, ":")
+  local extmark_cache_key = table_concat({
+    source_filename,
+    fast_hash(lines),
+    tostring(skip_comments),
+    config.mask_char or "*",
+    tostring(config.mask_length or "nil"),
+    config.highlight_group or "Comment"
+  }, ":")
 
   local cached_extmarks = get_extmark_cache():get(extmark_cache_key)
   if cached_extmarks then
@@ -546,12 +604,10 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
               strict = base_extmark_opts.strict,
             }
 
-            -- For mask_length scenarios, position extmark after the equals sign on first line, 
-            -- at column 0 for subsequent lines
             local col_pos = (line_idx == var_info.start_line) and var_info.eq_pos or 0
 
             table.insert(extmarks, {
-              line = line_idx - 1, -- 0-based
+              line = line_idx - 1, 
               col = col_pos,
               opts = extmark_opts,
             })
@@ -607,15 +663,22 @@ function M.apply_extmarks_batched(bufnr, extmarks, namespace, batch_size)
     end
 
     local end_idx = math_min(start_idx + batch_size - 1, #extmarks)
+    
+    local batch_success = 0
     for i = start_idx, end_idx do
       local extmark = extmarks[i]
-      pcall(api_buf_set_extmark, bufnr, namespace, extmark.line, extmark.col, extmark.opts)
+      local success = pcall(api_buf_set_extmark, bufnr, namespace, extmark.line, extmark.col, extmark.opts)
+      if success then
+        batch_success = batch_success + 1
+      end
     end
 
     if end_idx < #extmarks then
-      vim_schedule(function()
-        apply_batch(end_idx + 1)
-      end)
+      if api_buf_is_valid(bufnr) then
+        vim_schedule(function()
+          apply_batch(end_idx + 1)
+        end)
+      end
     end
   end
 

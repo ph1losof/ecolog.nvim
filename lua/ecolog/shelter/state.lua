@@ -143,7 +143,7 @@ end
 ---@param feature string
 ---@return boolean
 function M.is_enabled(feature)
-  vim.validate("feature", feature, "string")
+  vim.validate({ feature = { feature, "string" } })
 
   local cache_key = "feature_enabled_" .. feature
   if _state_cache[cache_key] ~= nil then
@@ -162,8 +162,8 @@ end
 ---@param feature string
 ---@param enabled boolean
 function M.set_feature_state(feature, enabled)
-  vim.validate("feature", feature, "string")
-  vim.validate("enabled", enabled, "boolean")
+  vim.validate({ feature = { feature, "string" } })
+  vim.validate({ enabled = { enabled, "boolean" } })
 
   state.features.enabled[feature] = enabled
   _state_cache["feature_enabled_" .. feature] = enabled
@@ -171,8 +171,8 @@ function M.set_feature_state(feature, enabled)
   if feature == "files" and enabled then
     M.reset_revealed_lines()
     vim.schedule(function()
-      local multiline_engine = require("ecolog.shelter.multiline_engine")
-      multiline_engine.clear_caches()
+      local masking_engine = require("ecolog.shelter.masking_engine")
+      masking_engine.clear_caches()
 
       local buffer = require("ecolog.shelter.buffer")
       if buffer and buffer.shelter_buffer then
@@ -185,15 +185,15 @@ end
 ---@param feature string
 ---@param enabled boolean
 function M.set_initial_feature_state(feature, enabled)
-  vim.validate("feature", feature, "string")
-  vim.validate("enabled", enabled, "boolean")
+  vim.validate({ feature = { feature, "string" } })
+  vim.validate({ enabled = { enabled, "boolean" } })
 
   state.features.initial[feature] = enabled
 end
 
 ---@param config StateConfig
 function M.set_config(config)
-  vim.validate("config", config, "table")
+  vim.validate({ config = { config, "table" } })
 
   state.config = config
   for k in pairs(_state_cache) do
@@ -206,7 +206,7 @@ end
 ---@param key string
 ---@param value any
 function M.update_buffer_state(key, value)
-  vim.validate("key", key, "string")
+  vim.validate({ key = { key, "string" } })
 
   state.buffer[key] = value
   if _buffer_cache[key] then
@@ -216,7 +216,7 @@ end
 
 ---@param new_state BufferState
 function M.set_buffer_state(new_state)
-  vim.validate("new_state", new_state, "table")
+  vim.validate({ new_state = { new_state, "table" } })
 
   for key, value in pairs(new_state) do
     M.update_buffer_state(key, value)
@@ -237,8 +237,8 @@ end
 ---@param line_num number
 ---@param revealed boolean
 function M.set_revealed_line(line_num, revealed)
-  vim.validate("line_num", line_num, "number")
-  vim.validate("revealed", revealed, "boolean")
+  vim.validate({ line_num = { line_num, "number" } })
+  vim.validate({ revealed = { revealed, "boolean" } })
 
   state.buffer.revealed_lines[line_num] = revealed
   if _buffer_cache.revealed_lines then
@@ -249,7 +249,7 @@ end
 ---@param line_num number
 ---@return boolean
 function M.is_line_revealed(line_num)
-  vim.validate("line_num", line_num, "number")
+  vim.validate({ line_num = { line_num, "number" } })
 
   if not _buffer_cache.revealed_lines then
     _buffer_cache.revealed_lines = vim.deepcopy(state.buffer.revealed_lines)

@@ -484,13 +484,25 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
 
   state._libuv_fs_watcher = fs_event
 
+  -- Debounce state to prevent rapid successive calls
+  local last_change_time = 0
+  local DEBOUNCE_DELAY = 100 -- ms
+  
   local function on_change(err, filename, events)
     if err then
       return
     end
 
+    -- Debounce rapid file changes
+    local now = vim.loop.now()
+    last_change_time = now
+    
     -- Schedule callback to avoid fast event context restrictions
     vim.schedule(function()
+      -- Check if this is still the latest change
+      if vim.loop.now() - last_change_time < DEBOUNCE_DELAY then
+        return
+      end
       -- Check if the changed file matches our env patterns
       if filename then
         local full_path = config._monorepo_root .. "/" .. filename
@@ -500,9 +512,17 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
           update_activity()
 
           -- An env file was changed, trigger immediate refresh
+          -- Atomically clear cache to prevent race conditions
+          local old_cache = state._env_line_cache
           state.cached_env_files = nil
           state.file_cache_opts = nil
           state._env_line_cache = {}
+          -- Clear the old cache reference to prevent memory leaks
+          if old_cache then
+            for k in pairs(old_cache) do
+              old_cache[k] = nil
+            end
+          end
 
           -- Clear file stats cache for the changed file
           if state._file_stats_cache then
@@ -522,9 +542,17 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
           -- File pattern matching failed, but still trigger refresh for safety
           update_activity()
 
+          -- Atomically clear cache to prevent race conditions
+          local old_cache = state._env_line_cache
           state.cached_env_files = nil
           state.file_cache_opts = nil
           state._env_line_cache = {}
+          -- Clear the old cache reference to prevent memory leaks
+          if old_cache then
+            for k in pairs(old_cache) do
+              old_cache[k] = nil
+            end
+          end
 
           M._clear_monorepo_cache(config, state)
 
@@ -541,10 +569,16 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
   end
 
   -- Start watching the monorepo root recursively
-  local watch_success = pcall(fs_event.start, fs_event, config._monorepo_root, { recursive = true }, on_change)
+  local watch_success, watch_err = pcall(fs_event.start, fs_event, config._monorepo_root, { recursive = true }, on_change)
   if not watch_success then
-    fs_event:close()
+    -- Ensure proper cleanup on startup failure
+    pcall(fs_event.close, fs_event)
     state._libuv_fs_watcher = nil
+    NotificationManager.notify(
+      "Failed to start LibUV file watcher: " .. tostring(watch_err),
+      vim.log.levels.WARN
+    )
+    return
   end
 end
 

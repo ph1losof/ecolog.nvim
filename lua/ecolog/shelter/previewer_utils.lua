@@ -21,26 +21,20 @@ local function process_buffer_with_masking(bufnr, lines, content_hash, filename,
   end
 
   local state_config = state.get_config()
-  local skip_comments = state.get_buffer_state().skip_comments
+  local skip_comments = state_config.skip_comments or false
 
   -- Build config with all necessary masking parameters
   local config = {
     partial_mode = state_config.partial_mode,
     highlight_group = state_config.highlight_group,
     mask_length = state_config.mask_length,
+    mask_char = state_config.mask_char,
   }
 
   -- Use the optimized masking engine
   local masking_engine = require("ecolog.shelter.masking_engine")
-  masking_engine.process_buffer_optimized(
-    bufnr,
-    lines,
-    config,
-    filename,
-    namespace,
-    skip_comments
-  )
-  
+  masking_engine.process_buffer_optimized(bufnr, lines, config, filename, namespace, skip_comments)
+
   -- Complete processing
   if on_complete then
     on_complete(content_hash)

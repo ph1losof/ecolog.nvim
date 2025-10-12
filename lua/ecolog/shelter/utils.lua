@@ -405,6 +405,10 @@ function M.mask_comment(comment_value, source, shelter, feature)
 
     local masked = shelter.mask_value(kv.value, feature, kv.key, source)
 
+    if kv.quote_char then
+      masked = kv.quote_char .. masked .. kv.quote_char
+    end
+
     result = result:sub(1, kv.eq_pos) .. masked .. result:sub(kv.next_pos)
 
     pos = kv.eq_pos + #masked + 1

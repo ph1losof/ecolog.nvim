@@ -43,6 +43,17 @@ local BATCH_SIZE = 100
 local active_buffers = setmetatable({}, { __mode = "k" })
 local string_buffer = table.new and table.new(1000, 0) or {}
 
+local PADDING_CACHE = setmetatable({}, {
+  __index = function(t, n)
+    if n <= 0 or n > 1000 then
+      return string.rep(" ", math.max(0, math.min(n, 1000)))
+    end
+    local pad = string.rep(" ", n)
+    t[n] = pad
+    return pad
+  end,
+})
+
 M.NAMESPACE = NAMESPACE
 
 ---@param text string
@@ -64,7 +75,6 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
     return nil, multi_line_state
   end
 
-  -- Find the key by scanning backwards from equals sign
   local key_start = eq_pos
   while key_start > start_pos do
     local char = text:sub(key_start - 1, key_start - 1)
@@ -81,7 +91,6 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
 
   local value_part = text:sub(eq_pos + 1)
 
-  -- Handle quoted values
   local pos = eq_pos + 1
   local quote_char = text:sub(pos, pos)
   local in_quotes = quote_char == '"' or quote_char == "'"
@@ -105,7 +114,6 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
       return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
     end
   else
-    -- Handle unquoted values
     while pos <= #text do
       local char = text:sub(pos, pos)
       if char:match("[%s#]") then
@@ -205,6 +213,73 @@ local function setup_buffer_options(bufnr, winid)
   end
 end
 
+---Truncate masked value with partial mode support
+---@param masked_value string The masked value to truncate
+---@param mask_length number The target mask length
+---@param partial_mode table? Partial mode configuration
+---@return string truncated The truncated value
+local function truncate_with_partial_mode(masked_value, mask_length, partial_mode)
+  if not partial_mode or type(partial_mode) ~= "table" then
+    return masked_value:sub(1, mask_length)
+  end
+
+  local show_end = partial_mode.show_end or 0
+  if show_end > 0 and mask_length > show_end then
+    local end_chars = masked_value:sub(-show_end)
+    local start_part = masked_value:sub(1, mask_length - show_end)
+    return start_part .. end_chars
+  end
+
+  return masked_value:sub(1, mask_length)
+end
+
+---Apply display logic: truncation, quotes, and padding
+---@param masked_value string The base masked value
+---@param raw_value string The original raw value
+---@param quote_char string? Quote character to use
+---@param mask_length number? Mask length to apply
+---@param config table Configuration with partial_mode
+---@return string display_text The final display text
+local function apply_mask_display_logic(masked_value, raw_value, quote_char, mask_length, config)
+  local display_text = masked_value
+
+  if mask_length and #masked_value > mask_length then
+    display_text = truncate_with_partial_mode(masked_value, mask_length, config.partial_mode)
+  end
+
+  if quote_char then
+    display_text = quote_char .. display_text .. quote_char
+  end
+
+  local padding_needed = math.max(0, #raw_value - #display_text)
+  if padding_needed > 0 then
+    display_text = display_text .. PADDING_CACHE[padding_needed]
+  end
+
+  return display_text
+end
+
+---Build extmark specification
+---@param line_num number Line number (1-based)
+---@param col_pos number Column position
+---@param display_text string Text to display
+---@param config table Configuration
+---@param item ProcessedItem Item information
+---@return table extmark The extmark specification
+local function build_extmark(line_num, col_pos, display_text, config, item)
+  return {
+    line_num - 1, -- 0-based
+    col_pos,
+    {
+      virt_text = { { display_text, config.highlight_group } },
+      virt_text_pos = "overlay",
+      hl_mode = "combine",
+      priority = item.is_comment and 10000 or 9999,
+      strict = false,
+    },
+  }
+end
+
 ---@param value string
 ---@param item ProcessedItem
 ---@param config table
@@ -212,11 +287,11 @@ end
 ---@param line_num number
 ---@return table|table[]? extmark(s) Single extmark or array of extmarks for multi-line values
 function M.create_extmark(value, item, config, bufname, line_num)
-  local is_revealed = state.is_line_revealed(line_num)
   local raw_value = item.quote_char and (item.quote_char .. value .. item.quote_char) or value
 
   local is_multi_line = value:find("\n") ~= nil
   if is_multi_line then
+    local is_revealed = state.is_line_revealed(line_num)
     local masked_value = is_revealed and raw_value
       or shelter_utils.determine_masked_value(value, {
         partial_mode = config.partial_mode,
@@ -227,25 +302,10 @@ function M.create_extmark(value, item, config, bufname, line_num)
     return M.create_multi_line_extmarks(raw_value, masked_value, item, config, line_num)
   end
 
+  local is_revealed = state.is_line_revealed(line_num)
   if is_revealed then
-    local extmark_opts = {
-      virt_text = {
-        { raw_value, "String" },
-      },
-      virt_text_pos = "overlay",
-      hl_mode = "combine",
-      priority = item.is_comment and 10000 or 9999,
-      strict = false,
-    }
-    return {
-      line_num - 1,
-      item.eq_pos,
-      extmark_opts,
-    }
+    return build_extmark(line_num, item.eq_pos, raw_value, { highlight_group = "String" }, item)
   end
-
-  local mask_length = config.mask_length
-  local quote_char = item.quote_char
 
   local masked_value = shelter_utils.determine_masked_value(value, {
     partial_mode = config.partial_mode,
@@ -258,47 +318,21 @@ function M.create_extmark(value, item, config, bufname, line_num)
     return nil
   end
 
-  local display_text = masked_value
+  local display_text = apply_mask_display_logic(masked_value, raw_value, item.quote_char, config.mask_length, config)
 
-  if mask_length and #masked_value > mask_length then
-    if config.partial_mode and type(config.partial_mode) == "table" then
-      local show_end = config.partial_mode.show_end or 0
-      if show_end > 0 and mask_length > show_end then
-        local end_chars = masked_value:sub(-show_end)
-        local start_part = masked_value:sub(1, mask_length - show_end)
-        display_text = start_part .. end_chars
-      else
-        display_text = masked_value:sub(1, mask_length)
-      end
-    else
-      display_text = masked_value:sub(1, mask_length)
-    end
+  return build_extmark(line_num, item.eq_pos, display_text, config, item)
+end
+
+---Batch check revealed lines for performance
+---@param start_line number Starting line number
+---@param end_line number Ending line number
+---@return table<number, boolean> revealed_map Map of line numbers to revelation status
+local function get_revealed_lines_map(start_line, end_line)
+  local revealed = {}
+  for i = start_line, end_line do
+    revealed[i] = state.is_line_revealed(i)
   end
-
-  if quote_char then
-    display_text = quote_char .. display_text .. quote_char
-  end
-
-  local padding_needed = math.max(0, #raw_value - #display_text)
-  if padding_needed > 0 then
-    display_text = display_text .. string.rep(" ", padding_needed)
-  end
-
-  local extmark_opts = {
-    virt_text = {
-      { display_text, config.highlight_group },
-    },
-    virt_text_pos = "overlay",
-    hl_mode = "combine",
-    priority = item.is_comment and 10000 or 9999,
-    strict = false,
-  }
-
-  return {
-    line_num - 1,
-    item.eq_pos,
-    extmark_opts,
-  }
+  return revealed
 end
 
 ---Create extmarks for multi-line values
@@ -313,9 +347,12 @@ function M.create_multi_line_extmarks(raw_value, masked_value, item, config, sta
   local masked_lines = vim.split(masked_value, "\n", { plain = true })
   local extmarks = {}
 
+  local num_lines = #masked_lines
+  local revealed_map = get_revealed_lines_map(start_line_num, start_line_num + num_lines - 1)
+
   for i, masked_line in ipairs(masked_lines) do
     local line_num = start_line_num + i - 1
-    local is_revealed = state.is_line_revealed(line_num)
+    local is_revealed = revealed_map[line_num]
     local display_value = is_revealed and (raw_lines[i] or "") or masked_line
 
     local extmark_opts = {
@@ -331,7 +368,6 @@ function M.create_multi_line_extmarks(raw_value, masked_value, item, config, sta
       strict = false,
     }
 
-    -- For the first line, use the equals position; for subsequent lines, start at column 0
     local col_pos = i == 1 and item.eq_pos or 0
 
     table.insert(extmarks, {
@@ -345,8 +381,6 @@ function M.create_multi_line_extmarks(raw_value, masked_value, item, config, sta
 end
 
 function M.shelter_buffer()
-  -- local stack_trace = debug.traceback("", 2):match("stack traceback:\n(.-)$"):gsub("\n", " | ")
-  -- vim.notify("DEBUG: shelter_buffer() called, revealed_lines: " .. vim.inspect(state.get_buffer_state().revealed_lines) .. " | Called from: " .. stack_trace, vim.log.levels.INFO)
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   local bufname = fn.bufname()
 
@@ -363,7 +397,6 @@ function M.shelter_buffer()
   local winid = api.nvim_get_current_win()
   setup_buffer_options(bufnr, winid)
 
-  -- Get configuration for masking
   local masking_config = {
     partial_mode = state.get_config().partial_mode,
     highlight_group = state.get_config().highlight_group,
@@ -371,7 +404,6 @@ function M.shelter_buffer()
   }
   local skip_comments = state.get_config().skip_comments
 
-  -- Read all lines at once for optimized processing
   local ok, all_lines = pcall(api.nvim_buf_get_lines, bufnr, 0, -1, false)
   if not ok then
     vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)

@@ -13,7 +13,7 @@ describe("comment masking with skip_comments", function()
     state = require("ecolog.shelter.state")
 
     -- Setup state with default configuration
-    state.init({
+    state.set_config({
       partial_mode = false,
       mask_char = "*",
       mask_length = nil,

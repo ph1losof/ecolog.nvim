@@ -1,63 +1,18 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- Complete expressions (for detection anywhere in code)
-  {
-    pattern = "getenv%(['\"][%w_]+['\"]%)",
-    filetype = "php",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "getenv%(['\"]([%w_]+)['\"]%)")
-    end,
-  },
-  {
-    pattern = "%$_ENV%[['\"][%w_]+['\"]%]",
-    filetype = "php",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "%$_ENV%[['\"]([%w_]+)['\"]%]")
-    end,
-  },
-  {
-    pattern = "%$_SERVER%[['\"][%w_]+['\"]%]",
-    filetype = "php",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "%$_SERVER%[['\"]([%w_]+)['\"]%]")
-    end,
-  },
+-- PHP environment variable access patterns
+M.providers = {}
 
-  -- Completion patterns (for autocomplete)
-  {
-    pattern = "getenv%(['\"][%w_]*$",
-    filetype = "php",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "getenv%(['\"]([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "getenv('"
-    end,
-  },
-  -- $_ENV array completion
-  {
-    pattern = "%$_ENV%[['\"][%w_]*$",
-    filetype = "php",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "%$_ENV%[['\"]([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "$_ENV['"
-    end,
-  },
-  -- $_SERVER array completion
-  {
-    pattern = "%$_SERVER%[['\"][%w_]*$",
-    filetype = "php",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "%$_SERVER%[['\"]([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "$_SERVER['"
-    end,
-  },
-}
+local filetype = "php"
+
+-- getenv("VAR") and getenv('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("getenv", filetype, "both"))
+
+-- $_ENV["VAR"] and $_ENV['VAR']
+vim.list_extend(M.providers, providers_module.create_bracket_patterns("$_ENV", filetype, "both"))
+
+-- $_SERVER["VAR"] and $_SERVER['VAR']
+vim.list_extend(M.providers, providers_module.create_bracket_patterns("$_SERVER", filetype, "both"))
 
 return M.providers

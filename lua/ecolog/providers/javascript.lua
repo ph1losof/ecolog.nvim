@@ -1,108 +1,27 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- process.env dot notation (completion - at end of line)
-  {
-    pattern = "process%.env%.[%w_]*$",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "process%.env%.([%w_]+)$")
-    end,
-    get_completion_trigger = function()
-      return "process.env."
-    end,
-  },
-  -- process.env dot notation (anywhere in line)
-  {
-    pattern = "process%.env%.[%w_]+",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "process%.env%.([%w_]+)")
-    end,
-  },
-  -- process.env square brackets with double quotes (completion)
-  {
-    pattern = 'process%.env%["[%w_]*$',
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'process%.env%["([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'process.env["'
-    end,
-  },
-  -- process.env square brackets with single quotes (completion)
-  {
-    pattern = "process%.env%['[%w_]*$",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "process%.env%['([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "process.env['"
-    end,
-  },
-  -- process.env square brackets with double quotes (complete expression)
-  {
-    pattern = 'process%.env%["[%w_]+"%]',
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'process%.env%["([%w_]+)"%]')
-    end,
-  },
-  -- process.env square brackets with single quotes (complete expression)
-  {
-    pattern = "process%.env%['[%w_]+'%]",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "process%.env%['([%w_]+)'%]")
-    end,
-  },
-  -- import.meta.env (completion)
-  {
-    pattern = "import%.meta%.env%.[%w_]*$",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "import%.meta%.env%.([%w_]+)$")
-    end,
-    get_completion_trigger = function()
-      return "import.meta.env."
-    end,
-  },
-  -- import.meta.env square brackets with double quotes
-  {
-    pattern = 'import%.meta%.env%["[%w_]*$',
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'import%.meta%.env%["([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'import.meta.env["'
-    end,
-  },
-  -- import.meta.env square brackets with single quotes
-  {
-    pattern = "import%.meta%.env%['[%w_]*$",
-    filetype = { "javascript", "javascriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "import%.meta%.env%['([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "import.meta.env['"
-    end,
-  },
-  -- Deno.env.get() syntax
-  {
-    pattern = 'Deno%.env%.get%("([%w_]+)"%)',
-    filetype = { "javascript", "javascriptreact", "typescript", "typescriptreact" },
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'Deno%.env%.get%("([%w_]+)"%)')
-    end,
-    get_completion_trigger = function()
-      return 'Deno.env.get("'
-    end,
-  },
-}
+-- JavaScript/Node.js environment variable access patterns
+M.providers = {}
+
+local filetype = { "javascript", "javascriptreact" }
+
+-- process.env.VAR (dot notation)
+vim.list_extend(M.providers, providers_module.create_dot_notation_patterns("process.env", filetype))
+
+-- process.env["VAR"] and process.env['VAR'] (bracket notation)
+vim.list_extend(M.providers, providers_module.create_bracket_patterns("process.env", filetype, "both"))
+
+-- import.meta.env.VAR (Vite, modern bundlers)
+vim.list_extend(M.providers, providers_module.create_dot_notation_patterns("import.meta.env", filetype))
+
+-- import.meta.env["VAR"] and import.meta.env['VAR']
+vim.list_extend(M.providers, providers_module.create_bracket_patterns("import.meta.env", filetype, "both"))
+
+-- Deno.env.get("VAR") and Deno.env.get('VAR')
+vim.list_extend(
+  M.providers,
+  providers_module.create_function_call_patterns("Deno.env.get", { "javascript", "javascriptreact", "typescript", "typescriptreact" }, "both")
+)
 
 return M.providers

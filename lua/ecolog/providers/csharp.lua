@@ -1,52 +1,21 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- Environment.GetEnvironmentVariable completion
-  {
-    pattern = "Environment%.GetEnvironmentVariable%([\"'][%w_]*$",
-    filetype = "cs",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "Environment%.GetEnvironmentVariable%([\"']([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return 'Environment.GetEnvironmentVariable("'
-    end,
-  },
-  -- Environment.GetEnvironmentVariable with System namespace completion
-  {
-    pattern = "System%.Environment%.GetEnvironmentVariable%([\"'][%w_]*$",
-    filetype = "cs",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.Environment%.GetEnvironmentVariable%([\"']([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return 'System.Environment.GetEnvironmentVariable("'
-    end,
-  },
-  -- Environment variable from dictionary completion
-  {
-    pattern = "Environment%.GetEnvironmentVariables%(%)[%[\"'][%w_]*$",
-    filetype = "cs",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "Environment%.GetEnvironmentVariables%(%)[%[\"']([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return 'Environment.GetEnvironmentVariables()["'
-    end,
-  },
-  -- Environment variable from dictionary with System namespace completion
-  {
-    pattern = "System%.Environment%.GetEnvironmentVariables%(%)[%[\"'][%w_]*$",
-    filetype = "cs",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.Environment%.GetEnvironmentVariables%(%)[%[\"']([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return 'System.Environment.GetEnvironmentVariables()["'
-    end,
-  },
-}
+-- C# environment variable access patterns
+M.providers = {}
+
+local filetype = "cs"
+
+-- Environment.GetEnvironmentVariable("VAR") and Environment.GetEnvironmentVariable('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("Environment.GetEnvironmentVariable", filetype, "both"))
+
+-- System.Environment.GetEnvironmentVariable("VAR") and System.Environment.GetEnvironmentVariable('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("System.Environment.GetEnvironmentVariable", filetype, "both"))
+
+-- Environment.GetEnvironmentVariables()["VAR"] and Environment.GetEnvironmentVariables()['VAR']
+vim.list_extend(M.providers, providers_module.create_bracket_patterns("Environment.GetEnvironmentVariables()", filetype, "both"))
+
+-- System.Environment.GetEnvironmentVariables()["VAR"] and System.Environment.GetEnvironmentVariables()['VAR']
+vim.list_extend(M.providers, providers_module.create_bracket_patterns("System.Environment.GetEnvironmentVariables()", filetype, "both"))
 
 return M.providers
-

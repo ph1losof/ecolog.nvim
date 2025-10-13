@@ -1,51 +1,12 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- System.getenv() with double quotes completion
-  {
-    pattern = 'System%.getenv%("[%w_]*$',
-    filetype = "kotlin",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'System.getenv("'
-    end,
-  },
-  -- System.getenv() with single quotes completion
-  {
-    pattern = "System%.getenv%('[%w_]*$",
-    filetype = "kotlin",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "System.getenv('"
-    end,
-  },
-  -- System.getenv() with double quotes full pattern
-  {
-    pattern = 'System%.getenv%("[%w_]+"%)?$',
-    filetype = "kotlin",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]+)"%)?$')
-    end,
-    get_completion_trigger = function()
-      return 'System.getenv("'
-    end,
-  },
-  -- System.getenv() with single quotes full pattern
-  {
-    pattern = "System%.getenv%('[%w_]+'%)?$",
-    filetype = "kotlin",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]+)'%)?$")
-    end,
-    get_completion_trigger = function()
-      return "System.getenv('"
-    end,
-  },
-}
+-- Kotlin environment variable access patterns
+M.providers = {}
 
-return M.providers 
+local filetype = "kotlin"
+
+-- System.getenv("VAR") and System.getenv('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("System.getenv", filetype, "both"))
+
+return M.providers

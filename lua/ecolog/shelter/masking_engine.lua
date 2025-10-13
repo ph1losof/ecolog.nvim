@@ -307,6 +307,116 @@ function M.parse_lines_cached(lines, content_hash)
   return parsed_vars
 end
 
+---Generate mask for a single line with exact length
+---@param line_value string The line value to mask
+---@param line_length number Length of the line
+---@param mask_length number The mask length to apply
+---@param mask_char string The mask character
+---@param is_partial boolean Whether partial mode is active
+---@param show_start number Characters to show at start
+---@param show_end number Characters to show at end
+---@param min_mask number Minimum mask characters required
+---@return string mask The generated mask
+local function generate_line_mask(line_value, line_length, mask_length, mask_char, is_partial, show_start, show_end, min_mask)
+  local mask_for_line
+
+  if is_partial and line_length > 0 then
+    local available_middle = line_length - show_start - show_end
+
+    if line_length <= (show_start + show_end) or available_middle < min_mask then
+      -- Full mask: exactly mask_length
+      mask_for_line = string_rep(mask_char, mask_length)
+    else
+      -- Partial mask: exactly mask_length
+      local middle_mask_len = mask_length - show_start - show_end
+      local start_part = show_start > 0 and line_value:sub(1, show_start) or EMPTY_STRING
+      local end_part = show_end > 0 and line_value:sub(-show_end) or EMPTY_STRING
+      mask_for_line = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
+    end
+  else
+    -- Full mode: exactly mask_length
+    mask_for_line = string_rep(mask_char, mask_length)
+  end
+
+  -- Add padding if actual value is longer than mask
+  if line_length > #mask_for_line then
+    mask_for_line = mask_for_line .. string_rep(SPACE, line_length - #mask_for_line)
+  end
+
+  return mask_for_line
+end
+
+---Add quotes around mask, placing closing quote before padding
+---@param mask string The mask to wrap
+---@param quote_char string The quote character
+---@param is_first boolean Whether this is the first line
+---@param is_last boolean Whether this is the last line
+---@return string quoted_mask The mask with quotes
+local function add_quotes_to_mask(mask, quote_char, is_first, is_last)
+  if is_first then
+    mask = quote_char .. mask
+  end
+  if is_last then
+    -- Insert quote before padding
+    local mask_without_padding = mask:match("^(.-)%s*$") or mask
+    local padding_len = #mask - #mask_without_padding
+    mask = mask_without_padding .. quote_char
+    if padding_len > 0 then
+      mask = mask .. string_rep(SPACE, padding_len)
+    end
+  end
+  return mask
+end
+
+---Extract and clean line value for backslash continuation
+---@param line string The raw line
+---@param line_idx number Line index
+---@param start_line number First line index
+---@param end_line number Last line index
+---@param quote_char string? Quote character if present
+---@return string? line_value The cleaned value
+---@return boolean has_backslash Whether line has continuation
+local function extract_continuation_line_value(line, line_idx, start_line, end_line, quote_char)
+  local line_value
+
+  if line_idx == start_line then
+    -- First line: extract value after =
+    local eq_idx = line:find("=", 1, true)
+    if eq_idx then
+      line_value = line:sub(eq_idx + 1)
+      -- Remove leading quote if present
+      if quote_char and line_value:sub(1, 1) == quote_char then
+        line_value = line_value:sub(2)
+      end
+    end
+  else
+    -- Continuation lines: get the full line
+    line_value = line
+  end
+
+  if not line_value then
+    return nil, false
+  end
+
+  -- Check for backslash continuation
+  local has_backslash = line_value:match("\\%s*$") ~= nil
+
+  -- Remove trailing backslash, comments, and whitespace
+  line_value = line_value:gsub("%s*\\%s*$", "")
+  local comment_pos = line_value:find("#")
+  if comment_pos then
+    line_value = line_value:sub(1, comment_pos - 1)
+  end
+  line_value = line_value:match("^(.-)%s*$")
+
+  -- Remove trailing quote on last line
+  if line_idx == end_line and quote_char and line_value:sub(-1) == quote_char then
+    line_value = line_value:sub(1, -2)
+  end
+
+  return line_value, has_backslash
+end
+
 ---Optimized mask generation for mask_length scenarios
 ---@param var_info ParsedVariable The parsed variable information
 ---@param lines string[] The original lines
@@ -316,9 +426,9 @@ end
 ---@param mask_config table Mask configuration
 ---@return string[] distributed_masks Array of masks for each line
 function M.create_mask_length_masks(var_info, lines, config, source_filename, mask_length, mask_config)
-  get_constants() 
+  get_constants()
   local state = require("ecolog.shelter.state")
-  
+
   local has_revealed_line = false
   for line_idx = var_info.start_line, var_info.end_line do
     if state.is_line_revealed(line_idx) then
@@ -365,7 +475,6 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
 
   local distributed_masks = {}
 
-
   local mask_char = mask_config.mask_char
   local quote_char = var_info.quote_char
   local first_line = lines[var_info.start_line]
@@ -375,62 +484,79 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     return {}
   end
 
-  local value_to_mask = var_info.value
-
-  if quote_char then
-    local val_len = #value_to_mask
-    if val_len > 1 and value_to_mask:sub(1, 1) == quote_char and value_to_mask:sub(val_len, val_len) == quote_char then
-      value_to_mask = value_to_mask:sub(2, val_len - 1)
-    end
-  end
-
-  local single_line_parts = vim_split(value_to_mask, NEWLINE, { plain = true })
-  local single_line_value = table_concat(single_line_parts, EMPTY_STRING)
-  local actual_length = #single_line_value
-
   local partial_config = config.partial_mode
   local is_partial = partial_config and type(partial_config) == "table" and
                     (partial_config.show_start or 0) > 0 and (partial_config.show_end or 0) > 0
-  local final_mask
 
-  if is_partial and actual_length > 0 then
+  local show_start = is_partial and math.max(0, partial_config.show_start or 0) or 0
+  local show_end = is_partial and math.max(0, partial_config.show_end or 0) or 0
+  local min_mask = is_partial and math.max(0, partial_config.min_mask or 0) or 0
 
-    local show_start = math.max(0, partial_config.show_start or 0)
-    local show_end = math.max(0, partial_config.show_end or 0)
-    local min_mask = math.max(1, partial_config.min_mask or 1)
+  -- For multi-line with backslash continuation, extract value from each line
+  if var_info.is_multi_line and not var_info.has_newlines then
+    for line_idx = var_info.start_line, var_info.end_line do
+      local line = lines[line_idx]
+      local line_value, has_backslash = extract_continuation_line_value(
+        line, line_idx, var_info.start_line, var_info.end_line, quote_char
+      )
 
-    if actual_length <= (show_start + show_end) or actual_length < (show_start + show_end + min_mask) then
+      local line_length = line_value and #line_value or 0
+      local is_first = line_idx == var_info.start_line
+      local is_last = line_idx == var_info.end_line
+      local current_show_start = is_first and show_start or 0
+      local current_show_end = is_last and show_end or 0
 
-      final_mask = string.rep(mask_char, math.min(mask_length, actual_length))
-    else
+      local mask_for_line = generate_line_mask(
+        line_value or "", line_length, mask_length, mask_char,
+        is_partial, current_show_start, current_show_end, min_mask
+      )
 
-      local start_part = single_line_value:sub(1, show_start)
-      local end_part = single_line_value:sub(-show_end)
-      local middle_mask_len = math.max(min_mask, math.min(mask_length - show_start - show_end, actual_length - show_start - show_end))
+      if quote_char then
+        mask_for_line = add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
+      end
 
-      final_mask = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
-    end
+      if has_backslash then
+        mask_for_line = mask_for_line .. " \\"
+      end
 
-
-    if mask_length > actual_length then
-      final_mask = table_concat({final_mask, string_rep(mask_char, mask_length - actual_length)})
+      distributed_masks[line_idx] = mask_for_line
     end
   else
+    -- For values with actual newlines (quoted strings), split by newline
+    local value_to_mask = var_info.value
 
-    local effective_length = math_min(mask_length, actual_length)
-    final_mask = string_rep(mask_char, effective_length)
+    if quote_char then
+      local val_len = #value_to_mask
+      if val_len > 1 and value_to_mask:sub(1, 1) == quote_char and value_to_mask:sub(val_len, val_len) == quote_char then
+        value_to_mask = value_to_mask:sub(2, val_len - 1)
+      end
+    end
 
-    if mask_length > actual_length then
-      final_mask = table_concat({final_mask, string_rep(mask_char, mask_length - actual_length)})
+    local value_lines = vim_split(value_to_mask, NEWLINE, { plain = true })
+    local num_lines = #value_lines
+
+    for i, line_value in ipairs(value_lines) do
+      local line_idx = var_info.start_line + i - 1
+      local line_length = #line_value
+      local is_first = (i == 1)
+      local is_last = (i == num_lines)
+      local apply_start = (i == 1 or num_lines == 1)
+      local apply_end = (i == num_lines or num_lines == 1)
+      local current_show_start = apply_start and show_start or 0
+      local current_show_end = apply_end and show_end or 0
+
+      local mask_for_line = generate_line_mask(
+        line_value, line_length, mask_length, mask_char,
+        is_partial, current_show_start, current_show_end, min_mask
+      )
+
+      if quote_char then
+        mask_for_line = add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
+      end
+
+      distributed_masks[line_idx] = mask_for_line
     end
   end
-
-  if quote_char then
-    final_mask = table_concat({quote_char, final_mask, quote_char})
-  end
-
-  local parser = get_multiline_parser()
-  distributed_masks = parser.distribute_mask_length_masks(var_info, lines, final_mask, eq_pos)
 
   get_mask_cache():put(cache_key, distributed_masks)
 

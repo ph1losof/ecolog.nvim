@@ -1,125 +1,21 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- Complete expressions (for detection anywhere in code)
-  {
-    pattern = 'System%.getenv%("[%w_]+"%)',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]+)"%)')
-    end,
-  },
-  {
-    pattern = "System%.getenv%('[%w_]+'%)",
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]+)'%)")
-    end,
-  },
-  {
-    pattern = 'System%.getProperty%("[%w_.]+"%)',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getProperty%("([%w_.]+)"%)')
-    end,
-  },
-  {
-    pattern = "System%.getProperty%('[%w_.]+'%)",
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getProperty%('([%w_.]+)'%)")
-    end,
-  },
+-- Java environment variable access patterns
+M.providers = {}
 
-  -- Completion patterns (for autocomplete)
-  {
-    pattern = 'System%.getenv%("[%w_]*$',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getenv%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'System.getenv("'
-    end,
-  },
-  -- System.getenv() with single quotes completion
-  {
-    pattern = "System%.getenv%('[%w_]*$",
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getenv%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "System.getenv('"
-    end,
-  },
-  -- System.getProperty() with double quotes
-  {
-    pattern = 'System%.getProperty%("[%w_.]+"%)',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'System%.getProperty%("([%w_.]+)"%)')
-    end,
-    get_completion_trigger = function()
-      return 'System.getProperty("'
-    end,
-  },
-  -- System.getProperty() with single quotes
-  {
-    pattern = "System%.getProperty%('[%w_.]+'%)",
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "System%.getProperty%('([%w_.]+)'%)")
-    end,
-    get_completion_trigger = function()
-      return "System.getProperty('"
-    end,
-  },
-  -- ProcessBuilder environment map with double quotes completion
-  {
-    pattern = 'processBuilder%.environment%(%)%.get%("[%w_]*$',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'processBuilder%.environment%(%)%.get%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'processBuilder.environment().get("'
-    end,
-  },
-  -- ProcessBuilder environment map with single quotes completion
-  {
-    pattern = "processBuilder%.environment%(%)%.get%('[%w_]*$",
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "processBuilder%.environment%(%)%.get%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "processBuilder.environment().get('"
-    end,
-  },
-  -- Map<String, String> env = System.getenv() map access with double quotes completion
-  {
-    pattern = 'env%.get%("[%w_]*$',
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'env%.get%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'env.get("'
-    end,
-  },
-  -- Map<String, String> env = System.getenv() map access with single quotes completion
-  {
-    pattern = "env%.get%('[%w_]*$",
-    filetype = "java",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "env%.get%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "env.get('"
-    end,
-  },
-}
+local filetype = "java"
+
+-- System.getenv("VAR") and System.getenv('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("System.getenv", filetype, "both"))
+
+-- System.getProperty("VAR") and System.getProperty('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("System.getProperty", filetype, "both"))
+
+-- processBuilder.environment().get("VAR") and processBuilder.environment().get('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("processBuilder.environment().get", filetype, "both"))
+
+-- env.get("VAR") and env.get('VAR') - generic Map<String, String> access
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("env.get", filetype, "both"))
 
 return M.providers

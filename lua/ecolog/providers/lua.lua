@@ -1,29 +1,12 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- Double quotes completion
-  {
-    pattern = 'os%.getenv%("[%w_]*$',
-    filetype = "lua",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'os%.getenv%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'os.getenv("'
-    end,
-  },
-  -- Single quotes completion
-  {
-    pattern = "os%.getenv%('[%w_]*$",
-    filetype = "lua",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "os%.getenv%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "os.getenv('"
-    end,
-  },
-}
+-- Lua environment variable access patterns
+M.providers = {}
+
+local filetype = "lua"
+
+-- os.getenv("VAR") and os.getenv('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("os.getenv", filetype, "both"))
 
 return M.providers

@@ -209,8 +209,8 @@ local function create_pattern_pair(spec)
     complete_pattern = complete_pattern .. spec.end_boundary
   end
 
-  local partial_var_pattern = spec.var_pattern:gsub("%%w_]+", "%%w_]*")
-  local partial_pattern = spec.pattern .. partial_var_pattern:gsub("%)$", "") .. "$"
+  local partial_var_pattern = spec.var_pattern:gsub("%+", "*")
+  local partial_pattern = spec.pattern .. partial_var_pattern .. "$"
 
   local extract_pattern_complete = spec.pattern .. spec.var_pattern
   if spec.end_boundary then

@@ -24,12 +24,12 @@ local function validate_input(value, expected_type, name)
     vim.notify("omnifunc: " .. name .. " is nil", vim.log.levels.WARN)
     return false
   end
-  
+
   if expected_type and type(value) ~= expected_type then
     vim.notify("omnifunc: " .. name .. " expected " .. expected_type .. ", got " .. type(value), vim.log.levels.WARN)
     return false
   end
-  
+
   return true
 end
 
@@ -38,11 +38,11 @@ local function get_env_completion(findstart, base)
   if not validate_input(_providers, "table", "providers") then
     return findstart == 1 and -1 or {}
   end
-  
+
   if not validate_input(_shelter, "table", "shelter") then
     return findstart == 1 and -1 or {}
   end
-  
+
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
     vim.notify("omnifunc: failed to load ecolog", vim.log.levels.WARN)
@@ -64,7 +64,7 @@ local function get_env_completion(findstart, base)
   if not validate_input(line, "string", "line") then
     return findstart == 1 and -1 or {}
   end
-  
+
   local line_to_cursor = line:sub(1, col)
 
   local should_complete = not (config.provider_patterns and config.provider_patterns.cmp)
@@ -73,7 +73,7 @@ local function get_env_completion(findstart, base)
     if not validate_input(filetype, "string", "filetype") then
       return findstart == 1 and -1 or {}
     end
-    
+
     local available_providers = safe_call(_providers.get_providers, filetype)
     if not available_providers then
       available_providers = {}
@@ -83,20 +83,17 @@ local function get_env_completion(findstart, base)
       if provider and provider.get_completion_trigger then
         local trigger = safe_call(provider.get_completion_trigger)
         if trigger and type(trigger) == "string" then
-          local parts = vim.split(trigger, ".", { plain = true })
-          local pattern = table.concat(
-            vim.tbl_map(function(part)
-              return vim.pesc(part)
-            end, parts),
-            "%."
-          )
-
           local trigger_len = #trigger
           local text_before_cursor = line_to_cursor:sub(-trigger_len)
 
-          if text_before_cursor == trigger or 
-             (provider.pattern and type(provider.pattern) == "string" and 
-              safe_call(string.match, text_before_cursor, "^" .. provider.pattern .. "$")) then
+          if
+            text_before_cursor == trigger
+            or (
+              provider.pattern
+              and type(provider.pattern) == "string"
+              and safe_call(string.match, text_before_cursor, "^" .. provider.pattern .. "$")
+            )
+          then
             should_complete = true
             break
           end
@@ -163,7 +160,8 @@ local function get_env_completion(findstart, base)
           if is_enabled and shelter_config and not shelter_config.skip_comments then
             local utils = safe_call(require, "ecolog.shelter.utils")
             if utils and utils.mask_comment then
-              comment_value = safe_call(utils.mask_comment, comment_value, entry.source, _shelter, "cmp") or comment_value
+              comment_value = safe_call(utils.mask_comment, comment_value, entry.source, _shelter, "cmp")
+                or comment_value
             end
           end
         end
@@ -176,7 +174,7 @@ local function get_env_completion(findstart, base)
       if utils and utils.get_env_file_display_name then
         source_display = safe_call(utils.get_env_file_display_name, entry.source, config) or source_display
       end
-      
+
       table.insert(items, {
         word = entry.name,
         kind = entry.type or "unknown",
@@ -205,7 +203,7 @@ function M.cleanup()
     end
     _augroup_id = nil
   end
-  
+
   -- Execute cleanup handlers
   for _, handler in ipairs(_cleanup_handlers) do
     local success, err = pcall(handler)
@@ -213,14 +211,14 @@ function M.cleanup()
       vim.notify("omnifunc cleanup error: " .. tostring(err), vim.log.levels.WARN)
     end
   end
-  
+
   -- Clear handlers
   _cleanup_handlers = {}
-  
+
   -- Clear references
   _providers = nil
   _shelter = nil
-  
+
   _initialized = false
 end
 
@@ -237,7 +235,7 @@ function M.setup(opts, _, providers, shelter)
     vim.notify("omnifunc: providers is required", vim.log.levels.ERROR)
     return
   end
-  
+
   if not shelter then
     vim.notify("omnifunc: shelter is required", vim.log.levels.ERROR)
     return

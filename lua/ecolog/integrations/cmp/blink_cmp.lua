@@ -26,12 +26,12 @@ local function validate_input(value, expected_type, name)
     vim.notify("blink_cmp: " .. name .. " is nil", vim.log.levels.WARN)
     return false
   end
-  
+
   if expected_type and type(value) ~= expected_type then
     vim.notify("blink_cmp: " .. name .. " expected " .. expected_type .. ", got " .. type(value), vim.log.levels.WARN)
     return false
   end
-  
+
   return true
 end
 
@@ -45,12 +45,12 @@ function M:get_trigger_characters()
     vim.notify("blink_cmp: providers not initialized", vim.log.levels.WARN)
     return {}
   end
-  
+
   local ft = vim.bo.filetype
   if not validate_input(ft, "string", "filetype") then
     return {}
   end
-  
+
   if trigger_patterns[ft] then
     return trigger_patterns[ft]
   end
@@ -66,7 +66,7 @@ function M:get_trigger_characters()
     trigger_patterns[ft] = { "" }
     return trigger_patterns[ft]
   end
-  
+
   if not config.provider_patterns.cmp then
     trigger_patterns[ft] = { "" }
     return trigger_patterns[ft]
@@ -74,23 +74,21 @@ function M:get_trigger_characters()
 
   local chars = {}
   local seen = {}
-  
+
   local providers = safe_call(_providers.get_providers, ft)
   if not providers then
     trigger_patterns[ft] = {}
     return trigger_patterns[ft]
   end
-  
+
   for _, provider in ipairs(providers) do
     if provider and provider.get_completion_trigger then
       local trigger = safe_call(provider.get_completion_trigger)
       if trigger and type(trigger) == "string" then
-        local parts = vim.split(trigger, ".", { plain = true })
-        for _, part in ipairs(parts) do
-          if part and not seen[part] then
-            seen[part] = true
-            table.insert(chars, ".")
-          end
+        local last_char = trigger:sub(-1)
+        if last_char and last_char ~= "" and not seen[last_char] then
+          seen[last_char] = true
+          table.insert(chars, last_char)
         end
       end
     end
@@ -110,7 +108,7 @@ function M:get_completions(ctx, callback)
     vim.notify("blink_cmp: callback must be a function", vim.log.levels.ERROR)
     return function() end
   end
-  
+
   if not ctx or not ctx.cursor or not ctx.line then
     vim.notify("blink_cmp: invalid context provided", vim.log.levels.ERROR)
     callback({
@@ -129,7 +127,7 @@ function M:get_completions(ctx, callback)
       vim.notify("blink_cmp: callback error: " .. tostring(err), vim.log.levels.ERROR)
     end
   end
-  
+
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
     vim.notify("blink_cmp: failed to load ecolog", vim.log.levels.WARN)
@@ -191,7 +189,7 @@ function M:get_completions(ctx, callback)
     })
     return function() end
   end
-  
+
   local before_line = string.sub(line, 1, cursor)
 
   local should_complete = false
@@ -211,14 +209,8 @@ function M:get_completions(ctx, callback)
       if provider and provider.get_completion_trigger then
         local trigger = safe_call(provider.get_completion_trigger)
         if trigger and type(trigger) == "string" then
-          local parts = vim.split(trigger, ".", { plain = true })
-          local pattern = table.concat(
-            vim.tbl_map(function(part)
-              return vim.pesc(part)
-            end, parts),
-            "%."
-          )
-          local pattern_match = safe_call(string.match, before_line, pattern .. "$")
+          local escaped_trigger = vim.pesc(trigger)
+          local pattern_match = safe_call(string.match, before_line, escaped_trigger .. "$")
           if pattern_match then
             should_complete = true
             matched_provider = provider
@@ -280,7 +272,8 @@ function M:get_completions(ctx, callback)
           if is_enabled and shelter_config and not shelter_config.skip_comments then
             local utils = safe_call(require, "ecolog.shelter.utils")
             if utils and utils.mask_comment then
-              comment_value = safe_call(utils.mask_comment, comment_value, entry.source, _shelter, "cmp") or comment_value
+              comment_value = safe_call(utils.mask_comment, comment_value, entry.source, _shelter, "cmp")
+                or comment_value
             end
           end
         end
@@ -293,7 +286,7 @@ function M:get_completions(ctx, callback)
       if utils and utils.get_env_file_display_name then
         source_display = safe_call(utils.get_env_file_display_name, entry.source, config) or source_display
       end
-      
+
       local item = {
         label = entry.name,
         kind = vim.lsp.protocol.CompletionItemKind.Variable,
@@ -337,7 +330,7 @@ function M.cleanup()
 
   -- Clear caches
   trigger_patterns = {}
-  
+
   -- Execute cleanup handlers
   for _, handler in ipairs(_cleanup_handlers) do
     local success, err = pcall(handler)
@@ -345,14 +338,14 @@ function M.cleanup()
       vim.notify("blink_cmp cleanup error: " .. tostring(err), vim.log.levels.WARN)
     end
   end
-  
+
   -- Clear handlers
   _cleanup_handlers = {}
-  
+
   -- Clear references
   _providers = nil
   _shelter = nil
-  
+
   _initialized = false
 end
 
@@ -369,7 +362,7 @@ M.setup = function(opts, _, providers, shelter)
     vim.notify("blink_cmp: providers is required", vim.log.levels.ERROR)
     return
   end
-  
+
   if not shelter then
     vim.notify("blink_cmp: shelter is required", vim.log.levels.ERROR)
     return

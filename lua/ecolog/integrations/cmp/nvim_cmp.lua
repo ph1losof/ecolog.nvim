@@ -70,10 +70,9 @@ local function setup_completion(cmp, opts, providers)
         if provider and provider.get_completion_trigger then
           local trigger_success, trigger = pcall(provider.get_completion_trigger)
           if trigger_success and trigger and type(trigger) == "string" then
-            for char in trigger:gmatch(".") do
-              if not vim.tbl_contains(triggers, char) then
-                table.insert(triggers, char)
-              end
+            local last_char = trigger:sub(-1)
+            if last_char and last_char ~= "" and not vim.tbl_contains(triggers, last_char) then
+              table.insert(triggers, last_char)
             end
           end
         end
@@ -133,15 +132,9 @@ local function setup_completion(cmp, opts, providers)
           for _, provider in ipairs(available_providers) do
             if provider.get_completion_trigger then
               local trigger = provider.get_completion_trigger()
-              local parts = vim.split(trigger, ".", { plain = true })
-              local pattern = table.concat(
-                vim.tbl_map(function(part)
-                  return vim.pesc(part)
-                end, parts),
-                "%."
-              )
+              local escaped_trigger = vim.pesc(trigger)
 
-              if line:match(pattern .. "$") or (provider.pattern and line:match(provider.pattern)) then
+              if line:match(escaped_trigger .. "$") or (provider.pattern and line:match(provider.pattern)) then
                 should_complete = true
                 matched_provider = provider
                 break

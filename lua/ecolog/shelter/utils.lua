@@ -1,18 +1,71 @@
 local M = {}
 
-local config = require("ecolog.shelter.state").get_config
-local utils = require("ecolog.utils")
+-- Lazy-loaded modules and caches
+local config, utils, lru_cache, masking_core, mode_cache, value_cache
+
 local string_sub = string.sub
 local string_rep = string.rep
-local lru_cache = require("ecolog.shelter.lru_cache")
-local masking_core = require("ecolog.shelter.masking_core")
 
-local mode_cache = lru_cache.new(1000)
-local value_cache = lru_cache.new(1000)
+local function get_config()
+  if not config then
+    config = require("ecolog.shelter.state").get_config
+  end
+  return config
+end
+
+local function get_utils()
+  if not utils then
+    utils = require("ecolog.utils")
+  end
+  return utils
+end
+
+local function get_lru_cache()
+  if not lru_cache then
+    lru_cache = require("ecolog.shelter.lru_cache")
+  end
+  return lru_cache
+end
+
+local function get_masking_core()
+  if not masking_core then
+    masking_core = require("ecolog.shelter.masking_core")
+  end
+  return masking_core
+end
+
+local function get_mode_cache()
+  if not mode_cache then
+    local lru = get_lru_cache()
+    mode_cache = lru.new(1000)
+  end
+  return mode_cache
+end
+
+local function get_value_cache()
+  if not value_cache then
+    local lru = get_lru_cache()
+    value_cache = lru.new(1000)
+  end
+  return value_cache
+end
 
 function M.clear_caches()
-  mode_cache = lru_cache.new(1000)
-  value_cache = lru_cache.new(1000)
+  local lru = get_lru_cache()
+  mode_cache = lru.new(1000)
+  value_cache = lru.new(1000)
+end
+
+local function table_to_key(tbl)
+  if not tbl or type(tbl) ~= "table" then
+    return ""
+  end
+  local parts = {}
+  for k, v in pairs(tbl) do
+    parts[#parts + 1] = tostring(k) .. "=" .. tostring(v)
+  end
+  table.sort(parts)
+  return table.concat(parts, ",")
 end
 
 ---@param key string|nil
@@ -26,17 +79,18 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
     "%s:%s:%s:%s:%s",
     key or "",
     source or "",
-    vim.inspect(patterns or {}),
-    vim.inspect(sources or {}),
+    table_to_key(patterns),
+    table_to_key(sources),
     default_mode or ""
   )
 
-  local cached = mode_cache:get(cache_key)
+  local m_cache = get_mode_cache()
+  local cached = m_cache:get(cache_key)
   if cached then
     return cached
   end
 
-  local conf = config()
+  local conf = get_config()()
   patterns = patterns or conf.patterns
   sources = sources or conf.sources
   default_mode = default_mode or conf.default_mode
@@ -44,8 +98,9 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
   local result
   if key and patterns then
     local matches = {}
+    local util = get_utils()
     for pattern, mode in pairs(patterns) do
-      local lua_pattern = utils.convert_to_lua_pattern(pattern)
+      local lua_pattern = util.convert_to_lua_pattern(pattern)
       if key:match("^" .. lua_pattern .. "$") then
         local wildcard_count = select(2, pattern:gsub("[*]", ""))
         local specificity = (#pattern * 100) - (wildcard_count * 50)
@@ -66,8 +121,9 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
     if source ~= "vault" and source ~= "asm" then
       source_to_match = vim.fn.fnamemodify(source, ":t")
     end
+    local util = get_utils()
     for pattern, mode in pairs(sources) do
-      local lua_pattern = utils.convert_to_lua_pattern(pattern)
+      local lua_pattern = util.convert_to_lua_pattern(pattern)
       if source_to_match:match("^" .. lua_pattern .. "$") then
         result = mode
         break
@@ -76,7 +132,8 @@ function M.determine_masking_mode(key, source, patterns, sources, default_mode)
   end
 
   result = result or default_mode or "partial"
-  mode_cache:put(cache_key, result)
+  local m_cache = get_mode_cache()
+  m_cache:put(cache_key, result)
   return result
 end
 
@@ -90,10 +147,10 @@ local function get_value_cache_key(value, settings)
     value,
     settings.key or "",
     settings.source or "",
-    vim.inspect(settings.patterns or {}),
-    vim.inspect(settings.sources or {}),
+    table_to_key(settings.patterns),
+    table_to_key(settings.sources),
     settings.default_mode or "",
-    vim.inspect(settings.partial_mode or {})
+    table_to_key(settings.partial_mode)
   )
 end
 
@@ -105,7 +162,8 @@ function M.determine_masked_value(value, settings)
   end
 
   local cache_key = get_value_cache_key(value, settings)
-  local cached = value_cache:get(cache_key)
+  local v_cache = get_value_cache()
+  local cached = v_cache:get(cache_key)
   if cached then
     if settings.quote_char then
       return settings.quote_char .. cached .. settings.quote_char
@@ -113,12 +171,12 @@ function M.determine_masked_value(value, settings)
     return cached
   end
 
-  local conf = config()
+  local conf = get_config()()
   local mode =
     M.determine_masking_mode(settings.key, settings.source, settings.patterns, settings.sources, settings.default_mode)
 
   if mode == "none" then
-    value_cache:put(cache_key, value)
+    v_cache:put(cache_key, value)
     if settings.quote_char then
       return settings.quote_char .. value .. settings.quote_char
     end
@@ -146,7 +204,8 @@ function M.determine_masked_value(value, settings)
     else
       result = string_rep(conf.mask_char, mask_length)
     end
-    value_cache:put(cache_key, result)
+    local v_cache = get_value_cache()
+    v_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
     end
@@ -169,9 +228,10 @@ function M.determine_masked_value(value, settings)
 
     local available_in_mask = mask_length - show_start - show_end
 
+    local v_cache = get_value_cache()
     if mask_length <= (show_start + show_end) or available_in_mask < min_mask then
       local result = base_mask
-      value_cache:put(cache_key, result)
+      v_cache:put(cache_key, result)
       if settings.quote_char then
         return settings.quote_char .. result .. settings.quote_char
       end
@@ -185,7 +245,7 @@ function M.determine_masked_value(value, settings)
       middle_mask_len = 0
     end
     local result = start_part .. string_rep(conf.mask_char, middle_mask_len) .. end_part
-    value_cache:put(cache_key, result)
+    v_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
     end
@@ -194,9 +254,10 @@ function M.determine_masked_value(value, settings)
 
   local available_middle = #value - show_start - show_end
 
+  local v_cache = get_value_cache()
   if #value <= (show_start + show_end) or available_middle < min_mask then
     local result = string_rep(conf.mask_char, #value)
-    value_cache:put(cache_key, result)
+    v_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
     end
@@ -206,7 +267,7 @@ function M.determine_masked_value(value, settings)
   local end_part = show_end > 0 and string_sub(value, -show_end) or ""
   local result = string_sub(value, 1, show_start) .. string_rep(conf.mask_char, available_middle) .. end_part
 
-  value_cache:put(cache_key, result)
+  v_cache:put(cache_key, result)
   if settings.quote_char then
     return settings.quote_char .. result .. settings.quote_char
   end
@@ -239,6 +300,7 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
     local is_partial = mode == "partial" and conf.partial_mode
 
     local num_lines = #lines
+    local core = get_masking_core()
 
     for i, line in ipairs(lines) do
       local line_length = #line
@@ -247,9 +309,15 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
       local current_show_start = apply_start and show_start or 0
       local current_show_end = apply_end and show_end or 0
 
-      local mask_for_line = masking_core.generate_line_mask(
-        line, line_length, mask_length, conf.mask_char,
-        is_partial, current_show_start, current_show_end, min_mask
+      local mask_for_line = core.generate_line_mask(
+        line,
+        line_length,
+        mask_length,
+        conf.mask_char,
+        is_partial,
+        current_show_start,
+        current_show_end,
+        min_mask
       )
 
       masked_lines[i] = mask_for_line
@@ -312,7 +380,8 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
   end
 
   local result = table.concat(masked_lines, "\n")
-  value_cache:put(get_value_cache_key(value, settings), result)
+  local v_cache = get_value_cache()
+  v_cache:put(get_value_cache_key(value, settings), result)
 
   if settings.quote_char then
     return settings.quote_char .. result .. settings.quote_char
@@ -357,7 +426,8 @@ end
 ---@param config table
 ---@return boolean
 function M.match_env_file(filename, config)
-  return utils.match_env_file(filename, config)
+  local util = get_utils()
+  return util.match_env_file(filename, config)
 end
 
 function M.has_cmp()

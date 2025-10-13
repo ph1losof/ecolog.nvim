@@ -15,14 +15,51 @@ local math_min = math.min
 local math_max = math.max
 local math_floor = math.floor
 
-local lru_cache = require("ecolog.shelter.lru_cache")
-local common = require("ecolog.shelter.common")
-local utils = require("ecolog.utils")
-local shelter_utils = require("ecolog.shelter.utils")
-local comment_parser = require("ecolog.shelter.comment_parser")
-local masking_core = require("ecolog.shelter.masking_core")
+-- Lazy-loaded modules
+local lru_cache, common, utils, shelter_utils, comment_parser, masking_core, multiline_parsing
 
-local multiline_parsing
+local function get_lru_cache()
+  if not lru_cache then
+    lru_cache = require("ecolog.shelter.lru_cache")
+  end
+  return lru_cache
+end
+
+local function get_common()
+  if not common then
+    common = require("ecolog.shelter.common")
+  end
+  return common
+end
+
+local function get_utils()
+  if not utils then
+    utils = require("ecolog.utils")
+  end
+  return utils
+end
+
+local function get_shelter_utils()
+  if not shelter_utils then
+    shelter_utils = require("ecolog.shelter.utils")
+  end
+  return shelter_utils
+end
+
+local function get_comment_parser()
+  if not comment_parser then
+    comment_parser = require("ecolog.shelter.comment_parser")
+  end
+  return comment_parser
+end
+
+local function get_masking_core()
+  if not masking_core then
+    masking_core = require("ecolog.shelter.masking_core")
+  end
+  return masking_core
+end
+
 local function get_multiline_parser()
   if not multiline_parsing then
     multiline_parsing = require("ecolog.shelter.multiline_parsing")
@@ -97,9 +134,10 @@ local parsed_cache, extmark_cache, mask_length_cache
 
 local function get_parsed_cache()
   if not parsed_cache then
-    parsed_cache = lru_cache.new(perf_config.parsed_cache_size, {
+    local lru = get_lru_cache()
+    parsed_cache = lru.new(perf_config.parsed_cache_size, {
       enable_stats = true,
-      ttl_ms = 3600000, 
+      ttl_ms = 3600000,
       auto_cleanup = true,
     })
   end
@@ -108,9 +146,10 @@ end
 
 local function get_extmark_cache()
   if not extmark_cache then
-    extmark_cache = lru_cache.new(perf_config.extmark_cache_size, {
+    local lru = get_lru_cache()
+    extmark_cache = lru.new(perf_config.extmark_cache_size, {
       enable_stats = true,
-      ttl_ms = 1800000, 
+      ttl_ms = 1800000,
       auto_cleanup = true,
     })
   end
@@ -119,9 +158,10 @@ end
 
 local function get_mask_cache()
   if not mask_length_cache then
-    mask_length_cache = lru_cache.new(perf_config.mask_cache_size, {
+    local lru = get_lru_cache()
+    mask_length_cache = lru.new(perf_config.mask_cache_size, {
       enable_stats = true,
-      ttl_ms = 1800000, 
+      ttl_ms = 1800000,
       auto_cleanup = true,
     })
   end
@@ -210,9 +250,10 @@ function M.parse_lines_cached(lines, content_hash)
   
   local lines_count = #lines
   local estimated_vars = math_max(1, math_floor(lines_count / perf_config.estimated_vars_per_lines))
-  
-  local parsed_vars = common.new_table(0, estimated_vars)
-  local line_start_positions = common.new_table(0, estimated_vars)
+
+  local cmn = get_common()
+  local parsed_vars = cmn.new_table(0, estimated_vars)
+  local line_start_positions = cmn.new_table(0, estimated_vars)
   local multi_line_state = {}
   local current_line_idx = 1
 
@@ -227,7 +268,8 @@ function M.parse_lines_cached(lines, content_hash)
     local is_comment_line = line:find(PATTERNS.comment)
 
     if is_comment_line then
-      local comment_vars = comment_parser.parse_comment_line(line, current_line_idx, content_hash)
+      local parser = get_comment_parser()
+      local comment_vars = parser.parse_comment_line(line, current_line_idx, content_hash)
       merge_parsed_vars(parsed_vars, comment_vars)
 
       current_line_idx = current_line_idx + 1
@@ -252,7 +294,8 @@ function M.parse_lines_cached(lines, content_hash)
 
     local was_in_multi_line = multi_line_state.in_multi_line
 
-    local key, value, comment, quote_char, updated_state = utils.extract_line_parts(line, multi_line_state)
+    local util = get_utils()
+    local key, value, comment, quote_char, updated_state = util.extract_line_parts(line, multi_line_state)
     if updated_state then
       multi_line_state = updated_state
       if updated_state.in_multi_line and updated_state.key then
@@ -268,13 +311,15 @@ function M.parse_lines_cached(lines, content_hash)
     end
 
     if comment and not comment:find("\n") then
-      local inline_vars = comment_parser.parse_inline_comment(comment, line, current_line_idx, content_hash)
+      local parser = get_comment_parser()
+      local inline_vars = parser.parse_inline_comment(comment, line, current_line_idx, content_hash)
       merge_parsed_vars(parsed_vars, inline_vars)
     end
 
     local inline_comment = extract_inline_comment(line, was_in_multi_line, multi_line_state)
     if inline_comment and not inline_comment:find("\n") then
-      local inline_vars = comment_parser.parse_inline_comment(inline_comment, line, current_line_idx, content_hash)
+      local parser = get_comment_parser()
+      local inline_vars = parser.parse_inline_comment(inline_comment, line, current_line_idx, content_hash)
       merge_parsed_vars(parsed_vars, inline_vars)
     end
 
@@ -386,9 +431,10 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
 
   -- For multi-line with backslash continuation, extract value from each line
   if var_info.is_multi_line and not var_info.has_newlines then
+    local core = get_masking_core()
     for line_idx = var_info.start_line, var_info.end_line do
       local line = lines[line_idx]
-      local line_value, has_backslash = masking_core.extract_continuation_line_value(
+      local line_value, has_backslash = core.extract_continuation_line_value(
         line, line_idx, var_info.start_line, var_info.end_line, quote_char
       )
 
@@ -398,13 +444,13 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
       local current_show_start = is_first and show_start or 0
       local current_show_end = is_last and show_end or 0
 
-      local mask_for_line = masking_core.generate_line_mask(
+      local mask_for_line = core.generate_line_mask(
         line_value or "", line_length, mask_length, mask_char,
         is_partial, current_show_start, current_show_end, min_mask
       )
 
       if quote_char then
-        mask_for_line = masking_core.add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
+        mask_for_line = core.add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
       end
 
       if has_backslash then
@@ -426,6 +472,7 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
 
     local value_lines = vim_split(value_to_mask, NEWLINE, { plain = true })
     local num_lines = #value_lines
+    local core = get_masking_core()
 
     for i, line_value in ipairs(value_lines) do
       local line_idx = var_info.start_line + i - 1
@@ -437,13 +484,13 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
       local current_show_start = apply_start and show_start or 0
       local current_show_end = apply_end and show_end or 0
 
-      local mask_for_line = masking_core.generate_line_mask(
+      local mask_for_line = core.generate_line_mask(
         line_value, line_length, mask_length, mask_char,
         is_partial, current_show_start, current_show_end, min_mask
       )
 
       if quote_char then
-        mask_for_line = masking_core.add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
+        mask_for_line = core.add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
       end
 
       distributed_masks[line_idx] = mask_for_line
@@ -503,7 +550,8 @@ function M.generate_multiline_masks(var_info, lines, config, source_filename)
   end
 
   local clean_value = var_info.has_newlines and var_info.value:gsub(NEWLINE, EMPTY_STRING) or var_info.value
-  local entire_masked_value = shelter_utils.determine_masked_value(clean_value, {
+  local s_utils = get_shelter_utils()
+  local entire_masked_value = s_utils.determine_masked_value(clean_value, {
     partial_mode = config.partial_mode,
     key = var_info.key,
     source = source_filename,
@@ -583,7 +631,8 @@ function M.create_extmarks_batch(parsed_vars, lines, config, source_filename, sk
   for _ in pairs(parsed_vars) do
     estimated_count = estimated_count + 1
   end
-  extmarks = common.new_table(estimated_count * perf_config.estimated_extmarks_multiplier, 0) 
+  local cmn = get_common()
+  extmarks = cmn.new_table(estimated_count * perf_config.estimated_extmarks_multiplier, 0) 
 
   local base_extmark_opts = {
     virt_text_pos = "overlay",
@@ -711,7 +760,8 @@ end
 ---@param namespace number Namespace for extmarks
 ---@param skip_comments boolean Whether to skip comments
 function M.process_buffer_optimized(bufnr, lines, config, source_filename, namespace, skip_comments)
-  if not common.ensure_valid_buffer(bufnr) or #lines == 0 then
+  local cmn = get_common()
+  if not cmn.ensure_valid_buffer(bufnr) or #lines == 0 then
     return
   end
 

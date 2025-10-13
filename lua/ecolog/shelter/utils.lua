@@ -5,6 +5,7 @@ local utils = require("ecolog.utils")
 local string_sub = string.sub
 local string_rep = string.rep
 local lru_cache = require("ecolog.shelter.lru_cache")
+local masking_core = require("ecolog.shelter.masking_core")
 
 local mode_cache = lru_cache.new(1000)
 local value_cache = lru_cache.new(1000)
@@ -241,47 +242,15 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
 
     for i, line in ipairs(lines) do
       local line_length = #line
-      local mask_for_line
+      local apply_start = (i == 1 or num_lines == 1)
+      local apply_end = (i == num_lines or num_lines == 1)
+      local current_show_start = apply_start and show_start or 0
+      local current_show_end = apply_end and show_end or 0
 
-      if is_partial and line_length > 0 then
-        local apply_start = (i == 1 or num_lines == 1)
-        local apply_end = (i == num_lines or num_lines == 1)
-        local current_show_start = apply_start and show_start or 0
-        local current_show_end = apply_end and show_end or 0
-        local available_in_mask = mask_length - current_show_start - current_show_end
-
-        if mask_length <= (current_show_start + current_show_end) or available_in_mask < min_mask then
-          -- Can't fit partial mode in mask_length: use full mask + padding
-          mask_for_line = string_rep(conf.mask_char, mask_length)
-          if line_length > mask_length then
-            mask_for_line = mask_for_line .. string_rep(" ", line_length - mask_length)
-          end
-        else
-          -- Apply partial mode: exactly mask_length + padding
-          local start_part = current_show_start > 0 and string_sub(line, 1, math.min(current_show_start, line_length))
-            or ""
-          local end_part = current_show_end > 0
-              and line_length > current_show_end
-              and string_sub(line, -current_show_end)
-            or ""
-          local middle_mask_len = mask_length - #start_part - #end_part
-          if middle_mask_len < 0 then
-            middle_mask_len = 0
-          end
-          mask_for_line = start_part .. string_rep(conf.mask_char, middle_mask_len) .. end_part
-
-          -- Add padding if actual value is longer than mask
-          if line_length > #mask_for_line then
-            mask_for_line = mask_for_line .. string_rep(" ", line_length - #mask_for_line)
-          end
-        end
-      else
-        -- Full mode: exactly mask_length + padding
-        mask_for_line = string_rep(conf.mask_char, mask_length)
-        if line_length > mask_length then
-          mask_for_line = mask_for_line .. string_rep(" ", line_length - mask_length)
-        end
-      end
+      local mask_for_line = masking_core.generate_line_mask(
+        line, line_length, mask_length, conf.mask_char,
+        is_partial, current_show_start, current_show_end, min_mask
+      )
 
       masked_lines[i] = mask_for_line
     end

@@ -307,6 +307,116 @@ function M.parse_lines_cached(lines, content_hash)
   return parsed_vars
 end
 
+---Generate mask for a single line with exact length
+---@param line_value string The line value to mask
+---@param line_length number Length of the line
+---@param mask_length number The mask length to apply
+---@param mask_char string The mask character
+---@param is_partial boolean Whether partial mode is active
+---@param show_start number Characters to show at start
+---@param show_end number Characters to show at end
+---@param min_mask number Minimum mask characters required
+---@return string mask The generated mask
+local function generate_line_mask(line_value, line_length, mask_length, mask_char, is_partial, show_start, show_end, min_mask)
+  local mask_for_line
+
+  if is_partial and line_length > 0 then
+    local available_middle = line_length - show_start - show_end
+
+    if line_length <= (show_start + show_end) or available_middle < min_mask then
+      -- Full mask: exactly mask_length
+      mask_for_line = string_rep(mask_char, mask_length)
+    else
+      -- Partial mask: exactly mask_length
+      local middle_mask_len = mask_length - show_start - show_end
+      local start_part = show_start > 0 and line_value:sub(1, show_start) or EMPTY_STRING
+      local end_part = show_end > 0 and line_value:sub(-show_end) or EMPTY_STRING
+      mask_for_line = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
+    end
+  else
+    -- Full mode: exactly mask_length
+    mask_for_line = string_rep(mask_char, mask_length)
+  end
+
+  -- Add padding if actual value is longer than mask
+  if line_length > #mask_for_line then
+    mask_for_line = mask_for_line .. string_rep(SPACE, line_length - #mask_for_line)
+  end
+
+  return mask_for_line
+end
+
+---Add quotes around mask, placing closing quote before padding
+---@param mask string The mask to wrap
+---@param quote_char string The quote character
+---@param is_first boolean Whether this is the first line
+---@param is_last boolean Whether this is the last line
+---@return string quoted_mask The mask with quotes
+local function add_quotes_to_mask(mask, quote_char, is_first, is_last)
+  if is_first then
+    mask = quote_char .. mask
+  end
+  if is_last then
+    -- Insert quote before padding
+    local mask_without_padding = mask:match("^(.-)%s*$") or mask
+    local padding_len = #mask - #mask_without_padding
+    mask = mask_without_padding .. quote_char
+    if padding_len > 0 then
+      mask = mask .. string_rep(SPACE, padding_len)
+    end
+  end
+  return mask
+end
+
+---Extract and clean line value for backslash continuation
+---@param line string The raw line
+---@param line_idx number Line index
+---@param start_line number First line index
+---@param end_line number Last line index
+---@param quote_char string? Quote character if present
+---@return string? line_value The cleaned value
+---@return boolean has_backslash Whether line has continuation
+local function extract_continuation_line_value(line, line_idx, start_line, end_line, quote_char)
+  local line_value
+
+  if line_idx == start_line then
+    -- First line: extract value after =
+    local eq_idx = line:find("=", 1, true)
+    if eq_idx then
+      line_value = line:sub(eq_idx + 1)
+      -- Remove leading quote if present
+      if quote_char and line_value:sub(1, 1) == quote_char then
+        line_value = line_value:sub(2)
+      end
+    end
+  else
+    -- Continuation lines: get the full line
+    line_value = line
+  end
+
+  if not line_value then
+    return nil, false
+  end
+
+  -- Check for backslash continuation
+  local has_backslash = line_value:match("\\%s*$") ~= nil
+
+  -- Remove trailing backslash, comments, and whitespace
+  line_value = line_value:gsub("%s*\\%s*$", "")
+  local comment_pos = line_value:find("#")
+  if comment_pos then
+    line_value = line_value:sub(1, comment_pos - 1)
+  end
+  line_value = line_value:match("^(.-)%s*$")
+
+  -- Remove trailing quote on last line
+  if line_idx == end_line and quote_char and line_value:sub(-1) == quote_char then
+    line_value = line_value:sub(1, -2)
+  end
+
+  return line_value, has_backslash
+end
+
 ---Optimized mask generation for mask_length scenarios
 ---@param var_info ParsedVariable The parsed variable information
 ---@param lines string[] The original lines
@@ -384,99 +494,27 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
 
   -- For multi-line with backslash continuation, extract value from each line
   if var_info.is_multi_line and not var_info.has_newlines then
-    -- Backslash continuation: extract value parts from actual file lines
     for line_idx = var_info.start_line, var_info.end_line do
       local line = lines[line_idx]
-      local line_value
-      local has_backslash = false
-
-      if line_idx == var_info.start_line then
-        -- First line: extract value after =
-        local eq_idx = line:find("=", 1, true)
-        if eq_idx then
-          line_value = line:sub(eq_idx + 1)
-          -- Remove leading quote if present
-          if quote_char and line_value:sub(1, 1) == quote_char then
-            line_value = line_value:sub(2)
-          end
-        end
-      else
-        -- Continuation lines: get the full line
-        line_value = line
-      end
-
-      -- Check for backslash continuation before removing it
-      if line_value and line_value:match("\\%s*$") then
-        has_backslash = true
-      end
-
-      -- Remove trailing backslash and whitespace, and inline comments
-      if line_value then
-        line_value = line_value:gsub("%s*\\%s*$", "")  -- Remove trailing backslash
-        local comment_pos = line_value:find("#")
-        if comment_pos then
-          line_value = line_value:sub(1, comment_pos - 1)
-        end
-        line_value = line_value:match("^(.-)%s*$")  -- Trim trailing whitespace
-
-        -- Remove trailing quote on last line if present
-        if line_idx == var_info.end_line and quote_char and line_value:sub(-1) == quote_char then
-          line_value = line_value:sub(1, -2)
-        end
-      end
+      local line_value, has_backslash = extract_continuation_line_value(
+        line, line_idx, var_info.start_line, var_info.end_line, quote_char
+      )
 
       local line_length = line_value and #line_value or 0
-      local mask_for_line
+      local is_first = line_idx == var_info.start_line
+      local is_last = line_idx == var_info.end_line
+      local current_show_start = is_first and show_start or 0
+      local current_show_end = is_last and show_end or 0
 
-      if is_partial and line_length > 0 then
-        local is_first = line_idx == var_info.start_line
-        local is_last = line_idx == var_info.end_line
-        local current_show_start = is_first and show_start or 0
-        local current_show_end = is_last and show_end or 0
-        local available_middle = line_length - current_show_start - current_show_end
+      local mask_for_line = generate_line_mask(
+        line_value or "", line_length, mask_length, mask_char,
+        is_partial, current_show_start, current_show_end, min_mask
+      )
 
-        if line_length <= (current_show_start + current_show_end) or available_middle < min_mask then
-          -- Full mask for this line - exactly mask_length + padding
-          mask_for_line = string_rep(mask_char, mask_length)
-          if line_length > mask_length then
-            mask_for_line = mask_for_line .. string_rep(SPACE, line_length - mask_length)
-          end
-        else
-          -- Partial mask for this line - exactly mask_length + padding
-          local middle_mask_len = mask_length - current_show_start - current_show_end
-          local start_part = current_show_start > 0 and line_value:sub(1, current_show_start) or EMPTY_STRING
-          local end_part = current_show_end > 0 and line_value:sub(-current_show_end) or EMPTY_STRING
-          mask_for_line = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
-
-          -- Add padding if actual value is longer than mask
-          local mask_total = current_show_start + middle_mask_len + current_show_end
-          if line_length > mask_total then
-            mask_for_line = mask_for_line .. string_rep(SPACE, line_length - mask_total)
-          end
-        end
-      else
-        -- Full mode: exactly mask_length + padding
-        mask_for_line = string_rep(mask_char, mask_length)
-        if line_length > mask_length then
-          mask_for_line = mask_for_line .. string_rep(SPACE, line_length - mask_length)
-        end
+      if quote_char then
+        mask_for_line = add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
       end
 
-      -- Add quotes before padding
-      if line_idx == var_info.start_line and quote_char then
-        mask_for_line = quote_char .. mask_for_line
-      end
-      if line_idx == var_info.end_line and quote_char then
-        -- Insert quote before padding
-        local mask_without_padding = mask_for_line:match("^(.-)%s*$") or mask_for_line
-        local padding_len = #mask_for_line - #mask_without_padding
-        mask_for_line = mask_without_padding .. quote_char
-        if padding_len > 0 then
-          mask_for_line = mask_for_line .. string_rep(SPACE, padding_len)
-        end
-      end
-
-      -- Add backslash continuation if it was present
       if has_backslash then
         mask_for_line = mask_for_line .. " \\"
       end
@@ -497,58 +535,23 @@ function M.create_mask_length_masks(var_info, lines, config, source_filename, ma
     local value_lines = vim_split(value_to_mask, NEWLINE, { plain = true })
     local num_lines = #value_lines
 
-    -- Apply masking per line with mask_length on each line
     for i, line_value in ipairs(value_lines) do
       local line_idx = var_info.start_line + i - 1
       local line_length = #line_value
-      local mask_for_line
+      local is_first = (i == 1)
+      local is_last = (i == num_lines)
+      local apply_start = (i == 1 or num_lines == 1)
+      local apply_end = (i == num_lines or num_lines == 1)
+      local current_show_start = apply_start and show_start or 0
+      local current_show_end = apply_end and show_end or 0
 
-      if is_partial and line_length > 0 then
-        local apply_start = (i == 1 or num_lines == 1)
-        local apply_end = (i == num_lines or num_lines == 1)
-        local current_show_start = apply_start and show_start or 0
-        local current_show_end = apply_end and show_end or 0
-        local available_middle = line_length - current_show_start - current_show_end
+      local mask_for_line = generate_line_mask(
+        line_value, line_length, mask_length, mask_char,
+        is_partial, current_show_start, current_show_end, min_mask
+      )
 
-        if line_length <= (current_show_start + current_show_end) or available_middle < min_mask then
-          -- Full mask for this line - exactly mask_length + padding
-          mask_for_line = string_rep(mask_char, mask_length)
-          if line_length > mask_length then
-            mask_for_line = mask_for_line .. string_rep(SPACE, line_length - mask_length)
-          end
-        else
-          -- Partial mask for this line - exactly mask_length + padding
-          local middle_mask_len = mask_length - current_show_start - current_show_end
-          local start_part = current_show_start > 0 and line_value:sub(1, current_show_start) or EMPTY_STRING
-          local end_part = current_show_end > 0 and line_value:sub(-current_show_end) or EMPTY_STRING
-          mask_for_line = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
-
-          -- Add padding if actual value is longer than mask
-          local mask_total = current_show_start + middle_mask_len + current_show_end
-          if line_length > mask_total then
-            mask_for_line = mask_for_line .. string_rep(SPACE, line_length - mask_total)
-          end
-        end
-      else
-        -- Full mode: exactly mask_length + padding
-        mask_for_line = string_rep(mask_char, mask_length)
-        if line_length > mask_length then
-          mask_for_line = mask_for_line .. string_rep(SPACE, line_length - mask_length)
-        end
-      end
-
-      -- Add quotes before padding
-      if i == 1 and quote_char then
-        mask_for_line = quote_char .. mask_for_line
-      end
-      if i == num_lines and quote_char then
-        -- Insert quote before padding
-        local mask_without_padding = mask_for_line:match("^(.-)%s*$") or mask_for_line
-        local padding_len = #mask_for_line - #mask_without_padding
-        mask_for_line = mask_without_padding .. quote_char
-        if padding_len > 0 then
-          mask_for_line = mask_for_line .. string_rep(SPACE, padding_len)
-        end
+      if quote_char then
+        mask_for_line = add_quotes_to_mask(mask_for_line, quote_char, is_first, is_last)
       end
 
       distributed_masks[line_idx] = mask_for_line

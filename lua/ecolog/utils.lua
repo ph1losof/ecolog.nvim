@@ -1423,7 +1423,8 @@ function M.get_var_word_under_cursor(providers)
 
   if provider_patterns and provider_patterns.extract then
     for _, provider in ipairs(providers) do
-      local extracted = provider.extract_var(line, word_end)
+      -- Use col (cursor position) not word_end for proper boundary detection
+      local extracted = provider.extract_var(line, col)
       if extracted then
         return extracted
       end

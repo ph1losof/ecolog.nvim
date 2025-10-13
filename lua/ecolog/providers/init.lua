@@ -182,6 +182,159 @@ local function safe_provider_call(provider, func_name, ...)
   return result
 end
 
+---@class PatternSpec
+---@field trigger string The completion trigger (e.g., "process.env.")
+---@field pattern string The base pattern for matching (e.g., "process%.env%.")
+---@field var_pattern string The variable capture pattern (e.g., "([%w_]+)")
+---@field end_boundary string? Optional end boundary pattern (e.g., ")", "]", word boundary)
+---@field filetype string|string[] Filetype(s) for this pattern
+
+--- Create a unified pattern that works for both extraction and completion
+--- This eliminates the need to define separate patterns for each use case
+---@param spec PatternSpec Pattern specification
+---@return table complete_provider Provider for complete expressions (peek/detection)
+---@return table partial_provider Provider for partial expressions (completion)
+local function create_pattern_pair(spec)
+  local utils = require("ecolog.utils")
+
+  if not spec or type(spec) ~= "table" then
+    error("Pattern spec must be a table")
+  end
+  if not spec.trigger or not spec.pattern or not spec.var_pattern then
+    error("Pattern spec must have trigger, pattern, and var_pattern fields")
+  end
+
+  local complete_pattern = spec.pattern .. spec.var_pattern
+  if spec.end_boundary then
+    complete_pattern = complete_pattern .. spec.end_boundary
+  end
+
+  local partial_var_pattern = spec.var_pattern:gsub("%%w_]+", "%%w_]*")
+  local partial_pattern = spec.pattern .. partial_var_pattern:gsub("%)$", "") .. "$"
+
+  local extract_pattern_complete = spec.pattern .. spec.var_pattern
+  if spec.end_boundary then
+    extract_pattern_complete = extract_pattern_complete .. spec.end_boundary
+  end
+  local extract_pattern_partial = spec.pattern .. partial_var_pattern
+
+  local capture_pattern = spec.pattern .. "(" .. spec.var_pattern:gsub("[()]", "") .. ")"
+  if spec.end_boundary then
+    capture_pattern = capture_pattern .. spec.end_boundary
+  end
+  local trigger_len = #spec.trigger
+
+  local complete_provider = {
+    pattern = complete_pattern,
+    filetype = spec.filetype,
+    extract_var = function(line, col)
+      local cursor_pos = col + 1
+
+      local search_pos = 1
+      while search_pos <= #line do
+        local match_start, match_end, var_name = line:find(capture_pattern, search_pos)
+        if not match_start or not var_name then
+          break
+        end
+
+        local var_start = match_start + trigger_len
+        local var_end = var_start + (#var_name - 1)
+
+        if cursor_pos >= var_start and cursor_pos <= var_end then
+          return var_name
+        end
+
+        search_pos = match_end + 1
+      end
+
+      return nil
+    end,
+  }
+
+  local partial_provider = {
+    pattern = partial_pattern,
+    filetype = spec.filetype,
+    extract_var = function(line, col)
+      return utils.extract_env_var(line, col, extract_pattern_partial .. "$")
+    end,
+    get_completion_trigger = function()
+      return spec.trigger
+    end,
+  }
+
+  return complete_provider, partial_provider
+end
+
+--- Helper to create patterns for function call syntax: func("VAR") or func('VAR')
+---@param func_name string Function name (e.g., "os.getenv")
+---@param filetype string|string[] Filetype(s)
+---@param quote_char string Quote character: '"', "'", or "both"
+---@return table[] providers Array of providers
+function M.create_function_call_patterns(func_name, filetype, quote_char)
+  local providers = {}
+  local escaped_func = func_name:gsub("%.", "%%.")
+
+  local quotes = quote_char == "both" and { '"', "'" } or { quote_char }
+
+  for _, q in ipairs(quotes) do
+    local complete, partial = create_pattern_pair({
+      trigger = func_name .. "(" .. q,
+      pattern = escaped_func .. "%(" .. q,
+      var_pattern = "([%w_]+)",
+      end_boundary = q .. "%)",
+      filetype = filetype,
+    })
+    table.insert(providers, complete)
+    table.insert(providers, partial)
+  end
+
+  return providers
+end
+
+--- Helper to create patterns for bracket notation: obj["VAR"] or obj['VAR']
+---@param obj_name string Object name (e.g., "process.env")
+---@param filetype string|string[] Filetype(s)
+---@param quote_char string Quote character: '"', "'", or "both"
+---@return table[] providers Array of providers
+function M.create_bracket_patterns(obj_name, filetype, quote_char)
+  local providers = {}
+  local escaped_obj = obj_name:gsub("%.", "%%.")
+
+  local quotes = quote_char == "both" and { '"', "'" } or { quote_char }
+
+  for _, q in ipairs(quotes) do
+    local complete, partial = create_pattern_pair({
+      trigger = obj_name .. "[" .. q,
+      pattern = escaped_obj .. "%[" .. q,
+      var_pattern = "([%w_]+)",
+      end_boundary = q .. "%]",
+      filetype = filetype,
+    })
+    table.insert(providers, complete)
+    table.insert(providers, partial)
+  end
+
+  return providers
+end
+
+--- Helper to create patterns for dot notation: obj.VAR
+---@param obj_name string Object name (e.g., "process.env")
+---@param filetype string|string[] Filetype(s)
+---@return table[] providers Array of providers
+function M.create_dot_notation_patterns(obj_name, filetype)
+  local escaped_obj = obj_name:gsub("%.", "%%.")
+
+  local complete, partial = create_pattern_pair({
+    trigger = obj_name .. ".",
+    pattern = escaped_obj .. "%.",
+    var_pattern = "([%w_]+)",
+    end_boundary = nil, -- Word boundary is implicit in [%w_]+
+    filetype = filetype,
+  })
+
+  return { complete, partial }
+end
+
 -- Wrap provider functions with error boundaries
 local function wrap_provider_with_error_boundaries(provider)
   if not provider or type(provider) ~= "table" then

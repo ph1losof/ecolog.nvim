@@ -1,92 +1,21 @@
 local M = {}
-local utils = require("ecolog.utils")
+local providers_module = require("ecolog.providers")
 
-M.providers = {
-  -- Complete expressions (for detection anywhere in code)
-  {
-    pattern = "env::var%('[%w_]+'%)",
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "env::var%('([%w_]+)'%)")
-    end,
-  },
-  {
-    pattern = 'env::var%("[%w_]+"%)',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'env::var%("([%w_]+)"%)')
-    end,
-  },
-  {
-    pattern = "std::env::var%('[%w_]+'%)",
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "std::env::var%('([%w_]+)'%)")
-    end,
-  },
-  {
-    pattern = 'std::env::var%("[%w_]+"%)',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'std::env::var%("([%w_]+)"%)')
-    end,
-  },
-  {
-    pattern = 'env!%("[%w_]+"%)',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'env!%("([%w_]+)"%)')
-    end,
-  },
-  {
-    pattern = 'option_env!%("[%w_]+"%)',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'option_env!%("([%w_]+)"%)')
-    end,
-  },
+-- Rust environment variable access patterns
+M.providers = {}
 
-  -- Completion patterns (for autocomplete)
-  {
-    pattern = "env::var%('[%w_]*$",
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "env::var%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "env::var('"
-    end,
-  },
-  {
-    pattern = 'env::var%("[%w_]*$',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'env::var%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'env::var("'
-    end,
-  },
-  {
-    pattern = "std::env::var%('[%w_]*$",
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, "std::env::var%('([%w_]*)$")
-    end,
-    get_completion_trigger = function()
-      return "std::env::var('"
-    end,
-  },
-  {
-    pattern = 'std::env::var%("[%w_]*$',
-    filetype = "rust",
-    extract_var = function(line, col)
-      return utils.extract_env_var(line, col, 'std::env::var%("([%w_]*)$')
-    end,
-    get_completion_trigger = function()
-      return 'std::env::var("'
-    end,
-  },
-}
+local filetype = "rust"
+
+-- env::var("VAR") and env::var('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("env::var", filetype, "both"))
+
+-- std::env::var("VAR") and std::env::var('VAR')
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("std::env::var", filetype, "both"))
+
+-- env!("VAR") macro (compile-time)
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("env!", filetype, '"'))
+
+-- option_env!("VAR") macro (compile-time, optional)
+vim.list_extend(M.providers, providers_module.create_function_call_patterns("option_env!", filetype, '"'))
 
 return M.providers

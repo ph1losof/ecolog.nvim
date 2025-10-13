@@ -163,10 +163,38 @@ function M.determine_masked_value(value, settings)
   local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
   local min_mask = math.max(0, settings.min_mask or partial_mode.min_mask or 0)
 
+  if mask_length then
+    local base_mask = string_rep(conf.mask_char, mask_length)
+
+    local available_in_mask = mask_length - show_start - show_end
+
+    if mask_length <= (show_start + show_end) or available_in_mask < min_mask then
+      local result = base_mask
+      value_cache:put(cache_key, result)
+      if settings.quote_char then
+        return settings.quote_char .. result .. settings.quote_char
+      end
+      return result
+    end
+
+    local start_part = show_start > 0 and string_sub(value, 1, math.min(show_start, #value)) or ""
+    local end_part = show_end > 0 and #value > show_end and string_sub(value, -show_end) or ""
+    local middle_mask_len = mask_length - #start_part - #end_part
+    if middle_mask_len < 0 then
+      middle_mask_len = 0
+    end
+    local result = start_part .. string_rep(conf.mask_char, middle_mask_len) .. end_part
+    value_cache:put(cache_key, result)
+    if settings.quote_char then
+      return settings.quote_char .. result .. settings.quote_char
+    end
+    return result
+  end
+
   local available_middle = #value - show_start - show_end
 
   if #value <= (show_start + show_end) or available_middle < min_mask then
-    local result = string_rep(conf.mask_char, math.max(#value, mask_length or #value))
+    local result = string_rep(conf.mask_char, #value)
     value_cache:put(cache_key, result)
     if settings.quote_char then
       return settings.quote_char .. result .. settings.quote_char
@@ -175,8 +203,7 @@ function M.determine_masked_value(value, settings)
   end
 
   local end_part = show_end > 0 and string_sub(value, -show_end) or ""
-  local middle_mask_len = mask_length and math.max(mask_length - show_start - show_end, available_middle) or available_middle
-  local result = string_sub(value, 1, show_start) .. string_rep(conf.mask_char, middle_mask_len) .. end_part
+  local result = string_sub(value, 1, show_start) .. string_rep(conf.mask_char, available_middle) .. end_part
 
   value_cache:put(cache_key, result)
   if settings.quote_char then
@@ -221,25 +248,31 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
         local apply_end = (i == num_lines or num_lines == 1)
         local current_show_start = apply_start and show_start or 0
         local current_show_end = apply_end and show_end or 0
-        local available_middle = line_length - current_show_start - current_show_end
+        local available_in_mask = mask_length - current_show_start - current_show_end
 
-        if line_length <= (current_show_start + current_show_end) or available_middle < min_mask then
-          -- Full mask for this line - exactly mask_length + padding
+        if mask_length <= (current_show_start + current_show_end) or available_in_mask < min_mask then
+          -- Can't fit partial mode in mask_length: use full mask + padding
           mask_for_line = string_rep(conf.mask_char, mask_length)
           if line_length > mask_length then
             mask_for_line = mask_for_line .. string_rep(" ", line_length - mask_length)
           end
         else
-          -- Partial mask for this line - exactly mask_length + padding
-          local middle_mask_len = mask_length - current_show_start - current_show_end
-          local start_part = current_show_start > 0 and string_sub(line, 1, current_show_start) or ""
-          local end_part = current_show_end > 0 and string_sub(line, -current_show_end) or ""
+          -- Apply partial mode: exactly mask_length + padding
+          local start_part = current_show_start > 0 and string_sub(line, 1, math.min(current_show_start, line_length))
+            or ""
+          local end_part = current_show_end > 0
+              and line_length > current_show_end
+              and string_sub(line, -current_show_end)
+            or ""
+          local middle_mask_len = mask_length - #start_part - #end_part
+          if middle_mask_len < 0 then
+            middle_mask_len = 0
+          end
           mask_for_line = start_part .. string_rep(conf.mask_char, middle_mask_len) .. end_part
 
           -- Add padding if actual value is longer than mask
-          local mask_total = current_show_start + middle_mask_len + current_show_end
-          if line_length > mask_total then
-            mask_for_line = mask_for_line .. string_rep(" ", line_length - mask_total)
+          if line_length > #mask_for_line then
+            mask_for_line = mask_for_line .. string_rep(" ", line_length - #mask_for_line)
           end
         end
       else

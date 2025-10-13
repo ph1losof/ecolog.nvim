@@ -318,32 +318,34 @@ end
 ---@param min_mask number Minimum mask characters required
 ---@return string mask The generated mask
 local function generate_line_mask(line_value, line_length, mask_length, mask_char, is_partial, show_start, show_end, min_mask)
-  local mask_for_line
+  local base_mask = string_rep(mask_char, mask_length)
 
+  local final_mask
   if is_partial and line_length > 0 then
-    local available_middle = line_length - show_start - show_end
+    local available_in_mask = mask_length - show_start - show_end
 
-    if line_length <= (show_start + show_end) or available_middle < min_mask then
-      -- Full mask: exactly mask_length
-      mask_for_line = string_rep(mask_char, mask_length)
+    if mask_length <= (show_start + show_end) or available_in_mask < min_mask then
+      final_mask = base_mask
     else
-      -- Partial mask: exactly mask_length
-      local middle_mask_len = mask_length - show_start - show_end
-      local start_part = show_start > 0 and line_value:sub(1, show_start) or EMPTY_STRING
-      local end_part = show_end > 0 and line_value:sub(-show_end) or EMPTY_STRING
-      mask_for_line = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
+      local start_part = show_start > 0 and line_value:sub(1, math_min(show_start, line_length)) or EMPTY_STRING
+      local end_part = show_end > 0 and line_length > show_end and line_value:sub(-show_end) or EMPTY_STRING
+
+      local middle_mask_len = mask_length - #start_part - #end_part
+      if middle_mask_len < 0 then
+        middle_mask_len = 0
+      end
+
+      final_mask = table_concat({start_part, string_rep(mask_char, middle_mask_len), end_part})
     end
   else
-    -- Full mode: exactly mask_length
-    mask_for_line = string_rep(mask_char, mask_length)
+    final_mask = base_mask
   end
 
-  -- Add padding if actual value is longer than mask
-  if line_length > #mask_for_line then
-    mask_for_line = mask_for_line .. string_rep(SPACE, line_length - #mask_for_line)
+  if line_length > #final_mask then
+    final_mask = final_mask .. string_rep(SPACE, line_length - #final_mask)
   end
 
-  return mask_for_line
+  return final_mask
 end
 
 ---Add quotes around mask, placing closing quote before padding

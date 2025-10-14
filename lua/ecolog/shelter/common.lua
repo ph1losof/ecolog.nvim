@@ -3,8 +3,22 @@
 local M = {}
 
 local api = vim.api
-local state = require("ecolog.shelter.state")
-local shelter_utils = require("ecolog.shelter.utils")
+
+local state, shelter_utils
+
+local function get_state()
+  if not state then
+    state = require("ecolog.shelter.state")
+  end
+  return state
+end
+
+local function get_shelter_utils()
+  if not shelter_utils then
+    shelter_utils = require("ecolog.shelter.utils")
+  end
+  return shelter_utils
+end
 
 -- Cache API references for performance
 local api_buf_is_valid = api.nvim_buf_is_valid
@@ -45,10 +59,12 @@ function M.should_process_env_file(filename, feature_name)
   if not filename or not feature_name then
     return false
   end
-  
+
   local config = M.get_ecolog_config()
-  local is_env_file = shelter_utils.match_env_file(filename, config)
-  return is_env_file and state.is_enabled(feature_name)
+  local s_utils = get_shelter_utils()
+  local is_env_file = s_utils.match_env_file(filename, config)
+  local s = get_state()
+  return is_env_file and s.is_enabled(feature_name)
 end
 
 ---Get buffer content hash for caching purposes
@@ -58,7 +74,7 @@ function M.get_buffer_content_hash(bufnr)
   if not M.ensure_valid_buffer(bufnr) then
     return nil
   end
-  
+
   local lines = api_buf_get_lines(bufnr, 0, -1, false)
   return vim.fn.sha256(table.concat(lines, "\n"))
 end
@@ -72,12 +88,12 @@ function M.setup_concealment_options(bufnr, conceallevel, concealcursor)
   if not M.ensure_valid_buffer(bufnr) then
     return false
   end
-  
+
   conceallevel = conceallevel or 2
   concealcursor = concealcursor or "nvic"
-  
+
   local configured_count = 0
-  
+
   for _, winid in ipairs(api_list_wins()) do
     if api_win_get_buf(winid) == bufnr then
       local ok1 = pcall(api_win_set_option, winid, "conceallevel", conceallevel)
@@ -87,7 +103,7 @@ function M.setup_concealment_options(bufnr, conceallevel, concealcursor)
       end
     end
   end
-  
+
   return configured_count > 0
 end
 
@@ -111,7 +127,7 @@ function M.get_buffer_filename(bufnr)
   if not M.ensure_valid_buffer(bufnr) then
     return nil
   end
-  
+
   local filename = api.nvim_buf_get_name(bufnr)
   return filename ~= "" and filename or nil
 end
@@ -125,7 +141,7 @@ function M.buffer_option_matches(bufnr, option, expected)
   if not M.ensure_valid_buffer(bufnr) then
     return false
   end
-  
+
   return M.safe_call(api.nvim_buf_get_option, nil, bufnr, option) == expected
 end
 
@@ -135,18 +151,18 @@ end
 ---@return table<string, boolean> results Table of option -> success mapping
 function M.set_buffer_options(bufnr, options)
   local results = {}
-  
+
   if not M.ensure_valid_buffer(bufnr) then
     for option, _ in pairs(options) do
       results[option] = false
     end
     return results
   end
-  
+
   for option, value in pairs(options) do
     results[option] = pcall(api.nvim_buf_set_option, bufnr, option, value)
   end
-  
+
   return results
 end
 
@@ -156,16 +172,16 @@ end
 ---@param suffix string? Additional suffix (optional)
 ---@return string group_name Standardized autocmd group name
 function M.create_autocmd_group_name(feature, bufnr, suffix)
-  local parts = {"Ecolog", "Shelter", feature}
-  
+  local parts = { "Ecolog", "Shelter", feature }
+
   if bufnr then
     table.insert(parts, tostring(bufnr))
   end
-  
+
   if suffix then
     table.insert(parts, suffix)
   end
-  
+
   return table.concat(parts, "_")
 end
 
@@ -181,7 +197,7 @@ function M.is_feature_supported(feature_name)
   elseif feature_name == "snacks_previewer" then
     return pcall(require, "snacks")
   end
-  
+
   return true -- Default to supported
 end
 
@@ -197,3 +213,4 @@ function M.new_table(array_size, hash_size)
 end
 
 return M
+

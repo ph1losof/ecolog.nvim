@@ -232,6 +232,19 @@ local function convert_to_matching_pattern(pattern)
   end
 end
 
+---Check if a pattern is an absolute path
+---@param pattern string The pattern to check
+---@return boolean is_absolute Whether the pattern is an absolute path
+local function is_absolute_path(pattern)
+  if pattern:match("^/") then
+    return true
+  end
+  if pattern:match("^%a:[/\\]") then
+    return true
+  end
+  return false
+end
+
 ---Match a file against a pattern
 ---@param filename string The filename to check
 ---@param pattern string The pattern to match against
@@ -244,8 +257,14 @@ local function match_file_pattern(filename, pattern, base_path, config)
   end
 
   if pattern:find("/") then
-    pattern = make_pattern_relative(pattern)
-    local full_pattern = combine_path_pattern(base_path or get_project_root(config), pattern, config)
+    local full_pattern
+
+    if is_absolute_path(pattern) then
+      full_pattern = pattern
+    else
+      pattern = make_pattern_relative(pattern)
+      full_pattern = combine_path_pattern(base_path or get_project_root(config), pattern, config)
+    end
 
     local pattern_type = detect_pattern_type(pattern)
 
@@ -316,6 +335,11 @@ local function process_pattern(pattern, path, opts, collect_fn)
 
   local results = {}
   local pattern_type = detect_pattern_type(pattern)
+
+  if is_absolute_path(pattern) then
+    collect_fn(results, { pattern })
+    return results
+  end
 
   if pattern_type == PATTERN_TYPES.GLOB or pattern_type == PATTERN_TYPES.EXTENDED_GLOB then
     if pattern:find("**") or pattern:find("@%(") or pattern:find("%*%(") then
@@ -556,14 +580,14 @@ local function default_sort_file_fn(a, b, opts)
   local b_base = b:match("%.env$") ~= nil
   local a_specific = a:match("%.env%.%w+") ~= nil or a:match("%.env%.local") ~= nil
   local b_specific = b:match("%.env%.%w+") ~= nil or b:match("%.env%.local") ~= nil
-  
+
   -- Base .env files should come before specific ones (so specific ones override)
   if a_base and b_specific then
     return true
   elseif a_specific and b_base then
     return false
   end
-  
+
   -- Among specific files, prioritize .local files last (highest priority)
   if a_specific and b_specific then
     local a_local = a:match("%.env%.local") ~= nil
@@ -870,18 +894,18 @@ function M.parse_env_line(line)
 
   local key = line:sub(1, eq_pos - 1):match("^%s*(.-)%s*$")
   local value = line:sub(eq_pos + 1) -- Don't trim the value to preserve whitespace
-  
+
   -- Handle edge cases:
   -- 1. Empty key (lines like "=value") - return nil
   if not key or key == "" then
     return nil, nil, nil
   end
-  
+
   -- 2. Lines with only equals signs (like "=" or "===") - return nil
   if key:match("^=*$") then
     return nil, nil, nil
   end
-  
+
   -- 3. Value can be empty string, nil, or contain content
   if value == nil then
     value = ""
@@ -895,38 +919,38 @@ end
 ---@return table env_vars A table of environment variables with structure {key = {value = string, line = number}}
 function M.parse_env_file(file_path)
   local env_vars = {}
-  
+
   if not file_path or file_path == "" then
     return env_vars
   end
-  
+
   -- Check if path exists and is a file
   local stat = vim.loop.fs_stat(file_path)
   if not stat then
     return env_vars
   end
-  
+
   if stat.type ~= "file" then
     -- Return empty table for directories instead of throwing error
     return env_vars
   end
-  
+
   local file = io.open(file_path, "r")
   if not file then
     return env_vars
   end
-  
+
   -- Read entire file to handle different line endings
   local content = file:read("*all")
   file:close()
-  
+
   if not content then
     return env_vars
   end
-  
+
   -- Handle different line endings (CRLF, LF, CR) more robustly
   content = content:gsub("\r\n", "\n"):gsub("\r", "\n")
-  
+
   -- Split lines more carefully to handle edge cases
   local lines = {}
   if content ~= "" then
@@ -938,17 +962,17 @@ function M.parse_env_file(file_path)
       table.remove(lines)
     end
   end
-  
+
   local line_number = 0
   local in_multiline = false
   local multiline_key = nil
   local multiline_value = {}
   local multiline_quote_char = nil
   local multiline_start_line = 0
-  
+
   for _, line in ipairs(lines) do
     line_number = line_number + 1
-    
+
     if in_multiline then
       -- Handle multiline quoted values more robustly
       local found_end_quote = false
@@ -962,7 +986,7 @@ function M.parse_env_file(file_path)
             escape_count = escape_count + 1
             j = j - 1
           end
-          
+
           -- If even number of backslashes (including 0), quote is not escaped
           if escape_count % 2 == 0 then
             found_end_quote = true
@@ -972,7 +996,7 @@ function M.parse_env_file(file_path)
         end
         i = i + 1
       end
-      
+
       if found_end_quote then
         in_multiline = false
         local full_value = table.concat(multiline_value, "\n")
@@ -991,7 +1015,7 @@ function M.parse_env_file(file_path)
       end
     else
       local key, value = M.parse_env_line(line)
-      
+
       if key and key ~= "" then
         -- Handle quoted values more robustly
         if value then
@@ -1009,7 +1033,7 @@ function M.parse_env_file(file_path)
                   escape_count = escape_count + 1
                   j = j - 1
                 end
-                
+
                 -- If even number of backslashes, quote is not escaped
                 if escape_count % 2 == 0 then
                   end_quote_pos = i
@@ -1018,7 +1042,7 @@ function M.parse_env_file(file_path)
               end
               i = i + 1
             end
-            
+
             if end_quote_pos then
               -- Complete quoted value on single line
               local quoted_value = value:sub(2, end_quote_pos - 1)
@@ -1043,21 +1067,26 @@ function M.parse_env_file(file_path)
                 -- Check if the next line looks like a new variable assignment
                 local rest_of_value = value:sub(2)
                 local should_be_multiline = false
-                
+
                 -- Check if there are more lines and if the next line doesn't look like a variable assignment
                 if line_number < #lines then
                   local next_line = lines[line_number + 1]
                   -- If next line doesn't contain '=' or is empty/comment, might be multiline
-                  if next_line and not next_line:match("^%s*$") and not next_line:match("^%s*#") and not next_line:find("=") then
+                  if
+                    next_line
+                    and not next_line:match("^%s*$")
+                    and not next_line:match("^%s*#")
+                    and not next_line:find("=")
+                  then
                     should_be_multiline = true
                   end
                 end
-                
+
                 if should_be_multiline then
                   -- Enter multiline mode
                   in_multiline = true
                   multiline_key = key
-                  multiline_value = {rest_of_value} -- Remove opening quote
+                  multiline_value = { rest_of_value } -- Remove opening quote
                   multiline_quote_char = first_char
                   multiline_start_line = line_number
                 else
@@ -1083,7 +1112,7 @@ function M.parse_env_file(file_path)
                 trimmed_value = before_comment:match("^(.-)%s*$")
               end
             end
-            
+
             env_vars[key] = {
               value = trimmed_value,
               line = line_number,
@@ -1099,7 +1128,7 @@ function M.parse_env_file(file_path)
       end
     end
   end
-  
+
   -- Handle case where file ends in middle of multiline value
   if in_multiline and multiline_key then
     local full_value = table.concat(multiline_value, "\n")
@@ -1109,7 +1138,7 @@ function M.parse_env_file(file_path)
       line = multiline_start_line,
     }
   end
-  
+
   return env_vars
 end
 
@@ -1120,7 +1149,7 @@ function M.process_escape_sequences(str)
   if not str then
     return ""
   end
-  
+
   -- Handle escape sequences comprehensively
   -- NOTE: Order matters! Process \\ first, then other escapes
   local result = str
@@ -1135,7 +1164,7 @@ function M.process_escape_sequences(str)
   result = result:gsub('\\"', '"')
   result = result:gsub("\\'", "'")
   result = result:gsub("\1", "\\") -- Restore escaped backslashes
-  
+
   return result
 end
 
@@ -1228,20 +1257,20 @@ function M.extract_env_var(line, col, pattern)
   if not line or not col or not pattern then
     return nil
   end
-  
+
   if type(line) ~= "string" or type(col) ~= "number" or type(pattern) ~= "string" then
     return nil
   end
-  
+
   if col < 0 or col > #line then
     return nil
   end
-  
+
   local before_cursor = line:sub(1, col)
   local success, result = pcall(function()
     return before_cursor:match(pattern)
   end)
-  
+
   return success and result or nil
 end
 

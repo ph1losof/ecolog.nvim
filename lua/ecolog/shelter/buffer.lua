@@ -29,9 +29,29 @@ local table_insert = table.insert
 local fn = vim.fn
 local pcall = pcall
 
-local state = require("ecolog.shelter.state")
-local shelter_utils = require("ecolog.shelter.utils")
-local main_utils = require("ecolog.utils")
+-- Lazy-loaded modules
+local state, shelter_utils, main_utils
+
+local function get_state()
+  if not state then
+    state = require("ecolog.shelter.state")
+  end
+  return state
+end
+
+local function get_shelter_utils()
+  if not shelter_utils then
+    shelter_utils = require("ecolog.shelter.utils")
+  end
+  return shelter_utils
+end
+
+local function get_main_utils()
+  if not main_utils then
+    main_utils = require("ecolog.utils")
+  end
+  return main_utils
+end
 
 local NAMESPACE = api.nvim_create_namespace("ecolog_shelter")
 local CLEANUP_INTERVAL = 300000
@@ -181,12 +201,14 @@ function M.unshelter_buffer()
   api.nvim_win_set_option(winid, "concealcursor", "")
 
   api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
-  state.reset_revealed_lines()
+  local s = get_state()
+  s.reset_revealed_lines()
   active_buffers[bufnr] = nil
 
-  if state.get_buffer_state().disable_cmp then
+  if s.get_buffer_state().disable_cmp then
     vim.b.completion = true
-    if shelter_utils.has_cmp() then
+    local s_utils = get_shelter_utils()
+    if s_utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = true })
     end
   end
@@ -205,9 +227,11 @@ local function setup_buffer_options(bufnr, winid)
     cleanup_invalid_buffers()
   end
 
-  if state.get_buffer_state().disable_cmp then
+  local s = get_state()
+  if s.get_buffer_state().disable_cmp then
     vim.b.completion = false
-    if shelter_utils.has_cmp() then
+    local s_utils = get_shelter_utils()
+    if s_utils.has_cmp() then
       require("cmp").setup.buffer({ enabled = false })
     end
   end
@@ -291,23 +315,31 @@ function M.create_extmark(value, item, config, bufname, line_num)
 
   local is_multi_line = value:find("\n") ~= nil
   if is_multi_line then
-    local is_revealed = state.is_line_revealed(line_num)
-    local masked_value = is_revealed and raw_value
-      or shelter_utils.determine_masked_value(value, {
+    local s = get_state()
+    local is_revealed = s.is_line_revealed(line_num)
+    local masked_value
+    if is_revealed then
+      masked_value = raw_value
+    else
+      local s_utils = get_shelter_utils()
+      masked_value = s_utils.determine_masked_value(value, {
         partial_mode = config.partial_mode,
         key = item.key,
         source = bufname,
         quote_char = item.quote_char,
       })
+    end
     return M.create_multi_line_extmarks(raw_value, masked_value, item, config, line_num)
   end
 
-  local is_revealed = state.is_line_revealed(line_num)
+  local s = get_state()
+  local is_revealed = s.is_line_revealed(line_num)
   if is_revealed then
     return build_extmark(line_num, item.eq_pos, raw_value, { highlight_group = "String" }, item)
   end
 
-  local masked_value = shelter_utils.determine_masked_value(value, {
+  local s_utils = get_shelter_utils()
+  local masked_value = s_utils.determine_masked_value(value, {
     partial_mode = config.partial_mode,
     key = item.key,
     source = bufname,
@@ -328,9 +360,10 @@ end
 ---@param end_line number Ending line number
 ---@return table<number, boolean> revealed_map Map of line numbers to revelation status
 local function get_revealed_lines_map(start_line, end_line)
+  local s = get_state()
   local revealed = {}
   for i = start_line, end_line do
-    revealed[i] = state.is_line_revealed(i)
+    revealed[i] = s.is_line_revealed(i)
   end
   return revealed
 end
@@ -384,7 +417,8 @@ function M.shelter_buffer()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
   local bufname = fn.bufname()
 
-  if not shelter_utils.match_env_file(bufname, config) then
+  local s_utils = get_shelter_utils()
+  if not s_utils.match_env_file(bufname, config) then
     return
   end
 
@@ -397,12 +431,13 @@ function M.shelter_buffer()
   local winid = api.nvim_get_current_win()
   setup_buffer_options(bufnr, winid)
 
+  local s = get_state()
   local masking_config = {
-    partial_mode = state.get_config().partial_mode,
-    highlight_group = state.get_config().highlight_group,
-    mask_length = state.get_config().mask_length,
+    partial_mode = s.get_config().partial_mode,
+    highlight_group = s.get_config().highlight_group,
+    mask_length = s.get_config().mask_length,
   }
-  local skip_comments = state.get_config().skip_comments
+  local skip_comments = s.get_config().skip_comments
 
   local ok, all_lines = pcall(api.nvim_buf_get_lines, bufnr, 0, -1, false)
   if not ok then
@@ -427,14 +462,16 @@ local function setup_buffer_state(config)
     disable_cmp = type(shelter_config) == "table" and shelter_config.disable_cmp ~= false or false,
     revealed_lines = {},
   }
-  state.set_buffer_state(buffer_state)
+  local s = get_state()
+  s.set_buffer_state(buffer_state)
   return buffer_state
 end
 
 ---@param config table
 ---@param group number
 local function setup_buffer_autocmds(config, group)
-  local watch_patterns = main_utils.get_watch_patterns(config)
+  local m_utils = get_main_utils()
+  local watch_patterns = m_utils.get_watch_patterns(config)
 
   if config._monorepo_root then
     local monorepo_patterns = {}
@@ -458,7 +495,8 @@ local function setup_buffer_autocmds(config, group)
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      if not shelter_utils.match_env_file(ev.file, config) then
+      local s_utils = get_shelter_utils()
+      if not s_utils.match_env_file(ev.file, config) then
         return
       end
 
@@ -481,8 +519,9 @@ local function setup_buffer_autocmds(config, group)
         return true
       end
 
-      if state.is_enabled("files") then
-        local revealed_lines = state.get_buffer_state().revealed_lines
+      local s = get_state()
+      if s.is_enabled("files") then
+        local revealed_lines = s.get_buffer_state().revealed_lines
         if not next(revealed_lines) then
           M.shelter_buffer()
         end
@@ -496,8 +535,10 @@ local function setup_buffer_autocmds(config, group)
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      if shelter_utils.match_env_file(ev.file, config) then
-        if state.is_enabled("files") then
+      local s_utils = get_shelter_utils()
+      if s_utils.match_env_file(ev.file, config) then
+        local s = get_state()
+        if s.is_enabled("files") then
           -- Clear masking engine caches on text changes to ensure fresh parsing
           local masking_engine = require("ecolog.shelter.masking_engine")
           masking_engine.clear_buffer_cache(ev.buf, ev.file)
@@ -513,21 +554,23 @@ local function setup_buffer_autocmds(config, group)
     pattern = watch_patterns,
     group = group,
     callback = function(ev)
-      if shelter_utils.match_env_file(ev.file, config) and state.get_config().shelter_on_leave then
-        state.set_feature_state("files", true)
+      local s_utils = get_shelter_utils()
+      local s = get_state()
+      if s_utils.match_env_file(ev.file, config) and s.get_config().shelter_on_leave then
+        s.set_feature_state("files", true)
 
-        if state.get_state().features.initial.telescope_previewer then
-          state.set_feature_state("telescope_previewer", true)
+        if s.get_state().features.initial.telescope_previewer then
+          s.set_feature_state("telescope_previewer", true)
           require("ecolog.shelter.integrations.telescope").setup_telescope_shelter()
         end
 
-        if state.get_state().features.initial.fzf_previewer then
-          state.set_feature_state("fzf_previewer", true)
+        if s.get_state().features.initial.fzf_previewer then
+          s.set_feature_state("fzf_previewer", true)
           require("ecolog.shelter.integrations.fzf").setup_fzf_shelter()
         end
 
-        if state.get_state().features.initial.snacks_previewer then
-          state.set_feature_state("snacks_previewer", true)
+        if s.get_state().features.initial.snacks_previewer then
+          s.set_feature_state("snacks_previewer", true)
           require("ecolog.shelter.integrations.snacks").setup_snacks_shelter()
         end
 
@@ -546,7 +589,9 @@ local function setup_paste_override(config)
       local bufnr = api.nvim_get_current_buf()
       local filename = fn.fnamemodify(api.nvim_buf_get_name(bufnr), ":t")
 
-      if not shelter_utils.match_env_file(filename, config) or not state.is_enabled("files") then
+      local s_utils = get_shelter_utils()
+      local s = get_state()
+      if not s_utils.match_env_file(filename, config) or not s.is_enabled("files") then
         return original_paste(lines, phase)
       end
 
@@ -604,7 +649,9 @@ function M.refresh_shelter_for_monorepo()
 
   local current_file = fn.bufname()
   local config = require("ecolog").get_config and require("ecolog").get_config() or {}
-  if current_file and shelter_utils.match_env_file(current_file, config) and state.is_enabled("files") then
+  local s_utils = get_shelter_utils()
+  local s = get_state()
+  if current_file and s_utils.match_env_file(current_file, config) and s.is_enabled("files") then
     vim.schedule(function()
       M.shelter_buffer()
     end)

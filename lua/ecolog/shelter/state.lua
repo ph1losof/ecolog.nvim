@@ -18,8 +18,8 @@ local DEFAULT_PARTIAL_MODE = {
   min_mask = 3,
 }
 
-local MEMORY_CHECK_INTERVAL = 300000
-local MEMORY_THRESHOLD = 50 * 1024 * 1024
+local MEMORY_CHECK_INTERVAL = 600000
+local MEMORY_THRESHOLD = 100 * 1024 * 1024
 
 -- State initialization
 ---@class StateConfig
@@ -82,21 +82,8 @@ local last_memory_check = 0
 local function get_memory_usage()
   local stats = {}
   stats.lua_used = collectgarbage("count") * 1024
-
   stats.buffer_cache = 0
-  for _, cache in pairs(_buffer_cache) do
-    if type(cache) == "table" then
-      stats.buffer_cache = stats.buffer_cache + vim.fn.strlen(vim.inspect(cache))
-    end
-  end
-
   stats.state_cache = 0
-  for _, cache in pairs(_state_cache) do
-    if type(cache) == "table" then
-      stats.state_cache = stats.state_cache + vim.fn.strlen(vim.inspect(cache))
-    end
-  end
-
   return stats
 end
 

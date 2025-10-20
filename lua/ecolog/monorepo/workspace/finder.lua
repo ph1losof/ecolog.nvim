@@ -1,6 +1,9 @@
 ---@class WorkspaceFinder
 local WorkspaceFinder = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local Cache = require("ecolog.monorepo.detection.cache")
 
 -- Removed global package manager constants - now using provider-specific approaches
@@ -71,7 +74,7 @@ local _file_check_cache_time = 0
 ---@param file_path string File path to check
 ---@return boolean readable Whether file is readable
 local function is_file_readable_cached(file_path)
-  local now = vim.loop.now()
+  local now = uv.now()
   if (now - _file_check_cache_time) > 5000 then -- Clear cache every 5 seconds
     _file_check_cache = {}
     _file_check_cache_time = now

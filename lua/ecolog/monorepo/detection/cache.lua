@@ -1,6 +1,9 @@
 ---@class MonorepoDetectionCache
 local Cache = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 -- Hierarchical cache structure
 local _detection_cache = {} -- Provider detection results
 local _workspace_cache = {} -- Workspace discovery results
@@ -31,7 +34,7 @@ local function is_cache_valid(key, ttl)
   end
 
   ttl = ttl or CACHE_CONFIG.default_ttl
-  local now = vim.loop.now()
+  local now = uv.now()
   return (now - timestamp) < ttl
 end
 
@@ -41,7 +44,7 @@ local _needs_resort = false
 
 ---Perform cache cleanup if needed
 local function maybe_cleanup_cache()
-  local now = vim.loop.now()
+  local now = uv.now()
   if (now - CACHE_CONFIG.last_cleanup) < CACHE_CONFIG.cleanup_interval then
     return
   end
@@ -96,7 +99,7 @@ end
 ---@param ttl? number Time to live in milliseconds
 function Cache.set_detection(key, result, ttl)
   maybe_cleanup_cache()
-  local now = vim.loop.now()
+  local now = uv.now()
   
   -- If key already exists, update timestamp in sorted list
   local existing_idx = nil
@@ -138,7 +141,7 @@ end
 ---@param ttl? number Time to live in milliseconds
 function Cache.set_workspaces(key, workspaces, ttl)
   maybe_cleanup_cache()
-  local now = vim.loop.now()
+  local now = uv.now()
   
   -- If key already exists, update timestamp in sorted list
   local existing_idx = nil
@@ -180,7 +183,7 @@ end
 ---@param ttl? number Time to live in milliseconds
 function Cache.set_env_files(key, files, ttl)
   maybe_cleanup_cache()
-  local now = vim.loop.now()
+  local now = uv.now()
   
   -- If key already exists, update timestamp in sorted list
   local existing_idx = nil

@@ -1,5 +1,8 @@
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local PATTERNS = {
   SINGLE_QUOTED = "^'(.*)'$",
   DOUBLE_QUOTED = '^"(.*)"$',
@@ -192,7 +195,7 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
   local var = env_vars[var_name]
   if not var then
     -- Check cache first for shell variables
-    local now = vim.loop.now()
+    local now = uv.now()
     if now - _env_cache_timestamp > ENV_CACHE_TTL then
       -- Cache expired, clear it
       _env_cache = {}

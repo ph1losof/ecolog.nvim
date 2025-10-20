@@ -1,6 +1,9 @@
 ---@class MonorepoDetection
 local Detection = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local BaseProvider = require("ecolog.monorepo.detection.providers.base")
 local Cache = require("ecolog.monorepo.detection.cache")
 
@@ -145,7 +148,7 @@ function Detection.detect_monorepo(path)
           detection_info = {
             confidence = confidence,
             metadata = metadata or {},
-            detected_at = vim.loop.now(),
+            detected_at = uv.now(),
           },
         }
 
@@ -223,7 +226,7 @@ function Detection.detect_with_provider(provider_name, path)
         detection_info = {
           confidence = confidence,
           metadata = metadata or {},
-          detected_at = vim.loop.now(),
+          detected_at = uv.now(),
         },
       }
 

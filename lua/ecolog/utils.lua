@@ -1,5 +1,8 @@
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 ---@class Patterns
 ---@field env_file_combined string Pattern for matching .env files
 ---@field env_line string Pattern for matching non-comment lines
@@ -925,7 +928,7 @@ function M.parse_env_file(file_path)
   end
 
   -- Check if path exists and is a file
-  local stat = vim.loop.fs_stat(file_path)
+  local stat = uv.fs_stat(file_path)
   if not stat then
     return env_vars
   end

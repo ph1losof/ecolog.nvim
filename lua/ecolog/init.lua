@@ -1,5 +1,8 @@
 local M = {}
 
+-- Compatibility layer for vim.loop -> vim.uv migration
+local uv = vim.uv or vim.loop
+
 local api = vim.api
 local fn = vim.fn
 local notify = vim.notify
@@ -170,7 +173,7 @@ local VALIDATION_INTERVAL = 30000
 local _health_timer = nil
 
 local function should_cleanup_cache()
-  local now = vim.loop.now()
+  local now = uv.now()
   return now - _last_cleanup > CLEANUP_INTERVAL
 end
 
@@ -179,7 +182,7 @@ local function cleanup_caches()
     return
   end
 
-  _last_cleanup = vim.loop.now()
+  _last_cleanup = uv.now()
   _cache_stats.cleanups = _cache_stats.cleanups + 1
 
   local module_count = 0
@@ -238,9 +241,9 @@ local function require_module(name)
   cleanup_caches()
 
   if _module_locks[name] then
-    local start_time = vim.loop.now()
+    local start_time = uv.now()
     while _module_locks[name] do
-      if vim.loop.now() - start_time > 5000 then
+      if uv.now() - start_time > 5000 then
         vim.notify("Module lock timeout for: " .. name, vim.log.levels.WARN)
         break
       end
@@ -299,12 +302,12 @@ local function start_health_monitoring()
     return
   end
 
-  _health_timer = vim.loop.new_timer()
+  _health_timer = uv.new_timer()
   _health_timer:start(
     60000,
     60000,
     vim.schedule_wrap(function()
-      if _state_lock and (vim.loop.now() - _lock_start_time) > 30000 then
+      if _state_lock and (uv.now() - _lock_start_time) > 30000 then
         vim.notify("Detected long-running lock - auto-recovering", vim.log.levels.WARN)
         _state_lock = false
         _lock_start_time = 0
@@ -326,7 +329,7 @@ local function stop_health_monitoring()
 end
 
 local function safe_read_state(key)
-  local now = vim.loop.now()
+  local now = uv.now()
   if now - _last_validation_check > VALIDATION_INTERVAL then
     _last_validation_check = now
 
@@ -350,20 +353,20 @@ local function acquire_state_lock(timeout_ms)
 
   if not _state_lock then
     _state_lock = true
-    _lock_start_time = vim.loop.now()
+    _lock_start_time = uv.now()
     return true
   end
 
-  local start_time = vim.loop.now()
+  local start_time = uv.now()
   local wait_time = 1
 
   while _state_lock do
-    local elapsed = vim.loop.now() - start_time
+    local elapsed = uv.now() - start_time
     if elapsed > timeout_ms then
       return false
     end
 
-    if _lock_start_time > 0 and (vim.loop.now() - _lock_start_time) > 10000 then
+    if _lock_start_time > 0 and (uv.now() - _lock_start_time) > 10000 then
       _state_lock = false
       _lock_start_time = 0
       break
@@ -374,7 +377,7 @@ local function acquire_state_lock(timeout_ms)
   end
 
   _state_lock = true
-  _lock_start_time = vim.loop.now()
+  _lock_start_time = uv.now()
   return true
 end
 
@@ -1745,7 +1748,7 @@ function M.get_lock_health()
   return {
     state_lock = _state_lock,
     lock_start_time = _lock_start_time,
-    lock_duration = _lock_start_time > 0 and (vim.loop.now() - _lock_start_time) or 0,
+    lock_duration = _lock_start_time > 0 and (uv.now() - _lock_start_time) or 0,
     pending_operations = _pending_operations,
     module_locks = vim.tbl_count(_module_locks),
   }

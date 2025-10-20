@@ -1,6 +1,9 @@
 ---@class AutoSwitchThrottle
 local Throttle = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 -- Throttle state
 local _throttle_state = {
   last_check_time = 0,
@@ -28,7 +31,7 @@ local THROTTLE_CONFIG = {
 ---@return boolean should_throttle Whether the check should be throttled
 ---@return string reason Reason for throttling (for debugging)
 function Throttle.should_throttle(file_path)
-  local now = vim.loop.now()
+  local now = uv.now()
 
   -- Reset burst count if enough time has passed
   if (now - _throttle_state.last_burst_time) > 1000 then
@@ -97,7 +100,7 @@ function Throttle.debounced_check(file_path, check_function)
   end
 
   -- Create new debounced timer
-  _throttle_state.pending_timer = vim.loop.new_timer()
+  _throttle_state.pending_timer = uv.new_timer()
   _throttle_state.pending_timer:start(
     THROTTLE_CONFIG.debounce_delay,
     0,
@@ -125,7 +128,7 @@ end
 ---@param file_path string Current file path
 ---@param workspace? table Current workspace (optional)
 function Throttle._update_state(file_path, workspace)
-  local now = vim.loop.now()
+  local now = uv.now()
 
   _throttle_state.last_check_time = now
   _throttle_state.last_file_path = file_path
@@ -206,7 +209,7 @@ end
 ---@return boolean active Whether auto-switch is active
 function Throttle.is_active()
   return _throttle_state.pending_timer ~= nil
-    or (_throttle_state.check_count > 0 and (vim.loop.now() - _throttle_state.last_check_time) < 5000)
+    or (_throttle_state.check_count > 0 and (uv.now() - _throttle_state.last_check_time) < 5000)
 end
 
 return Throttle

@@ -1,6 +1,9 @@
 ---@class MonorepoModule
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 M.DEFAULT_MONOREPO_CONFIG = require("ecolog.monorepo.config.defaults")
 
 local _modules = {}
@@ -259,7 +262,7 @@ function M.detect_monorepo_root(path, config)
       provider = provider,
       confidence = detection_info and detection_info.confidence or 1,
       metadata = detection_info and detection_info.metadata or {},
-      detected_at = detection_info and detection_info.detected_at or vim.loop.now(),
+      detected_at = detection_info and detection_info.detected_at or uv.now(),
     }
     return root_path, combined_info
   end

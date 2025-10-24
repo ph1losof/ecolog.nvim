@@ -1,6 +1,9 @@
 ---@class FileOperations
 local FileOperations = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local NotificationManager = require("ecolog.core.notification_manager")
 
 -- File modification time cache for intelligent invalidation
@@ -22,7 +25,7 @@ end
 ---@param file_path string Path to the file
 ---@return number mtime Modification time (0 if file doesn't exist)
 function FileOperations.get_mtime(file_path)
-  local current_time = vim.loop.now()
+  local current_time = uv.now()
   local cache_entry = _file_mtime_cache[file_path]
 
   -- Use cached value if recent
@@ -30,7 +33,7 @@ function FileOperations.get_mtime(file_path)
     return cache_entry.mtime
   end
 
-  local stat = vim.loop.fs_stat(file_path)
+  local stat = uv.fs_stat(file_path)
   local mtime = stat and stat.mtime.sec or 0
 
   -- Cache the result
@@ -177,7 +180,7 @@ function FileOperations.get_files_stats(file_paths)
   local stats_map = {}
 
   for _, file_path in ipairs(file_paths) do
-    local stat = vim.loop.fs_stat(file_path)
+    local stat = uv.fs_stat(file_path)
     if stat then
       stats_map[file_path] = {
         mtime = stat.mtime.sec,

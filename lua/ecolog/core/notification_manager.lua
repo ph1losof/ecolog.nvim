@@ -1,6 +1,9 @@
 ---@class NotificationManager
 local NotificationManager = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 -- Centralized notification cache and configuration
 local _notification_cache = {}
 local CACHE_DURATION = 2000 -- 2 seconds
@@ -15,7 +18,7 @@ function NotificationManager.notify(message, level, force)
 
   if not force then
     local cache_key = message .. tostring(level)
-    local current_time = vim.loop.now()
+    local current_time = uv.now()
 
     -- Check for recent duplicate
     if _notification_cache[cache_key] and (current_time - _notification_cache[cache_key]) < CACHE_DURATION then
@@ -34,7 +37,7 @@ end
 ---Clean up expired cache entries
 ---@param current_time number? Current time (optional, will get current time if not provided)
 function NotificationManager._cleanup_cache(current_time)
-  current_time = current_time or vim.loop.now()
+  current_time = current_time or uv.now()
 
   for key, time in pairs(_notification_cache) do
     if (current_time - time) > CACHE_CLEANUP_INTERVAL then

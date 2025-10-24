@@ -2,6 +2,9 @@
 ---@field NAMESPACE number Namespace ID for buffer highlights and virtual text
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 ---@class KeyValueResult
 ---@field key string The key part of the key-value pair
 ---@field value string The value part of the key-value pair
@@ -159,7 +162,7 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
 end
 
 local function cleanup_invalid_buffers()
-  local current_time = vim.loop.now()
+  local current_time = uv.now()
   for bufnr, timestamp in pairs(active_buffers) do
     if not api.nvim_buf_is_valid(bufnr) or (current_time - timestamp) > BUFFER_TIMEOUT then
       pcall(api.nvim_buf_clear_namespace, bufnr, NAMESPACE, 0, -1)
@@ -221,9 +224,9 @@ local function setup_buffer_options(bufnr, winid)
 
   api.nvim_win_set_option(winid, "conceallevel", 2)
   api.nvim_win_set_option(winid, "concealcursor", "nvic")
-  active_buffers[bufnr] = vim.loop.now()
+  active_buffers[bufnr] = uv.now()
 
-  if vim.loop.now() % CLEANUP_INTERVAL == 0 then
+  if uv.now() % CLEANUP_INTERVAL == 0 then
     cleanup_invalid_buffers()
   end
 

@@ -1,4 +1,7 @@
 local M = {}
+
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
 local utils = require("ecolog.utils")
 local shelter = utils.get_module("ecolog.shelter")
 local fn = vim.fn
@@ -42,7 +45,7 @@ local function get_ecolog()
 end
 
 local function get_cached_status()
-  local current_time = vim.loop.now()
+  local current_time = uv.now()
   if status_cache.data and (current_time - status_cache.last_update) < 1000 then
     return status_cache.data
   end

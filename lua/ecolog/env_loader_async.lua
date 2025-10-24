@@ -1,6 +1,9 @@
 ---@class AsyncEnvLoader
 local AsyncEnvLoader = {}
 
+-- Compatibility layer for vim.loop -> vim.uv migration
+local uv = vim.uv or vim.loop
+
 local types = require("ecolog.types")
 local interpolation = require("ecolog.interpolation")
 local utils = require("ecolog.utils")
@@ -138,7 +141,7 @@ function AsyncEnvLoader._is_cache_valid(cache_key)
     return false
   end
 
-  return (vim.loop.now() - timestamp) < CACHE_TTL
+  return (uv.now() - timestamp) < CACHE_TTL
 end
 
 ---Cache result with automatic cleanup
@@ -151,12 +154,12 @@ function AsyncEnvLoader._cache_result(cache_key, env_vars)
   end
 
   _parse_cache[cache_key] = env_vars
-  _cache_timestamps[cache_key] = vim.loop.now()
+  _cache_timestamps[cache_key] = uv.now()
 end
 
 ---Clean up expired cache entries
 function AsyncEnvLoader._cleanup_cache()
-  local current_time = vim.loop.now()
+  local current_time = uv.now()
   local expired_keys = {}
 
   for key, timestamp in pairs(_cache_timestamps) do
@@ -257,7 +260,7 @@ end
 ---Count expired cache entries
 ---@return number count
 function AsyncEnvLoader._count_expired_entries()
-  local current_time = vim.loop.now()
+  local current_time = uv.now()
   local expired_count = 0
 
   for _, timestamp in pairs(_cache_timestamps) do

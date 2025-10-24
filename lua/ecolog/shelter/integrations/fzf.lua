@@ -1,5 +1,8 @@
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local api = vim.api
 
 local state = require("ecolog.shelter.state")
@@ -58,7 +61,7 @@ function M.setup_fzf_shelter()
     previewer_utils.process_buffer(bufnr, filename, processed_buffers, function(hash)
       processed_buffers:put(bufnr, {
         hash = hash,
-        timestamp = vim.loop.now(),
+        timestamp = uv.now(),
       })
     end)
   end

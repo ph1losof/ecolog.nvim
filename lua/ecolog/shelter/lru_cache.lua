@@ -17,6 +17,9 @@
 ---@field private created_at number Creation timestamp
 ---@field private cleanup_timer number? Cleanup timer handle
 local LRUCache = {}
+
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
 LRUCache.__index = LRUCache
 
 -- Add __gc metamethod to handle cleanup on garbage collection
@@ -43,7 +46,7 @@ function LRUCache.new(capacity, config)
   self.cache = {}
   self.memory_limit = config.memory_limit
   self.current_memory = 0
-  self.created_at = vim.loop.hrtime()
+  self.created_at = uv.hrtime()
   
   -- Configuration with defaults
   self.config = {
@@ -141,7 +144,7 @@ function LRUCache:is_expired()
     return false
   end
   
-  local age_ms = (vim.loop.hrtime() - self.created_at) / 1000000
+  local age_ms = (uv.hrtime() - self.created_at) / 1000000
   return age_ms > self.config.ttl_ms
 end
 

@@ -1,6 +1,9 @@
 ---@class TimerManager
 local TimerManager = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 -- Global timer registry for proper cleanup
 local _active_timers = {}
 local _debounce_timers = {}
@@ -22,7 +25,7 @@ function TimerManager.create_timer(callback, delay, repeat_interval)
     return nil
   end
   
-  local timer = vim.loop.new_timer()
+  local timer = uv.new_timer()
   if not timer then
     vim.notify("Failed to create timer", vim.log.levels.ERROR)
     return nil

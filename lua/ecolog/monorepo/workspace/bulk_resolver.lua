@@ -1,6 +1,9 @@
 ---@class BulkEnvironmentResolver
 local BulkResolver = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local Cache = require("ecolog.monorepo.detection.cache")
 
 -- Performance optimized bulk pattern matching
@@ -149,7 +152,7 @@ end
 ---@param file_paths string[] Array of file paths to check
 ---@return table exists Map of path to boolean
 function BulkResolver.batch_file_exists(file_paths)
-  local now = vim.loop.now()
+  local now = uv.now()
   if (now - _bulk_pattern_cache_time) > 5000 then -- Clear cache every 5 seconds
     _bulk_pattern_cache = {}
     _bulk_pattern_cache_time = now

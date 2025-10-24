@@ -1,5 +1,8 @@
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local api = vim.api
 local fn = vim.fn
 local utils = require("ecolog.utils")
@@ -15,12 +18,12 @@ local _activity_threshold = 5000 -- 5 seconds
 
 -- Track activity for adaptive polling
 local function update_activity()
-  _last_activity_time = vim.loop.now()
+  _last_activity_time = uv.now()
 end
 
 -- Get adaptive polling interval based on recent activity
 local function get_adaptive_poll_interval()
-  local time_since_activity = vim.loop.now() - _last_activity_time
+  local time_since_activity = uv.now() - _last_activity_time
   if time_since_activity < _activity_threshold then
     return MONOREPO_POLL_INTERVAL -- Active period: poll more frequently
   else
@@ -472,12 +475,12 @@ end
 ---@param state table
 ---@param refresh_callback function
 function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
-  if not config._monorepo_root or not vim.loop then
+  if not config._monorepo_root or not uv then
     return
   end
 
   -- Watch the monorepo root directory
-  local success, fs_event = pcall(vim.loop.new_fs_event)
+  local success, fs_event = pcall(uv.new_fs_event)
   if not success or not fs_event then
     return -- libuv filesystem watching not available
   end
@@ -494,13 +497,13 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
     end
 
     -- Debounce rapid file changes
-    local now = vim.loop.now()
+    local now = uv.now()
     last_change_time = now
     
     -- Schedule callback to avoid fast event context restrictions
     vim.schedule(function()
       -- Check if this is still the latest change
-      if vim.loop.now() - last_change_time < DEBOUNCE_DELAY then
+      if uv.now() - last_change_time < DEBOUNCE_DELAY then
         return
       end
       -- Check if the changed file matches our env patterns

@@ -1,5 +1,8 @@
 local M = {}
 
+-- Compatibility layer for uv -> vim.uv migration
+local uv = vim.uv or uv
+
 local FEATURES = {
   "cmp",
   "peek",
@@ -69,7 +72,7 @@ local state = {
     last_selection = nil,
   },
   memory = {
-    last_gc = vim.loop.now(),
+    last_gc = uv.now(),
     stats = {},
   },
 }
@@ -88,7 +91,7 @@ local function get_memory_usage()
 end
 
 local function check_memory_usage()
-  local current_time = vim.loop.now()
+  local current_time = uv.now()
   if current_time - last_memory_check < MEMORY_CHECK_INTERVAL then
     return
   end
@@ -107,7 +110,7 @@ function M.force_garbage_collection()
   _buffer_cache = setmetatable({}, { __mode = "k" })
   state.buffer.revealed_lines = {}
   collectgarbage("collect")
-  state.memory.last_gc = vim.loop.now()
+  state.memory.last_gc = uv.now()
   vim.notify("Memory cleanup performed", vim.log.levels.INFO)
 end
 

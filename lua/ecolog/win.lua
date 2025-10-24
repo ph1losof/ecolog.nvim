@@ -39,8 +39,8 @@ local function make_floating_popup_options(opts)
   end
 
   -- Original positioning logic for cursor/window relative
-  vim.validate({ opts.offset_x = { opts.offset_x, "number" } }, true)
-  vim.validate({ opts.offset_y = { opts.offset_y, "number" } }, true)
+  vim.validate({ offset_x = { opts.offset_x, "number" } }, true)
+  vim.validate({ offset_y = { opts.offset_y, "number" } }, true)
 
   local anchor = ""
   local row, col

@@ -140,7 +140,7 @@ local state = {
   file_cache_opts = nil,
   current_watcher_group = nil,
   selected_env_file = nil,
-  manual_file_selection = false,  -- Track if the user manually selected a file
+  manual_file_selection = false, -- Track if the user manually selected a file
   _env_module = nil,
   _file_watchers = {},
   _env_line_cache = setmetatable({}, { __mode = "kv" }),
@@ -621,7 +621,7 @@ local function handle_env_file_selection(file, config)
   -- so we don't need to acquire the lock here again to avoid deadlocks
   local success, err = pcall(function()
     state.selected_env_file = file
-    state.manual_file_selection = true  -- Mark this as a manual selection
+    state.manual_file_selection = true -- Mark this as a manual selection
     config.preferred_environment = fn.fnamemodify(file, ":t"):gsub("^%.env%.", "")
     get_file_watcher().setup_watcher(config, state, M.refresh_env_vars)
     state.cached_env_files = nil
@@ -632,7 +632,7 @@ local function handle_env_file_selection(file, config)
     state.file_cache_opts = nil
     local base_opts = state.last_opts or DEFAULT_CONFIG
     local opts = vim.tbl_deep_extend("force", base_opts, config or {})
-    
+
     -- Preserve monorepo flags when selecting files
     if base_opts._is_monorepo_workspace then
       opts._is_monorepo_workspace = base_opts._is_monorepo_workspace
@@ -645,7 +645,7 @@ local function handle_env_file_selection(file, config)
       opts._all_workspaces = base_opts._all_workspaces
       opts._current_workspace_info = base_opts._current_workspace_info
     end
-    
+
     get_env_loader().load_environment(opts, state, true)
 
     if state._env_module then
@@ -952,10 +952,7 @@ local function create_commands(config)
       callback = function()
         local has_telescope, telescope = pcall(require, "telescope")
         if not has_telescope then
-          notify(
-            "Telescope is not installed. Install telescope.nvim to use this command",
-            vim.log.levels.ERROR
-          )
+          notify("Telescope is not installed. Install telescope.nvim to use this command", vim.log.levels.ERROR)
           return
         end
         telescope.load_extension("ecolog")
@@ -1524,7 +1521,11 @@ local function validate_config(config)
   end
 
   -- Validate interpolation option
-  if config.interpolation ~= nil and type(config.interpolation) ~= "boolean" and type(config.interpolation) ~= "table" then
+  if
+    config.interpolation ~= nil
+    and type(config.interpolation) ~= "boolean"
+    and type(config.interpolation) ~= "table"
+  then
     notify("interpolation must be boolean or table, got " .. type(config.interpolation), vim.log.levels.WARN)
     config.interpolation = { enabled = true } -- fallback to default
   end
@@ -1561,7 +1562,10 @@ function M.setup(opts)
 
     -- Handle invalid opts types gracefully
     if opts ~= nil and type(opts) ~= "table" then
-      vim.notify("Configuration must be a table, got " .. type(opts) .. ". Using default configuration.", vim.log.levels.WARN)
+      vim.notify(
+        "Configuration must be a table, got " .. type(opts) .. ". Using default configuration.",
+        vim.log.levels.WARN
+      )
       opts = {}
     end
 
@@ -1659,6 +1663,10 @@ function M.setup(opts)
     vim.schedule(function()
       get_env_loader().load_environment(config, state)
       get_file_watcher().setup_watcher(config, state, M.refresh_env_vars)
+
+      if opts and opts.vim_env then
+        get_env_module()
+      end
     end)
 
     vim.schedule(function()
@@ -1672,12 +1680,6 @@ function M.setup(opts)
     -- Start health monitoring for early issue detection
     start_health_monitoring()
 
-    if opts and opts.vim_env then
-      schedule(function()
-        get_env_module()
-      end)
-    end
-    
     -- Mark setup as done only after successful completion
     _setup_done = true
   end)

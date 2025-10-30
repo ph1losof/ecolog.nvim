@@ -110,18 +110,9 @@ function M.update_environment(secrets, override, source_prefix)
 
   for k, v in pairs(final_vars) do
     if type(v) == "table" and v.value then
-      -- Use vim.env for faster access if available, fallback to vim.fn.setenv
-      if vim.env then
-        vim.env[k] = tostring(v.value)
-      else
-        vim.fn.setenv(k, tostring(v.value))
-      end
+      utils.set_env_var(k, v.value)
     else
-      if vim.env then
-        vim.env[k] = tostring(v)
-      else
-        vim.fn.setenv(k, tostring(v))
-      end
+      utils.set_env_var(k, v)
     end
   end
 end

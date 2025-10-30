@@ -3,6 +3,33 @@ local M = {}
 -- Compatibility layer for uv -> vim.uv migration
 local uv = vim.uv or uv
 
+-- Determine the best method for setting environment variables
+-- Prefer vim.uv.os_setenv (available in newer Neovim versions) for reliability
+-- Fall back to vim.env for older versions
+local has_uv_setenv = vim.uv and vim.uv.os_setenv ~= nil
+local has_uv_unsetenv = vim.uv and vim.uv.os_unsetenv ~= nil
+
+---Set an environment variable using the best available method
+---@param key string The environment variable name
+---@param value any The value to set (will be converted to string)
+function M.set_env_var(key, value)
+  if has_uv_setenv then
+    vim.uv.os_setenv(key, tostring(value))
+  else
+    vim.env[key] = value
+  end
+end
+
+---Unset an environment variable using the best available method
+---@param key string The environment variable name
+function M.unset_env_var(key)
+  if has_uv_unsetenv then
+    vim.uv.os_unsetenv(key)
+  else
+    vim.env[key] = nil
+  end
+end
+
 ---@class Patterns
 ---@field env_file_combined string Pattern for matching .env files
 ---@field env_line string Pattern for matching non-comment lines

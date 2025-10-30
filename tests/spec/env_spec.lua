@@ -3,12 +3,21 @@ local assert = require("luassert")
 describe("vim.env integration", function()
   local env
   local ecolog
-  local original_env
+  local test_vars = {}
+  local has_uv_getenv = vim.uv and vim.uv.os_getenv ~= nil
+  local has_uv_unsetenv = vim.uv and vim.uv.os_unsetenv ~= nil
+
+  -- Helper to get env var value (works with both old and new Neovim)
+  local function get_env_value(key)
+    if has_uv_getenv then
+      return vim.uv.os_getenv(key)
+    else
+      return vim.env[key]
+    end
+  end
 
   before_each(function()
-    -- Store original vim.env
-    original_env = vim.env
-    vim.env = {}
+    test_vars = {}
 
     -- Reset modules
     package.loaded["ecolog.env"] = nil
@@ -26,7 +35,7 @@ describe("vim.env integration", function()
         API_KEY = { value = "secret123", source = ".env" },
       }
     end
-    
+
     -- Mock ecolog.get_config to enable vim_env
     ecolog.get_config = function()
       return {
@@ -36,22 +45,36 @@ describe("vim.env integration", function()
   end)
 
   after_each(function()
-    -- Restore original vim.env
-    vim.env = original_env
+    -- Clean up test environment variables
+    for key, _ in pairs(test_vars) do
+      if has_uv_unsetenv then
+        vim.uv.os_unsetenv(key)
+      else
+        vim.env[key] = nil
+      end
+    end
   end)
 
   describe("update_env_vars()", function()
     it("should update vim.env with environment variables", function()
       env.update_env_vars()
 
-      assert.equals("test_value", vim.env.TEST_VAR)
-      assert.equals("localhost", vim.env.DB_HOST)
-      assert.equals("secret123", vim.env.API_KEY)
+      test_vars.TEST_VAR = true
+      test_vars.DB_HOST = true
+      test_vars.API_KEY = true
+
+      assert.equals("test_value", get_env_value("TEST_VAR"))
+      assert.equals("localhost", get_env_value("DB_HOST"))
+      assert.equals("secret123", get_env_value("API_KEY"))
     end)
 
     it("should remove variables that no longer exist", function()
       -- Set initial env vars
       env.update_env_vars()
+
+      test_vars.TEST_VAR = true
+      test_vars.DB_HOST = true
+      test_vars.API_KEY = true
 
       -- Change mock to remove a variable
       ecolog.get_env_vars = function()
@@ -64,9 +87,9 @@ describe("vim.env integration", function()
 
       env.update_env_vars()
 
-      assert.equals("test_value", vim.env.TEST_VAR)
-      assert.equals("localhost", vim.env.DB_HOST)
-      assert.is_nil(vim.env.API_KEY)
+      assert.equals("test_value", get_env_value("TEST_VAR"))
+      assert.equals("localhost", get_env_value("DB_HOST"))
+      assert.is_nil(get_env_value("API_KEY"))
     end)
   end)
 
@@ -94,10 +117,13 @@ describe("vim.env integration", function()
     it("should initialize environment variables", function()
       env.setup()
 
-      assert.equals("test_value", vim.env.TEST_VAR)
-      assert.equals("localhost", vim.env.DB_HOST)
-      assert.equals("secret123", vim.env.API_KEY)
+      test_vars.TEST_VAR = true
+      test_vars.DB_HOST = true
+      test_vars.API_KEY = true
+
+      assert.equals("test_value", get_env_value("TEST_VAR"))
+      assert.equals("localhost", get_env_value("DB_HOST"))
+      assert.equals("secret123", get_env_value("API_KEY"))
     end)
   end)
 end)
-

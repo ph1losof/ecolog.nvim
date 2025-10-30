@@ -1,4 +1,5 @@
 local M = {}
+local utils = require("ecolog.utils")
 
 local added_vars = {}
 
@@ -13,13 +14,13 @@ function M.update_env_vars()
 
   for key, _ in pairs(added_vars) do
     if not env_vars[key] then
-      vim.env[key] = nil
+      utils.unset_env_var(key)
     end
   end
 
   added_vars = {}
   for key, var_info in pairs(env_vars) do
-    vim.env[key] = var_info.value
+    utils.set_env_var(key, var_info.value)
     added_vars[key] = true
   end
 end
@@ -56,7 +57,7 @@ function M.set(key, value)
   }
 
   if config.vim_env ~= false then
-    vim.env[key] = transformed_value
+    utils.set_env_var(key, transformed_value)
     added_vars[key] = true
   end
 

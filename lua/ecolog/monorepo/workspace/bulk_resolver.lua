@@ -2,7 +2,7 @@
 local BulkResolver = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 local Cache = require("ecolog.monorepo.detection.cache")
 

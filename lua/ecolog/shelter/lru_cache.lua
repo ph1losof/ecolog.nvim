@@ -19,7 +19,7 @@
 local LRUCache = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 LRUCache.__index = LRUCache
 
 -- Add __gc metamethod to handle cleanup on garbage collection

@@ -1,7 +1,7 @@
 local M = {}
 
 -- Compatibility layer for vim.loop -> vim.uv migration
-local uv = vim.uv or vim.loop
+local uv = require("ecolog.core.compat").uv
 
 local api = vim.api
 local fn = vim.fn

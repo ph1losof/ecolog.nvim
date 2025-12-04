@@ -1,7 +1,7 @@
 local M = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 local utils = require("ecolog.utils")
 local shelter = utils.get_module("ecolog.shelter")
 local fn = vim.fn
@@ -37,12 +37,8 @@ local status_cache = {
 }
 
 local _ecolog = nil
-local function get_ecolog()
-  if not _ecolog then
-    _ecolog = require("ecolog")
-  end
-  return _ecolog
-end
+local lazy = require("ecolog.core.lazy_loader")
+local get_ecolog = lazy.getter("ecolog")
 
 local function get_cached_status()
   local current_time = uv.now()

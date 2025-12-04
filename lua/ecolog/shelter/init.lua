@@ -5,28 +5,11 @@ local NotificationManager = require("ecolog.core.notification_manager")
 local tbl_contains = vim.tbl_contains
 local tbl_deep_extend = vim.tbl_deep_extend
 
-local state, buffer, utils
-
-local function get_state()
-  if not state then
-    state = require("ecolog.shelter.state")
-  end
-  return state
-end
-
-local function get_buffer()
-  if not buffer then
-    buffer = require("ecolog.shelter.buffer")
-  end
-  return buffer
-end
-
-local function get_utils()
-  if not utils then
-    utils = require("ecolog.shelter.utils")
-  end
-  return utils
-end
+-- Lazy-loaded modules using centralized lazy loader
+local lazy = require("ecolog.core.lazy_loader")
+local get_state = lazy.getter("ecolog.shelter.state")
+local get_buffer = lazy.getter("ecolog.shelter.buffer")
+local get_utils = lazy.getter("ecolog.shelter.utils")
 
 function M.setup(opts)
   opts = opts or {}

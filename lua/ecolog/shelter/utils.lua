@@ -1,11 +1,16 @@
 local M = {}
 
--- Lazy-loaded modules and caches
-local config, utils, lru_cache, masking_core, mode_cache, value_cache
+-- Lazy-loaded modules using centralized lazy loader
+local lazy = require("ecolog.core.lazy_loader")
+local get_utils = lazy.getter("ecolog.utils")
+local get_lru_cache = lazy.getter("ecolog.shelter.lru_cache")
+local get_masking_core = lazy.getter("ecolog.shelter.masking_core")
 
 local string_sub = string.sub
 local string_rep = string.rep
 
+-- Special getter for config since it needs to access a specific function
+local config
 local function get_config()
   if not config then
     config = require("ecolog.shelter.state").get_config
@@ -13,26 +18,8 @@ local function get_config()
   return config
 end
 
-local function get_utils()
-  if not utils then
-    utils = require("ecolog.utils")
-  end
-  return utils
-end
-
-local function get_lru_cache()
-  if not lru_cache then
-    lru_cache = require("ecolog.shelter.lru_cache")
-  end
-  return lru_cache
-end
-
-local function get_masking_core()
-  if not masking_core then
-    masking_core = require("ecolog.shelter.masking_core")
-  end
-  return masking_core
-end
+-- Cache instances (can't use lazy_loader since these are instances, not modules)
+local mode_cache, value_cache
 
 local function get_mode_cache()
   if not mode_cache then
@@ -212,61 +199,22 @@ function M.determine_masked_value(value, settings)
     return result
   end
 
-  local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+  local partial_mode_cfg = type(conf.partial_mode) == "table" and conf.partial_mode
     or {
       show_start = 3,
       show_end = 3,
       min_mask = 3,
     }
 
-  local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
-  local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
-  local min_mask = math.max(0, settings.min_mask or partial_mode.min_mask or 0)
+  local show_start = settings.show_start or partial_mode_cfg.show_start or 0
+  local show_end = settings.show_end or partial_mode_cfg.show_end or 0
+  local min_mask = settings.min_mask or partial_mode_cfg.min_mask or 0
 
-  if mask_length then
-    local base_mask = string_rep(conf.mask_char, mask_length)
-
-    local available_in_mask = mask_length - show_start - show_end
-
-    local v_cache = get_value_cache()
-    if mask_length <= (show_start + show_end) or available_in_mask < min_mask then
-      local result = base_mask
-      v_cache:put(cache_key, result)
-      if settings.quote_char then
-        return settings.quote_char .. result .. settings.quote_char
-      end
-      return result
-    end
-
-    local start_part = show_start > 0 and string_sub(value, 1, math.min(show_start, #value)) or ""
-    local end_part = show_end > 0 and #value > show_end and string_sub(value, -show_end) or ""
-    local middle_mask_len = mask_length - #start_part - #end_part
-    if middle_mask_len < 0 then
-      middle_mask_len = 0
-    end
-    local result = start_part .. string_rep(conf.mask_char, middle_mask_len) .. end_part
-    v_cache:put(cache_key, result)
-    if settings.quote_char then
-      return settings.quote_char .. result .. settings.quote_char
-    end
-    return result
-  end
-
-  local available_middle = #value - show_start - show_end
+  -- Use centralized partial masking from masking_core
+  local core = get_masking_core()
+  local result = core.apply_partial_masking(value, conf.mask_char, show_start, show_end, min_mask, mask_length)
 
   local v_cache = get_value_cache()
-  if #value <= (show_start + show_end) or available_middle < min_mask then
-    local result = string_rep(conf.mask_char, #value)
-    v_cache:put(cache_key, result)
-    if settings.quote_char then
-      return settings.quote_char .. result .. settings.quote_char
-    end
-    return result
-  end
-
-  local end_part = show_end > 0 and string_sub(value, -show_end) or ""
-  local result = string_sub(value, 1, show_start) .. string_rep(conf.mask_char, available_middle) .. end_part
-
   v_cache:put(cache_key, result)
   if settings.quote_char then
     return settings.quote_char .. result .. settings.quote_char
@@ -336,44 +284,28 @@ function M.mask_multi_line_value(value, settings, conf, mode, mask_length)
       end
     else
       -- Partial masking - handle first and last lines specially
-      local partial_mode = type(conf.partial_mode) == "table" and conf.partial_mode
+      local partial_mode_cfg = type(conf.partial_mode) == "table" and conf.partial_mode
         or {
           show_start = 3,
           show_end = 3,
           min_mask = 3,
         }
 
-      local show_start = math.max(0, settings.show_start or partial_mode.show_start or 0)
-      local show_end = math.max(0, settings.show_end or partial_mode.show_end or 0)
-      local min_mask = math.max(0, settings.min_mask or partial_mode.min_mask or 0)
+      local show_start = settings.show_start or partial_mode_cfg.show_start or 0
+      local show_end = settings.show_end or partial_mode_cfg.show_end or 0
+      local min_mask = settings.min_mask or partial_mode_cfg.min_mask or 0
+      local core = get_masking_core()
 
       for i, line in ipairs(lines) do
         if i == 1 and #lines > 1 then
-          -- First line - show start, mask end
-          local available_middle = #line - show_start
-          if #line <= show_start or available_middle < min_mask then
-            masked_lines[i] = string_rep(conf.mask_char, #line)
-          else
-            masked_lines[i] = string_sub(line, 1, show_start) .. string_rep(conf.mask_char, available_middle)
-          end
+          -- First line - show start, mask end (no show_end)
+          masked_lines[i] = core.apply_partial_masking(line, conf.mask_char, show_start, 0, min_mask, nil)
         elseif i == #lines and #lines > 1 then
-          -- Last line - mask start, show end
-          local available_middle = #line - show_end
-          if #line <= show_end or available_middle < min_mask then
-            masked_lines[i] = string_rep(conf.mask_char, #line)
-          else
-            masked_lines[i] = string_rep(conf.mask_char, available_middle) .. string_sub(line, -show_end)
-          end
+          -- Last line - mask start, show end (no show_start)
+          masked_lines[i] = core.apply_partial_masking(line, conf.mask_char, 0, show_end, min_mask, nil)
         else
           -- Middle lines or single line - apply standard partial masking
-          local available_middle = #line - show_start - show_end
-          if #line <= (show_start + show_end) or available_middle < min_mask then
-            masked_lines[i] = string_rep(conf.mask_char, #line)
-          else
-            masked_lines[i] = string_sub(line, 1, show_start)
-              .. string_rep(conf.mask_char, available_middle)
-              .. string_sub(line, -show_end)
-          end
+          masked_lines[i] = core.apply_partial_masking(line, conf.mask_char, show_start, show_end, min_mask, nil)
         end
       end
     end

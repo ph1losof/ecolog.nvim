@@ -2,7 +2,7 @@
 local TimerManager = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 -- Global timer registry for proper cleanup
 local _active_timers = {}

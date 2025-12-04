@@ -4,7 +4,7 @@ local M = {}
 local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 ---@class KeyValueResult
 ---@field key string The key part of the key-value pair
@@ -33,29 +33,11 @@ local table_insert = table.insert
 local fn = vim.fn
 local pcall = pcall
 
--- Lazy-loaded modules
-local state, shelter_utils, main_utils
-
-local function get_state()
-  if not state then
-    state = require("ecolog.shelter.state")
-  end
-  return state
-end
-
-local function get_shelter_utils()
-  if not shelter_utils then
-    shelter_utils = require("ecolog.shelter.utils")
-  end
-  return shelter_utils
-end
-
-local function get_main_utils()
-  if not main_utils then
-    main_utils = require("ecolog.utils")
-  end
-  return main_utils
-end
+-- Lazy-loaded modules using centralized lazy loader
+local lazy = require("ecolog.core.lazy_loader")
+local get_state = lazy.getter("ecolog.shelter.state")
+local get_shelter_utils = lazy.getter("ecolog.shelter.utils")
+local get_main_utils = lazy.getter("ecolog.utils")
 
 local NAMESPACE = api.nvim_create_namespace("ecolog_shelter")
 local CLEANUP_INTERVAL = 300000

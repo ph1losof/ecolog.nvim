@@ -2,7 +2,7 @@
 local NotificationManager = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 -- Centralized notification cache and configuration
 local _notification_cache = {}

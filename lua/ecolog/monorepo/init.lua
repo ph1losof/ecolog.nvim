@@ -2,7 +2,7 @@
 local M = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 M.DEFAULT_MONOREPO_CONFIG = require("ecolog.monorepo.config.defaults")
 local NotificationManager = require("ecolog.core.notification_manager")

@@ -2,7 +2,7 @@ local M = {}
 local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 -- Determine the best method for setting environment variables
 -- Prefer vim.uv.os_setenv (available in newer Neovim versions) for reliability
@@ -39,14 +39,18 @@ end
 ---@field trim string Pattern for trimming whitespace
 ---@field word string Pattern for matching word characters
 ---@field env_var string Pattern for matching environment variable names
+---@field comment_line string Pattern for matching comment lines
+---@field empty_line string Pattern for matching empty/whitespace-only lines
 M.PATTERNS = {
   env_file_combined = "^.+/%.env[%.%w]*$",
   env_line = "^[^#](.+)$",
   key_value = "([^=]+)=(.+)",
-  quoted = "^['\"](.*)['\"]$",
+  quoted = "^['\"](.*)['\"']$",
   trim = "^%s*(.-)%s*$",
   word = "[%w_]+",
   env_var = "^[%w_]+$",
+  comment_line = "^%s*#",
+  empty_line = "^%s*$",
 }
 
 -- Default patterns for .env files

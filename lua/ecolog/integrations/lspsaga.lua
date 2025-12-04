@@ -4,7 +4,7 @@ local api = vim.api
 local bo = vim.bo
 local cmd = vim.cmd
 local fn = vim.fn
-local notify = vim.notify
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local utils = require("ecolog.utils")
 
@@ -52,17 +52,17 @@ function M.handle_goto_definition(args)
     local env_vars = M._ecolog.get_env_vars()
     local var = env_vars[word]
     if not var then
-      notify(string.format("Environment variable '%s' not found", word), vim.log.levels.WARN)
+      NotificationManager.warn(string.format("Environment variable '%s' not found", word))
       return
     end
 
     if var.source == "shell" then
-      notify("Cannot go to definition of shell variables", vim.log.levels.WARN)
+      NotificationManager.warn("Cannot go to definition of shell variables")
       return
     end
 
     if var.source:match("^asm:") or var.source:match("^vault:") then
-      notify("Cannot go to definition of secret manager variables", vim.log.levels.WARN)
+      NotificationManager.warn("Cannot go to definition of secret manager variables")
       return
     end
 
@@ -81,7 +81,7 @@ function M.handle_goto_definition(args)
       require("lspsaga.definition"):init(1, 2, args)
     end)
     if not ok then
-      notify("Lspsaga goto_definition not available", vim.log.levels.WARN)
+      NotificationManager.warn("Lspsaga goto_definition not available")
     end
   end
 end
@@ -119,7 +119,7 @@ function M.setup()
   end
 
   if not pcall(require, "lspsaga") then
-    notify("LSP Saga not found. Skipping integration.", vim.log.levels.WARN)
+    NotificationManager.warn("LSP Saga not found. Skipping integration.")
     return
   end
 
@@ -144,7 +144,7 @@ function M.setup()
       end)
 
       if not ok then
-        notify("Failed to execute Lspsaga command: " .. err, vim.log.levels.ERROR)
+        NotificationManager.error("Failed to execute Lspsaga command: " .. err)
       end
     end
   end, {

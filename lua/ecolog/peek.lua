@@ -1,5 +1,5 @@
 local api = vim.api
-local notify = vim.notify
+local NotificationManager = require("ecolog.core.notification_manager")
 local shelter = require("ecolog.shelter")
 local utils = require("ecolog.utils")
 
@@ -213,7 +213,7 @@ end
 function M.peek_env_var(available_providers, var_name)
   -- Input validation with nil checks
   if not available_providers or type(available_providers) ~= "table" then
-    notify("Invalid providers table", vim.log.levels.ERROR)
+    NotificationManager.error("Invalid providers table")
     return
   end
 
@@ -223,7 +223,7 @@ function M.peek_env_var(available_providers, var_name)
   end
 
   if #available_providers == 0 and not var_name then
-    notify("EcologPeek is not available for " .. filetype .. " files", vim.log.levels.WARN)
+    NotificationManager.warn("EcologPeek is not available for " .. filetype .. " files")
     return
   end
 
@@ -233,7 +233,7 @@ function M.peek_env_var(available_providers, var_name)
     if success then
       pcall(api.nvim_win_set_cursor, peek.winid, { 1, 0 })
     else
-      vim.notify("Failed to focus peek window: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("Failed to focus peek window: " .. tostring(err))
     end
     return
   end
@@ -241,13 +241,13 @@ function M.peek_env_var(available_providers, var_name)
   -- Load required modules with error handling
   local has_ecolog, ecolog = pcall(require, "ecolog")
   if not has_ecolog or not ecolog then
-    notify("Ecolog not found", vim.log.levels.ERROR)
+    NotificationManager.error("Ecolog not found")
     return
   end
 
   local has_types, types = pcall(require, "ecolog.types")
   if not has_types or not types then
-    notify("Types module not found", vim.log.levels.ERROR)
+    NotificationManager.error("Types module not found")
     return
   end
 
@@ -257,7 +257,7 @@ function M.peek_env_var(available_providers, var_name)
       var_name = utils.get_var_word_under_cursor(available_providers)
     end
     if not var_name or var_name == "" then
-      notify("No environment variable found under cursor", vim.log.levels.WARN)
+      NotificationManager.warn("No environment variable found under cursor")
       return
     end
   end
@@ -269,17 +269,17 @@ function M.peek_env_var(available_providers, var_name)
     if success and result then
       env_vars = result
     else
-      notify("Failed to get environment variables: " .. tostring(result), vim.log.levels.ERROR)
+      NotificationManager.error("Failed to get environment variables: " .. tostring(result))
       return
     end
   else
-    notify("get_env_vars function not available", vim.log.levels.ERROR)
+    NotificationManager.error("get_env_vars function not available")
     return
   end
 
   local var_info = env_vars[var_name]
   if not var_info then
-    notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
+    NotificationManager.warn(string.format("Environment variable '%s' not found", var_name))
     return
   end
 
@@ -295,7 +295,7 @@ function M.peek_env_var(available_providers, var_name)
   -- Create content with error handling
   local content = create_peek_content(var_name, var_info, types, config)
   if not content or not content.lines or not content.highlights then
-    notify("Failed to create peek content", vim.log.levels.ERROR)
+    NotificationManager.error("Failed to create peek content")
     return
   end
 
@@ -304,7 +304,7 @@ function M.peek_env_var(available_providers, var_name)
   -- Create buffer with error handling
   local success, bufnr = pcall(api.nvim_create_buf, false, true)
   if not success or not bufnr then
-    notify("Failed to create peek buffer: " .. tostring(bufnr), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to create peek buffer: " .. tostring(bufnr))
     return
   end
   peek.bufnr = bufnr
@@ -313,14 +313,14 @@ function M.peek_env_var(available_providers, var_name)
   local function safe_buf_set_option(option, value)
     local success, err = pcall(vim.api.nvim_set_option_value, option, value, { buf = peek.bufnr })
     if not success then
-      vim.notify("Failed to set buffer option " .. option .. ": " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("Failed to set buffer option " .. option .. ": " .. tostring(err))
     end
   end
 
   safe_buf_set_option("modifiable", true)
   local lines_success, lines_err = pcall(api.nvim_buf_set_lines, peek.bufnr, 0, -1, false, content.lines)
   if not lines_success then
-    vim.notify("Failed to set buffer lines: " .. tostring(lines_err), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to set buffer lines: " .. tostring(lines_err))
     return
   end
   safe_buf_set_option("modifiable", false)
@@ -341,7 +341,7 @@ function M.peek_env_var(available_providers, var_name)
   })
   
   if not win_success or not winid then
-    notify("Failed to create peek window: " .. tostring(winid), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to create peek window: " .. tostring(winid))
     return
   end
   peek.winid = winid
@@ -350,7 +350,7 @@ function M.peek_env_var(available_providers, var_name)
   local function safe_win_set_option(option, value)
     local success, err = pcall(vim.api.nvim_set_option_value, option, value, { win = peek.winid })
     if not success then
-      vim.notify("Failed to set window option " .. option .. ": " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("Failed to set window option " .. option .. ": " .. tostring(err))
     end
   end
 
@@ -364,7 +364,7 @@ function M.peek_env_var(available_providers, var_name)
     if hl and type(hl) == "table" and #hl >= 4 then
       local success, err = pcall(api.nvim_buf_add_highlight, peek.bufnr, -1, hl[1], hl[2], hl[3], hl[4])
       if not success then
-        vim.notify("Failed to add highlight: " .. tostring(err), vim.log.levels.WARN)
+        NotificationManager.warn("Failed to add highlight: " .. tostring(err))
       end
     end
   end
@@ -372,7 +372,7 @@ function M.peek_env_var(available_providers, var_name)
   -- Set up autocommands with error handling
   local success, err = pcall(setup_peek_autocommands, curbuf)
   if not success then
-    vim.notify("Failed to setup peek autocommands: " .. tostring(err), vim.log.levels.WARN)
+    NotificationManager.warn("Failed to setup peek autocommands: " .. tostring(err))
   end
 
   -- Set up keymap with error handling
@@ -380,7 +380,7 @@ function M.peek_env_var(available_providers, var_name)
     if peek.winid and api.nvim_win_is_valid(peek.winid) then
       local success, err = pcall(api.nvim_win_close, peek.winid, true)
       if not success then
-        vim.notify("Failed to close peek window: " .. tostring(err), vim.log.levels.WARN)
+        NotificationManager.warn("Failed to close peek window: " .. tostring(err))
       end
       peek:clean()
     end
@@ -392,7 +392,7 @@ function M.peek_env_var(available_providers, var_name)
     silent = true,
   })
   if not keymap_success then
-    vim.notify("Failed to set peek keymap: " .. tostring(keymap_err), vim.log.levels.WARN)
+    NotificationManager.warn("Failed to set peek keymap: " .. tostring(keymap_err))
   end
 end
 

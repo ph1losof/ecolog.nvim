@@ -1,4 +1,5 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
 local uv = vim.uv or uv
@@ -539,7 +540,7 @@ function M.find_env_files(opts)
     files = env_files
   else
     if type(opts.env_file_patterns) ~= "table" then
-      vim.notify("env_file_patterns must be a table of glob patterns", vim.log.levels.WARN)
+      NotificationManager.warn("env_file_patterns must be a table of glob patterns")
       return {}
     end
 
@@ -1309,18 +1310,18 @@ end
 ---@return boolean success Whether the file was generated successfully
 function M.generate_example_file(env_file)
   if not env_file or type(env_file) ~= "string" then
-    vim.notify("Invalid environment file path provided", vim.log.levels.ERROR)
+    NotificationManager.error("Invalid environment file path provided")
     return false
   end
 
   if vim.fn.filereadable(env_file) == 0 then
-    vim.notify("Environment file is not readable: " .. env_file, vim.log.levels.ERROR)
+    NotificationManager.error("Environment file is not readable: " .. env_file)
     return false
   end
 
   local f = io.open(env_file, "r")
   if not f then
-    vim.notify("Could not open .env file: " .. env_file, vim.log.levels.ERROR)
+    NotificationManager.error("Could not open .env file: " .. env_file)
     return false
   end
 
@@ -1346,25 +1347,25 @@ function M.generate_example_file(env_file)
   end)
 
   if not read_success then
-    vim.notify("Error reading environment file: " .. tostring(read_err), vim.log.levels.ERROR)
+    NotificationManager.error("Error reading environment file: " .. tostring(read_err))
     return false
   end
 
   if not close_success then
-    vim.notify("Error closing environment file: " .. tostring(close_err), vim.log.levels.WARN)
+    NotificationManager.warn("Error closing environment file: " .. tostring(close_err))
   end
 
   local example_file = env_file:gsub("%.env$", "") .. ".env.example"
 
   local dir = vim.fn.fnamemodify(example_file, ":h")
   if vim.fn.isdirectory(dir) == 0 then
-    vim.notify("Directory does not exist: " .. dir, vim.log.levels.ERROR)
+    NotificationManager.error("Directory does not exist: " .. dir)
     return false
   end
 
   local out = io.open(example_file, "w")
   if not out then
-    vim.notify("Could not create .env.example file: " .. example_file, vim.log.levels.ERROR)
+    NotificationManager.error("Could not create .env.example file: " .. example_file)
     return false
   end
 
@@ -1377,15 +1378,15 @@ function M.generate_example_file(env_file)
   end)
 
   if not write_success then
-    vim.notify("Error writing to example file: " .. tostring(write_err), vim.log.levels.ERROR)
+    NotificationManager.error("Error writing to example file: " .. tostring(write_err))
     return false
   end
 
   if not out_close_success then
-    vim.notify("Error closing example file: " .. tostring(out_close_err), vim.log.levels.WARN)
+    NotificationManager.warn("Error closing example file: " .. tostring(out_close_err))
   end
 
-  vim.notify("Generated " .. example_file, vim.log.levels.INFO)
+  NotificationManager.info("Generated " .. example_file)
   return true
 end
 

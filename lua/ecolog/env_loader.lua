@@ -242,7 +242,7 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
 
   -- Validate input parameters
   if not file_path or type(file_path) ~= "string" then
-    vim.notify("Invalid file path provided to load_env_file", vim.log.levels.ERROR)
+    NotificationManager.error("Invalid file path provided to load_env_file")
     return env_vars_result
   end
 
@@ -260,13 +260,13 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
 
   -- Check file readability before attempting to open
   if not FileOperations.is_readable(file_path) then
-    vim.notify(string.format("Environment file is not readable: %s", file_path), vim.log.levels.WARN)
+    NotificationManager.warn(string.format("Environment file is not readable: %s", file_path))
     return env_vars_result
   end
 
   local content, err = FileOperations.read_file_sync(file_path)
   if not content then
-    vim.notify(string.format("Could not read environment file: %s - %s", file_path, err or "unknown error"), vim.log.levels.WARN)
+    NotificationManager.warn(string.format("Could not read environment file: %s - %s", file_path, err or "unknown error"))
     return env_vars_result
   end
 
@@ -306,7 +306,7 @@ local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, c
   end
 
   if not callback or type(callback) ~= "function" then
-    vim.notify("Invalid callback provided to load_env_file_async", vim.log.levels.ERROR)
+    NotificationManager.error("Invalid callback provided to load_env_file_async")
     return
   end
 
@@ -523,17 +523,11 @@ function M.load_environment(opts, state, force)
         local utils = require("ecolog.utils")
         local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(
-          string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),
-          vim.log.levels.INFO
-        )
+        NotificationManager.notify_file_deleted(deleted_file, env_files[1], opts)
       else
         local utils = require("ecolog.utils")
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(
-          string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name),
-          vim.log.levels.WARN
-        )
+        NotificationManager.notify_file_deleted(deleted_file, nil, opts)
       end
     end
   end
@@ -578,7 +572,7 @@ end
 ---@param force boolean? Whether to force reload environment variables
 function M.load_environment_async(opts, state, callback, force)
   if not callback or type(callback) ~= "function" then
-    NotificationManager.notify("Invalid callback provided to load_environment_async", vim.log.levels.ERROR)
+    NotificationManager.error("Invalid callback provided to load_env_file_async")
     return
   end
 
@@ -614,17 +608,11 @@ function M.load_environment_async(opts, state, callback, force)
         local utils = require("ecolog.utils")
         local new_display_name = utils.get_env_file_display_name(env_files[1], opts)
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(
-          string.format("Selected file '%s' was deleted. Switched to: %s", deleted_display_name, new_display_name),
-          vim.log.levels.INFO
-        )
+        NotificationManager.notify_file_deleted(deleted_file, env_files[1], opts)
       else
         local utils = require("ecolog.utils")
         local deleted_display_name = utils.get_env_file_display_name(deleted_file, opts)
-        vim.notify(
-          string.format("Selected file '%s' was deleted. No environment files found.", deleted_display_name),
-          vim.log.levels.WARN
-        )
+        NotificationManager.notify_file_deleted(deleted_file, nil, opts)
       end
     end
 

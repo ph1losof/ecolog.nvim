@@ -1,4 +1,5 @@
 local api = vim.api
+local NotificationManager = require("ecolog.core.notification_manager")
 local ecolog = require("ecolog")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
@@ -324,7 +325,7 @@ function AwsSecretsManager:process_secrets_parallel(config, aws_secrets, on_comp
       end
 
       failed_secrets = failed_secrets + 1
-      vim.notify(err.message, err.level)
+      NotificationManager.notify(err.message, err.level == vim.log.levels.ERROR and "error" or (err.level == vim.log.levels.WARN and "warn" or "info"))
       completed_jobs = completed_jobs + 1
 
       active_jobs = active_jobs - 1
@@ -385,7 +386,7 @@ function AwsSecretsManager:_load_secrets_impl(config)
   end
 
   if not config.region then
-    vim.notify(AWS_ERRORS.NO_REGION.message, AWS_ERRORS.NO_REGION.level)
+    NotificationManager.error(AWS_ERRORS.NO_REGION.message)
     secret_utils.cleanup_state(self.state)
     return {}
   end
@@ -395,13 +396,13 @@ function AwsSecretsManager:_load_secrets_impl(config)
       secret_utils.cleanup_state(self.state)
       return {}
     end
-    vim.notify(AWS_ERRORS.NO_SECRETS.message, AWS_ERRORS.NO_SECRETS.level)
+    NotificationManager.error(AWS_ERRORS.NO_SECRETS.message)
     secret_utils.cleanup_state(self.state)
     return {}
   end
 
   if vim.fn.executable("aws") ~= 1 then
-    vim.notify(AWS_ERRORS.NO_AWS_CLI.message, AWS_ERRORS.NO_AWS_CLI.level)
+    NotificationManager.error(AWS_ERRORS.NO_AWS_CLI.message)
     secret_utils.cleanup_state(self.state)
     return {}
   end
@@ -409,11 +410,11 @@ function AwsSecretsManager:_load_secrets_impl(config)
   self.state.selected_secrets = vim.deepcopy(config.secrets)
 
   local aws_secrets = {}
-  vim.notify("Loading AWS secrets...", vim.log.levels.INFO)
+  NotificationManager.info("Loading AWS secrets...")
 
   self.state.timeout_timer = vim.fn.timer_start(AWS_TIMEOUT_MS, function()
     if self.state.loading_lock then
-      vim.notify(AWS_ERRORS.TIMEOUT.message, AWS_ERRORS.TIMEOUT.level)
+      NotificationManager.error(AWS_ERRORS.TIMEOUT.message)
       secret_utils.cleanup_state(self.state)
     end
   end)
@@ -425,7 +426,7 @@ function AwsSecretsManager:_load_secrets_impl(config)
 
     if not ok then
       vim.schedule(function()
-        vim.notify(err, vim.log.levels.ERROR)
+        NotificationManager.error(err)
         secret_utils.cleanup_state(self.state)
       end)
       return
@@ -437,7 +438,7 @@ function AwsSecretsManager:_load_secrets_impl(config)
         if failed > 0 then
           msg = msg .. string.format(", %d failed", failed)
         end
-        vim.notify(msg, failed > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+        NotificationManager.notify(msg, failed > 0 and "warn" or "info")
 
         self.state.loaded_secrets = aws_secrets
         self.state.initialized = true
@@ -463,24 +464,24 @@ end
 ---@protected
 function AwsSecretsManager:_select_impl()
   if not self.config or not self.config.region then
-    vim.notify(AWS_ERRORS.NO_REGION.message, AWS_ERRORS.NO_REGION.level)
+    NotificationManager.error(AWS_ERRORS.NO_REGION.message)
     return
   end
 
   self:check_credentials(function(ok, err)
     if not ok then
-      vim.notify(err, vim.log.levels.ERROR)
+      NotificationManager.error(err)
       return
     end
 
     self:list_secrets(function(secrets, list_err)
       if list_err then
-        vim.notify(list_err, vim.log.levels.ERROR)
+        NotificationManager.error(list_err)
         return
       end
 
       if not secrets or #secrets == 0 then
-        vim.notify("No secrets found in AWS Secrets Manager", vim.log.levels.WARN)
+        NotificationManager.warn("No secrets found in AWS Secrets Manager")
         return
       end
 
@@ -513,7 +514,7 @@ function AwsSecretsManager:_select_impl()
 
           ecolog.refresh_env_vars()
           secret_utils.update_environment(final_vars, false, "asm:")
-          vim.notify("All AWS secrets unloaded", vim.log.levels.INFO)
+          NotificationManager.info("All AWS secrets unloaded")
           return
         end
 
@@ -603,21 +604,21 @@ function AwsSecretsManager:_get_config_options()
     options = {},
     dynamic_options = function(callback)
       if not self.config or not self.config.region then
-        vim.notify(AWS_ERRORS.NO_REGION.message, AWS_ERRORS.NO_REGION.level)
+        NotificationManager.error(AWS_ERRORS.NO_REGION.message)
         callback({})
         return
       end
 
       self:check_credentials(function(ok, err)
         if not ok then
-          vim.notify(err, vim.log.levels.ERROR)
+          NotificationManager.error(err)
           callback({})
           return
         end
 
         self:list_secrets(function(secrets, list_err)
           if list_err then
-            vim.notify(list_err, vim.log.levels.ERROR)
+            NotificationManager.error(list_err)
             callback({})
             return
           end
@@ -660,7 +661,7 @@ function AwsSecretsManager:_handle_config_change(option, value)
         end
       end
       secret_utils.update_environment(final_vars, false, self.source_prefix)
-      vim.notify("AWS secrets unloaded due to region change", vim.log.levels.INFO)
+      NotificationManager.info("AWS secrets unloaded due to region change")
     end
   elseif option == "profile" then
     -- Only reset if profile actually changes
@@ -683,7 +684,7 @@ function AwsSecretsManager:_handle_config_change(option, value)
         end
       end
       secret_utils.update_environment(final_vars, false, self.source_prefix)
-      vim.notify("AWS secrets unloaded due to profile change", vim.log.levels.INFO)
+      NotificationManager.info("AWS secrets unloaded due to profile change")
     end
   elseif option == "secrets" then
     local chosen_secrets = {}
@@ -712,7 +713,7 @@ function AwsSecretsManager:_handle_config_change(option, value)
 
       ecolog.refresh_env_vars()
       secret_utils.update_environment(final_vars, false, "asm:")
-      vim.notify("All AWS secrets unloaded", vim.log.levels.INFO)
+      NotificationManager.info("All AWS secrets unloaded")
       return
     end
 

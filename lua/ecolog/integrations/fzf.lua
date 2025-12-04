@@ -1,6 +1,7 @@
 local utils = require("ecolog.utils")
 local BasePicker = require("ecolog.integrations.pickers.base")
 local api = vim.api
+local NotificationManager = require("ecolog.core.notification_manager")
 
 ---@class FzfPicker : BasePicker
 ---@field fzf function
@@ -240,7 +241,7 @@ end
 function FzfPicker:open()
   local has_fzf, fzf = pcall(require, "fzf-lua")
   if not has_fzf then
-    vim.notify("This extension requires fzf-lua (https://github.com/ibhagwan/fzf-lua)", vim.log.levels.ERROR)
+    NotificationManager.error("This extension requires fzf-lua (https://github.com/ibhagwan/fzf-lua)")
     return
   end
 

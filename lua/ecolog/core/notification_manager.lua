@@ -31,7 +31,36 @@ function NotificationManager.notify(message, level, force)
     NotificationManager._cleanup_cache(current_time)
   end
 
-  vim.notify(message, level)
+  vim.notify(message, level, { title = "Ecolog" })
+end
+
+---Send a notification only once per session (or until cache clears)
+---@param message string The notification message
+---@param level number? The log level
+---@param opts table? Additional options
+function NotificationManager.notify_once(message, level, opts)
+  NotificationManager.notify(message, level, false)
+end
+
+---Send an info notification
+---@param message string The notification message
+---@param opts table? Additional options
+function NotificationManager.info(message, opts)
+  NotificationManager.notify(message, vim.log.levels.INFO, opts and opts.force)
+end
+
+---Send a warning notification
+---@param message string The notification message
+---@param opts table? Additional options
+function NotificationManager.warn(message, opts)
+  NotificationManager.notify(message, vim.log.levels.WARN, opts and opts.force)
+end
+
+---Send an error notification
+---@param message string The notification message
+---@param opts table? Additional options
+function NotificationManager.error(message, opts)
+  NotificationManager.notify(message, vim.log.levels.ERROR, opts and opts.force)
 end
 
 ---Clean up expired cache entries

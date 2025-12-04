@@ -3,6 +3,7 @@ local M = {}
 local api = vim.api
 local utils = require("ecolog.utils")
 local ecolog = require("ecolog")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 M.BUFFER_UPDATE_DEBOUNCE_MS = 50
 M.MAX_PARALLEL_REQUESTS = 5
@@ -251,9 +252,8 @@ function M.process_secret_value(secret_value, options, secrets)
             if transform_ok then
               transformed_value = result
             else
-              vim.notify(
-                string.format("Error transforming value for key %s: %s", key, tostring(result)),
-                vim.log.levels.WARN
+              NotificationManager.warn(
+                string.format("Error transforming value for key %s: %s", key, tostring(result))
               )
             end
           end
@@ -270,7 +270,7 @@ function M.process_secret_value(secret_value, options, secrets)
         end
       end
     else
-      vim.notify(string.format("Failed to parse JSON secret from %s", options.source_path), vim.log.levels.WARN)
+      NotificationManager.warn(string.format("Failed to parse JSON secret from %s", options.source_path))
       failed = failed + 1
     end
   else
@@ -282,9 +282,8 @@ function M.process_secret_value(secret_value, options, secrets)
         if transform_ok then
           transformed_value = result
         else
-          vim.notify(
-            string.format("Error transforming value for key %s: %s", key, tostring(result)),
-            vim.log.levels.WARN
+          NotificationManager.warn(
+            string.format("Error transforming value for key %s: %s", key, tostring(result))
           )
         end
       end
@@ -335,7 +334,7 @@ function M.process_secrets_parallel(config, state, secrets, options, start_job)
         if failed_secrets > 0 then
           msg = msg .. string.format(", %d failed", failed_secrets)
         end
-        vim.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+        NotificationManager.notify(msg, failed_secrets > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
 
         state.loaded_secrets = secrets
         state.initialized = true

@@ -1,4 +1,5 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local api = vim.api
 local ecolog = require("ecolog")
@@ -285,7 +286,7 @@ function BaseSecretManager:_handle_multi_select(option, option_name)
     end, options_list)
 
     if #filtered_options == 0 then
-      vim.notify("No valid options available", vim.log.levels.WARN)
+      NotificationManager.warn("No valid options available")
       return
     end
 
@@ -301,10 +302,10 @@ function BaseSecretManager:_handle_multi_select(option, option_name)
   end
 
   if option.dynamic_options then
-    vim.notify("Loading options...", vim.log.levels.INFO)
+    NotificationManager.info("Loading options...")
     option.dynamic_options(function(options_list)
       if not options_list or #options_list == 0 then
-        vim.notify("No options available", vim.log.levels.WARN)
+        NotificationManager.warn("No options available")
         return
       end
       show_selection_ui(options_list)
@@ -319,7 +320,7 @@ end
 function BaseSecretManager:select_config(direct_option)
   local options = self:_get_config_options()
   if vim.tbl_isempty(options) then
-    vim.notify("No configurable options available for " .. self.manager_name, vim.log.levels.WARN)
+    NotificationManager.warn("No configurable options available for " .. self.manager_name)
     return
   end
 
@@ -341,7 +342,7 @@ function BaseSecretManager:select_config(direct_option)
     end
 
     if not option_name or not matched_option then
-      vim.notify("Invalid configuration option: " .. direct_option, vim.log.levels.ERROR)
+      NotificationManager.error("Invalid configuration option: " .. direct_option)
       return
     end
 

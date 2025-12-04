@@ -2,6 +2,7 @@ local utils = require("ecolog.utils")
 local shelter = utils.get_module("ecolog.shelter")
 local api = vim.api
 local fn = vim.fn
+local NotificationManager = require("ecolog.core.notification_manager")
 
 ---@class BasePicker
 ---@field _initialized boolean
@@ -59,7 +60,7 @@ end
 ---@param msg string
 ---@param level number
 function BasePicker:notify(msg, level)
-  vim.notify(string.format("%s: %s", self:get_name(), msg), level)
+  NotificationManager.notify(string.format("%s: %s", self:get_name(), msg), level)
 end
 
 ---Get the name of this picker for notifications

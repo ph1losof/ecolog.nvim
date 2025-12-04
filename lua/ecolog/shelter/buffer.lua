@@ -1,6 +1,7 @@
 ---@class EcologShelterBuffer
 ---@field NAMESPACE number Namespace ID for buffer highlights and virtual text
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
 local uv = vim.uv or uv
@@ -195,7 +196,7 @@ end
 function M.unshelter_buffer()
   local bufnr = api.nvim_get_current_buf()
   if not is_buffer_valid(bufnr) then
-    vim.notify("Invalid buffer", vim.log.levels.WARN)
+    NotificationManager.warn("Invalid buffer")
     return
   end
 
@@ -427,7 +428,7 @@ function M.shelter_buffer()
 
   local bufnr = api.nvim_get_current_buf()
   if not is_buffer_valid(bufnr) then
-    vim.notify("Invalid buffer", vim.log.levels.WARN)
+    NotificationManager.warn("Invalid buffer")
     return
   end
 
@@ -444,7 +445,7 @@ function M.shelter_buffer()
 
   local ok, all_lines = pcall(api.nvim_buf_get_lines, bufnr, 0, -1, false)
   if not ok then
-    vim.notify("Failed to get buffer lines", vim.log.levels.ERROR)
+    NotificationManager.error("Failed to get buffer lines")
     return
   end
 
@@ -518,7 +519,7 @@ local function setup_buffer_autocmds(config, group)
       end)
 
       if not ok then
-        vim.notify("Failed to set buffer contents: " .. tostring(err), vim.log.levels.ERROR)
+        NotificationManager.error("Failed to set buffer contents: " .. tostring(err))
         return true
       end
 

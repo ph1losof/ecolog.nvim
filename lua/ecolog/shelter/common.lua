@@ -1,6 +1,7 @@
 ---@class EcologShelterCommon
 ---Common utilities to reduce code duplication across shelter modules
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local api = vim.api
 
@@ -34,7 +35,7 @@ local api_win_set_option = api.nvim_win_set_option
 function M.ensure_valid_buffer(bufnr, error_message)
   if not api_buf_is_valid(bufnr) then
     if error_message then
-      vim.notify(error_message, vim.log.levels.WARN)
+      NotificationManager.warn(error_message)
     end
     return false
   end

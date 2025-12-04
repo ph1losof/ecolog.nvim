@@ -1,4 +1,5 @@
 local api = vim.api
+local NotificationManager = require("ecolog.core.notification_manager")
 local utils = require("ecolog.utils")
 
 local M = {}
@@ -15,7 +16,7 @@ function M.select_env_file(opts, callback)
   local env_files = utils.find_env_files(opts)
 
   if not env_files or #env_files == 0 then
-    vim.notify("No environment files found", vim.log.levels.WARN)
+    NotificationManager.warn("No environment files found")
     return
   end
 

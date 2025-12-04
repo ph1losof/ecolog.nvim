@@ -2,6 +2,7 @@ local api = vim.api
 local ecolog = require("ecolog")
 local secret_utils = require("ecolog.integrations.secret_managers.utils")
 local BaseSecretManager = require("ecolog.integrations.secret_managers.base").BaseSecretManager
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Add validation function that was undefined
 ---Validate the vault configuration
@@ -308,13 +309,13 @@ function VaultSecretsManager:_load_secrets_impl(config)
   if not is_valid then
     local err = vim.deepcopy(VAULT_ERRORS.INVALID_CONFIG)
     err.message = error_message
-    vim.notify(err.message, err.level)
+    NotificationManager.notify(err.message, err.level)
     secret_utils.cleanup_state(self.state)
     return {}
   end
 
   if vim.fn.executable("hcp") ~= 1 then
-    vim.notify(VAULT_ERRORS.NO_HCP_CLI.message, VAULT_ERRORS.NO_HCP_CLI.level)
+    NotificationManager.notify(VAULT_ERRORS.NO_HCP_CLI.message, VAULT_ERRORS.NO_HCP_CLI.level)
     secret_utils.cleanup_state(self.state)
     return {}
   end
@@ -353,7 +354,7 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
   local timeout_timer
   timeout_timer = vim.defer_fn(function()
     if self.state.loading_lock then
-      vim.notify(VAULT_ERRORS.TIMEOUT.message, VAULT_ERRORS.TIMEOUT.level)
+      NotificationManager.notify(VAULT_ERRORS.TIMEOUT.message, VAULT_ERRORS.TIMEOUT.level)
       secret_utils.cleanup_state(self.state)
     end
   end, VAULT_TIMEOUT_MS)
@@ -372,7 +373,7 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
         if total_failed > 0 then
           msg = msg .. string.format(", %d failed", total_failed)
         end
-        vim.notify(msg, total_failed > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+        NotificationManager.notify(msg, total_failed > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
       end
 
       local updates_to_process = self.state.pending_env_updates
@@ -399,7 +400,7 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
     self:create_vault_job(cmd, self.state, function(stdout)
       local parsed, err = parse_vault_response(stdout, app_name)
       if err then
-        vim.notify(err, vim.log.levels.ERROR)
+        NotificationManager.error(err)
         completed_apps = completed_apps + 1
         check_completion()
         return
@@ -420,14 +421,14 @@ function VaultSecretsManager:_load_secrets_with_apps(config)
         check_completion()
       end)
     end, function(err)
-      vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+      NotificationManager.notify(string.format("[%s] %s", app_name, err.message), err.level)
       completed_apps = completed_apps + 1
       check_completion()
     end)
   end
 
   if #config.apps > 0 then
-    vim.notify("Vault: loading secrets...", vim.log.levels.INFO)
+    NotificationManager.info("Vault: loading secrets...")
   end
 
   for _, app_name in ipairs(config.apps) do
@@ -447,15 +448,14 @@ end
 local function handle_secret_retry(retry_counts, index, secret_path, app_name, callback)
   retry_counts[index] = (retry_counts[index] or 0) + 1
   if retry_counts[index] <= secret_utils.MAX_RETRIES then
-    vim.notify(
+    NotificationManager.info(
       string.format(
         "Retrying secret %s from %s (attempt %d/%d)",
         secret_path,
         app_name,
         retry_counts[index],
         secret_utils.MAX_RETRIES
-      ),
-      vim.log.levels.INFO
+      )
     )
     vim.defer_fn(callback, 1000 * retry_counts[index])
     return true
@@ -520,7 +520,7 @@ function VaultSecretsManager:process_app_secrets(app_name, secrets, on_complete)
       end
 
       failed_secrets = failed_secrets + 1
-      vim.notify(string.format("[%s] %s", app_name, err.message), err.level)
+      NotificationManager.notify(string.format("[%s] %s", app_name, err.message), err.level)
       completed_jobs = completed_jobs + 1
 
       current_index = current_index + 1
@@ -574,7 +574,7 @@ function VaultSecretsManager:handle_app_selection(selected_apps, callback)
     self.state = self:create_initial_state()
     ecolog.refresh_env_vars()
     secret_utils.update_environment(final_vars, false, "vault:")
-    vim.notify("All Vault secrets unloaded", vim.log.levels.INFO)
+    NotificationManager.info("All Vault secrets unloaded")
     return
   end
 
@@ -594,12 +594,12 @@ function VaultSecretsManager:_select_impl()
 
   self:list_apps(function(apps, apps_err)
     if apps_err then
-      vim.notify(apps_err, vim.log.levels.ERROR)
+      NotificationManager.error(apps_err)
       return
     end
 
     if not apps or #apps == 0 then
-      vim.notify("No applications found in HCP Vault Secrets", vim.log.levels.WARN)
+      NotificationManager.warn("No applications found in HCP Vault Secrets")
       return
     end
 
@@ -712,7 +712,7 @@ function VaultSecretsManager:_get_config_options()
     dynamic_options = function(callback)
       self:list_apps(function(apps, err)
         if err then
-          vim.notify(err, vim.log.levels.ERROR)
+          NotificationManager.error(err)
           callback({})
           return
         end
@@ -759,7 +759,7 @@ function VaultSecretsManager:_handle_config_change(option, value)
         end
       end
       secret_utils.update_environment(final_vars, false, self.source_prefix)
-      vim.notify("Vault secrets unloaded due to organization change", vim.log.levels.INFO)
+      NotificationManager.info("Vault secrets unloaded due to organization change")
     end
   elseif option == "project" then
     if vim.env.HCP_PROJECT ~= value then
@@ -778,7 +778,7 @@ function VaultSecretsManager:_handle_config_change(option, value)
         end
       end
       secret_utils.update_environment(final_vars, false, self.source_prefix)
-      vim.notify("Vault secrets unloaded due to project change", vim.log.levels.INFO)
+      NotificationManager.info("Vault secrets unloaded due to project change")
     end
   elseif option == "apps" then
     local selected_apps = {}
@@ -804,7 +804,7 @@ function VaultSecretsManager:_handle_config_change(option, value)
 
       ecolog.refresh_env_vars()
       secret_utils.update_environment(final_vars, false, "vault:")
-      vim.notify("All Vault secrets unloaded", vim.log.levels.INFO)
+      NotificationManager.info("All Vault secrets unloaded")
       return
     end
 

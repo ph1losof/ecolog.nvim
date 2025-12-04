@@ -1,4 +1,5 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 M.providers = setmetatable({}, {
   __index = function(t, k)
@@ -35,14 +36,14 @@ end
 local function load_provider(name)
   -- Validate input
   if not name or type(name) ~= "string" or name == "" then
-    vim.notify("Invalid provider name: " .. tostring(name), vim.log.levels.ERROR)
+    NotificationManager.error("Invalid provider name: " .. tostring(name))
     return nil
   end
 
   -- Sanitize provider name to prevent path traversal
   local sanitized_name = name:gsub("[^%w_%-]", "")
   if sanitized_name ~= name then
-    vim.notify("Provider name contains invalid characters, sanitized: " .. name, vim.log.levels.WARN)
+    NotificationManager.warn("Provider name contains invalid characters, sanitized: " .. name)
     name = sanitized_name
   end
 
@@ -51,7 +52,7 @@ local function load_provider(name)
   end
 
   if _provider_loading[name] then
-    vim.notify("Circular dependency detected in provider loading: " .. name, vim.log.levels.WARN)
+    NotificationManager.warn("Circular dependency detected in provider loading: " .. name)
     return nil
   end
 
@@ -63,14 +64,14 @@ local function load_provider(name)
   if ok then
     -- Validate provider structure
     if not provider or type(provider) ~= "table" then
-      vim.notify("Invalid provider structure from: " .. name, vim.log.levels.ERROR)
+      NotificationManager.error("Invalid provider structure from: " .. name)
       return nil
     end
 
     _provider_cache[name] = provider
     return provider
   else
-    vim.notify("Failed to load provider: " .. name .. " - " .. tostring(provider), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to load provider: " .. name .. " - " .. tostring(provider))
   end
   return nil
 end
@@ -89,7 +90,7 @@ function M.load_providers_for_filetype(filetype)
 
   local provider = load_provider(provider_name)
   if not provider then
-    vim.notify("Failed to load provider: " .. provider_name, vim.log.levels.WARN)
+    NotificationManager.warn("Failed to load provider: " .. provider_name)
     return
   end
 
@@ -110,12 +111,12 @@ function M.load_providers_for_filetype(filetype)
         end
       end
     else
-      vim.notify("Provider has invalid structure: " .. provider_name, vim.log.levels.ERROR)
+      NotificationManager.error("Provider has invalid structure: " .. provider_name)
     end
   end)
 
   if not success then
-    vim.notify("Failed to register provider " .. provider_name .. ": " .. tostring(err), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to register provider " .. provider_name .. ": " .. tostring(err))
   end
 end
 
@@ -157,7 +158,7 @@ end
 local function check_cache_size()
   _cache_size = _cache_size + 1
   if _cache_size > MAX_CACHE_SIZE then
-    vim.notify("Provider cache size limit exceeded, clearing cache", vim.log.levels.WARN)
+    NotificationManager.warn("Provider cache size limit exceeded, clearing cache")
     M.cleanup_cache_selective()
   end
 end
@@ -175,7 +176,7 @@ local function safe_provider_call(provider, func_name, ...)
 
   local success, result = pcall(func, ...)
   if not success then
-    vim.notify("Provider " .. func_name .. " failed: " .. tostring(result), vim.log.levels.ERROR)
+    NotificationManager.error("Provider " .. func_name .. " failed: " .. tostring(result))
     return nil
   end
 
@@ -368,7 +369,7 @@ end
 function M.register(provider)
   -- Comprehensive provider validation
   if not provider or type(provider) ~= "table" then
-    vim.notify("Provider must be a table", vim.log.levels.ERROR)
+    NotificationManager.error("Provider must be a table")
     return false
   end
 
@@ -379,46 +380,46 @@ function M.register(provider)
 
   -- Validate required fields
   if not provider.pattern or type(provider.pattern) ~= "string" or provider.pattern == "" then
-    vim.notify("Provider must have a valid pattern string", vim.log.levels.ERROR)
+    NotificationManager.error("Provider must have a valid pattern string")
     _pattern_cache[cache_key] = false
     return false
   end
 
   if not provider.filetype then
-    vim.notify("Provider must have a filetype", vim.log.levels.ERROR)
+    NotificationManager.error("Provider must have a filetype")
     _pattern_cache[cache_key] = false
     return false
   end
 
   if not provider.extract_var or type(provider.extract_var) ~= "function" then
-    vim.notify("Provider must have an extract_var function", vim.log.levels.ERROR)
+    NotificationManager.error("Provider must have an extract_var function")
     _pattern_cache[cache_key] = false
     return false
   end
 
   -- Validate optional fields
   if provider.get_completion_trigger and type(provider.get_completion_trigger) ~= "function" then
-    vim.notify("Provider get_completion_trigger must be a function", vim.log.levels.WARN)
+    NotificationManager.warn("Provider get_completion_trigger must be a function")
   end
 
   -- Validate pattern complexity to prevent ReDoS
   local pattern_length = #provider.pattern
   if pattern_length > 1000 then
-    vim.notify("Provider pattern is too long (>1000 chars), potential ReDoS risk", vim.log.levels.ERROR)
+    NotificationManager.error("Provider pattern is too long (>1000 chars), potential ReDoS risk")
     _pattern_cache[cache_key] = false
     return false
   end
 
   -- Check for dangerous pattern constructs
   if provider.pattern:find("%(.*%*.*%*.*%)") or provider.pattern:find("%(.*%+.*%+.*%)") then
-    vim.notify("Provider pattern contains potentially dangerous constructs", vim.log.levels.WARN)
+    NotificationManager.warn("Provider pattern contains potentially dangerous constructs")
   end
 
   -- Validate and normalize filetypes
   local filetypes = type(provider.filetype) == "string" and { provider.filetype } or provider.filetype
 
   if type(filetypes) ~= "table" then
-    vim.notify("Provider filetype must be a string or table", vim.log.levels.ERROR)
+    NotificationManager.error("Provider filetype must be a string or table")
     _pattern_cache[cache_key] = false
     return false
   end
@@ -426,7 +427,7 @@ function M.register(provider)
   -- Validate each filetype
   for _, ft in ipairs(filetypes) do
     if not ft or type(ft) ~= "string" or ft == "" then
-      vim.notify("Invalid filetype in provider: " .. tostring(ft), vim.log.levels.ERROR)
+      NotificationManager.error("Invalid filetype in provider: " .. tostring(ft))
       _pattern_cache[cache_key] = false
       return false
     end
@@ -434,7 +435,7 @@ function M.register(provider)
     -- Sanitize filetype
     local sanitized_ft = ft:gsub("[^%w_%-]", "")
     if sanitized_ft ~= ft then
-      vim.notify("Filetype contains invalid characters: " .. ft, vim.log.levels.WARN)
+      NotificationManager.warn("Filetype contains invalid characters: " .. ft)
       ft = sanitized_ft
     end
 
@@ -453,7 +454,7 @@ end
 
 function M.register_many(providers)
   if not providers or type(providers) ~= "table" then
-    vim.notify("Providers must be a table", vim.log.levels.ERROR)
+    NotificationManager.error("Providers must be a table")
     return false
   end
 
@@ -467,7 +468,7 @@ function M.register_many(providers)
     if success and result then
       success_count = success_count + 1
     else
-      vim.notify("Failed to register provider " .. total_count .. ": " .. tostring(result), vim.log.levels.ERROR)
+      NotificationManager.error("Failed to register provider " .. total_count .. ": " .. tostring(result))
     end
   end
 
@@ -487,7 +488,7 @@ function M.get_providers(filetype)
   -- Sanitize filetype
   local sanitized_ft = filetype:gsub("[^%w_%-]", "")
   if sanitized_ft ~= filetype then
-    vim.notify("Filetype contains invalid characters: " .. filetype, vim.log.levels.WARN)
+    NotificationManager.warn("Filetype contains invalid characters: " .. filetype)
     filetype = sanitized_ft
   end
 
@@ -495,7 +496,7 @@ function M.get_providers(filetype)
   if not M.providers[filetype] or #M.providers[filetype] == 0 then
     local success, err = pcall(M.load_providers_for_filetype, filetype)
     if not success then
-      vim.notify("Failed to load providers for filetype " .. filetype .. ": " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("Failed to load providers for filetype " .. filetype .. ": " .. tostring(err))
       return {}
     end
   end

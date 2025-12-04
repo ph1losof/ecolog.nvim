@@ -1,7 +1,7 @@
 local M = {}
 
 local api = vim.api
-local notify = vim.notify
+local NotificationManager = require("ecolog.core.notification_manager")
 local tbl_contains = vim.tbl_contains
 local tbl_deep_extend = vim.tbl_deep_extend
 
@@ -71,7 +71,7 @@ function M.setup(opts)
 
     if opts.config.default_mode then
       if not vim.tbl_contains({ "none", "partial", "full" }, opts.config.default_mode) then
-        notify("Invalid default_mode. Using '" .. state_module.get_config().default_mode .. "'.", vim.log.levels.WARN)
+        NotificationManager.warn("Invalid default_mode. Using '" .. state_module.get_config().default_mode .. "'.")
       else
         state_module.get_config().default_mode = opts.config.default_mode
       end
@@ -96,10 +96,9 @@ function M.setup(opts)
         state_module.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
 
         if partial[feature].skip_comments ~= nil then
-          notify(
+          NotificationManager.warn(
             "DEPRECATED: Using skip_comments in shelter.modules.files module is deprecated. "
-              .. "Please move it to shelter.configuration.skip_comments instead.",
-            vim.log.levels.WARN
+              .. "Please move it to shelter.configuration.skip_comments instead."
           )
           state_module.get_config().skip_comments = partial[feature].skip_comments == true
         end
@@ -145,7 +144,7 @@ function M.setup(opts)
   api.nvim_create_user_command("EcologShelterLinePeek", function()
     local state_cmd = get_state()
     if not state_cmd.is_enabled("files") then
-      notify("Shelter mode for files is not enabled. Enable with: shelter.modules.files = true", vim.log.levels.WARN)
+      NotificationManager.warn("Shelter mode for files is not enabled. Enable with: shelter.modules.files = true")
       return
     end
 
@@ -324,7 +323,7 @@ function M.toggle_all()
       state_module.set_feature_state(feature, false)
     end
     buffer_module.unshelter_buffer()
-    notify("All shelter modes disabled", vim.log.levels.INFO)
+    NotificationManager.info("All shelter modes disabled")
   else
     local files_enabled = false
     for feature, value in pairs(state_module.get_state().features.initial) do
@@ -337,7 +336,7 @@ function M.toggle_all()
       buffer_module.setup_file_shelter()
       buffer_module.shelter_buffer()
     end
-    notify("Shelter modes restored to initial settings", vim.log.levels.INFO)
+    NotificationManager.info("Shelter modes restored to initial settings")
   end
 end
 
@@ -345,9 +344,8 @@ function M.toggle_feature(feature)
   local state_module = get_state()
 
   if not tbl_contains(state_module.get_features(), feature) then
-    notify(
-      "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'",
-      vim.log.levels.ERROR
+    NotificationManager.error(
+      "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'"
     )
     return false
   end
@@ -369,9 +367,8 @@ function M.set_state(command, feature)
 
   if feature then
     if not tbl_contains(state_module.get_features(), feature) then
-      notify(
-        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'",
-        vim.log.levels.ERROR
+      NotificationManager.error(
+        "Invalid feature. Use 'cmp', 'peek', 'files', 'telescope', 'fzf', 'telescope_previewer', 'fzf_previewer', 'snacks_previewer', or 'snacks'"
       )
       return false
     end
@@ -402,9 +399,8 @@ function M.set_state(command, feature)
         snacks_integration.setup_snacks_shelter()
       end
     end
-    notify(
-      string.format("Shelter mode for %s is now %s", feature:upper(), should_enable and "enabled" or "disabled"),
-      vim.log.levels.INFO
+    NotificationManager.info(
+      string.format("Shelter mode for %s is now %s", feature:upper(), should_enable and "enabled" or "disabled")
     )
     return true
   else
@@ -432,9 +428,8 @@ function M.set_state(command, feature)
     else
       buffer_module.unshelter_buffer()
     end
-    notify(
-      string.format("All shelter modes are now %s", should_enable and "enabled" or "disabled"),
-      vim.log.levels.INFO
+    NotificationManager.info(
+      string.format("All shelter modes are now %s", should_enable and "enabled" or "disabled")
     )
     return true
   end

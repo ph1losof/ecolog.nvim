@@ -3,6 +3,7 @@ local PluginSystem = {}
 
 local Detection = require("ecolog.monorepo.detection")
 local Factory = require("ecolog.monorepo.detection.providers.factory")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Plugin registry
 local _plugins = {}
@@ -21,7 +22,7 @@ function PluginSystem.register_plugin(plugin_config)
   end
 
   if _plugins[plugin_config.name] then
-    vim.notify("Plugin '" .. plugin_config.name .. "' is already registered", vim.log.levels.WARN)
+    NotificationManager.warn("Plugin '" .. plugin_config.name .. "' is already registered")
     return
   end
 
@@ -51,7 +52,7 @@ function PluginSystem.register_plugin(plugin_config)
   if plugin_config.init then
     local success, err = pcall(plugin_config.init)
     if not success then
-      vim.notify("Plugin '" .. plugin_config.name .. "' initialization failed: " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("Plugin '" .. plugin_config.name .. "' initialization failed: " .. tostring(err))
     end
   end
 end
@@ -113,7 +114,7 @@ function PluginSystem.call_hooks(hook_name, ...)
     local success, err = pcall(hook.func, ...)
     if not success then
       local plugin_info = hook.plugin and (" (plugin: " .. hook.plugin .. ")") or ""
-      vim.notify("Hook '" .. hook_name .. "' failed" .. plugin_info .. ": " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("Hook '" .. hook_name .. "' failed" .. plugin_info .. ": " .. tostring(err))
     end
   end
 end
@@ -148,7 +149,7 @@ function PluginSystem.unregister_plugin(plugin_name)
   if plugin.cleanup then
     local success, err = pcall(plugin.cleanup)
     if not success then
-      vim.notify("Plugin '" .. plugin_name .. "' cleanup failed: " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("Plugin '" .. plugin_name .. "' cleanup failed: " .. tostring(err))
     end
   end
 
@@ -230,7 +231,7 @@ function PluginSystem.load_plugins_from_directory(plugin_dir)
     if success and plugin_config then
       PluginSystem.register_plugin(plugin_config)
     else
-      vim.notify("Failed to load plugin from " .. plugin_file .. ": " .. tostring(plugin_config), vim.log.levels.ERROR)
+      NotificationManager.error("Failed to load plugin from " .. plugin_file .. ": " .. tostring(plugin_config))
     end
   end
 end

@@ -2,6 +2,7 @@
 local WorkspaceManager = {}
 
 local Cache = require("ecolog.monorepo.detection.cache")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Current workspace state
 local _current_workspace = nil
@@ -27,7 +28,7 @@ function WorkspaceManager.set_current(workspace)
     for _, listener in ipairs(_workspace_change_listeners) do
       local success, err = pcall(listener, workspace, previous_workspace)
       if not success then
-        vim.notify("Error in workspace change listener: " .. tostring(err), vim.log.levels.ERROR)
+        NotificationManager.error("Error in workspace change listener: " .. tostring(err))
       end
     end
   end

@@ -5,6 +5,7 @@ local Detection = require("ecolog.monorepo.detection")
 local WorkspaceManager = require("ecolog.monorepo.workspace.manager")
 local WorkspaceFinder = require("ecolog.monorepo.workspace.finder")
 local Throttle = require("ecolog.monorepo.auto_switch.throttle")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Auto-switch state
 local _auto_switch_state = {
@@ -160,7 +161,7 @@ function AutoSwitch._perform_workspace_check(file_path, force_check)
 
   if not success then
     -- Silently handle errors to avoid disrupting user workflow
-    vim.notify("Auto-switch error: " .. tostring(err), vim.log.levels.DEBUG)
+    NotificationManager.debug("Auto-switch error: " .. tostring(err))
   end
 end
 
@@ -186,7 +187,7 @@ function AutoSwitch._notify_workspace_change(current_workspace, previous_workspa
     message = string.format("Entered workspace: %s", current_workspace.name)
   end
 
-  vim.notify(message, vim.log.levels.INFO)
+  NotificationManager.info(message)
 end
 
 ---Get selected environment file information for a workspace
@@ -221,7 +222,7 @@ end
 ---Enable auto-switching
 function AutoSwitch.enable()
   if not _auto_switch_state.config then
-    vim.notify("Auto-switch not configured. Call setup() first.", vim.log.levels.WARN)
+    NotificationManager.warn("Auto-switch not configured. Call setup() first.")
     return
   end
 

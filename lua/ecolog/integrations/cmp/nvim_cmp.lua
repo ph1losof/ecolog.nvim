@@ -1,17 +1,18 @@
 local M = {}
 local api = vim.api
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local _shelter = nil
 
 local function setup_completion(cmp, opts, providers)
   -- Validate inputs
   if not cmp then
-    vim.notify("nvim-cmp is not available", vim.log.levels.ERROR)
+    NotificationManager.error("nvim-cmp is not available")
     return
   end
 
   if not providers then
-    vim.notify("Providers module is not available", vim.log.levels.ERROR)
+    NotificationManager.error("Providers module is not available")
     return
   end
 
@@ -33,7 +34,7 @@ local function setup_completion(cmp, opts, providers)
   for i, group in ipairs(highlight_groups) do
     local success, err = pcall(api.nvim_set_hl, 0, group, { link = highlight_links[i] })
     if not success then
-      vim.notify("Failed to set highlight group " .. group .. ": " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("Failed to set highlight group " .. group .. ": " .. tostring(err))
     end
   end
 
@@ -208,7 +209,7 @@ local function setup_completion(cmp, opts, providers)
       end)
 
       if not success then
-        vim.notify("nvim-cmp completion failed: " .. tostring(err), vim.log.levels.ERROR)
+        NotificationManager.error("nvim-cmp completion failed: " .. tostring(err))
         if callback then
           callback({ items = {}, isIncomplete = false })
         end
@@ -217,19 +218,19 @@ local function setup_completion(cmp, opts, providers)
   })
 
   if not success then
-    vim.notify("Failed to register nvim-cmp source: " .. tostring(err), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to register nvim-cmp source: " .. tostring(err))
   end
 end
 
 function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
   -- Validate required parameters
   if not providers then
-    vim.notify("Providers module is required for nvim-cmp integration", vim.log.levels.ERROR)
+    NotificationManager.error("Providers module is required for nvim-cmp integration")
     return
   end
 
   if not shelter then
-    vim.notify("Shelter module is required for nvim-cmp integration", vim.log.levels.ERROR)
+    NotificationManager.error("Shelter module is required for nvim-cmp integration")
     return
   end
 
@@ -246,14 +247,14 @@ function M.setup(opts, env_vars, providers, shelter, types, selected_env_file)
       end)
 
       if not success then
-        vim.notify("nvim-cmp autocmd callback failed: " .. tostring(err), vim.log.levels.ERROR)
+        NotificationManager.error("nvim-cmp autocmd callback failed: " .. tostring(err))
       end
     end,
     once = true,
   })
 
   if not autocmd_success then
-    vim.notify("Failed to create nvim-cmp autocmd: " .. tostring(autocmd_err), vim.log.levels.ERROR)
+    NotificationManager.error("Failed to create nvim-cmp autocmd: " .. tostring(autocmd_err))
   end
 end
 

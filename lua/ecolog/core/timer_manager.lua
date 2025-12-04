@@ -3,6 +3,7 @@ local TimerManager = {}
 
 -- Compatibility layer for uv -> vim.uv migration
 local uv = require("ecolog.core.compat").uv
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Global timer registry for proper cleanup
 local _active_timers = {}
@@ -16,18 +17,18 @@ local _debounce_timers = {}
 function TimerManager.create_timer(callback, delay, repeat_interval)
   -- Validate inputs
   if not callback or type(callback) ~= "function" then
-    vim.notify("Timer callback must be a function", vim.log.levels.ERROR)
+    NotificationManager.error("Timer callback must be a function")
     return nil
   end
   
   if not delay or type(delay) ~= "number" or delay < 0 then
-    vim.notify("Timer delay must be a positive number", vim.log.levels.ERROR)
+    NotificationManager.error("Timer delay must be a positive number")
     return nil
   end
   
   local timer = uv.new_timer()
   if not timer then
-    vim.notify("Failed to create timer", vim.log.levels.ERROR)
+    NotificationManager.error("Failed to create timer")
     return nil
   end
 
@@ -38,7 +39,7 @@ function TimerManager.create_timer(callback, delay, repeat_interval)
   local wrapped_callback = function()
     local success, err = pcall(callback)
     if not success then
-      vim.notify("Timer callback error: " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("Timer callback error: " .. tostring(err))
     end
 
     -- Clean up single-shot timers
@@ -76,7 +77,7 @@ function TimerManager.debounce(timer_id, callback, delay, ...)
 
     local success, err = pcall(callback, unpack(args))
     if not success then
-      vim.notify("Debounced callback error: " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("Debounced callback error: " .. tostring(err))
     end
   end)
 end

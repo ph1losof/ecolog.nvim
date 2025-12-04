@@ -11,7 +11,7 @@ describe("async env loader", function()
 
   before_each(function()
     -- Reset modules
-    package.loaded["ecolog.env_loader_async"] = nil
+    package.loaded["ecolog.env_loader"] = nil
     package.loaded["ecolog.types"] = nil
     package.loaded["ecolog.interpolation"] = nil
     package.loaded["ecolog.utils"] = nil
@@ -82,7 +82,7 @@ describe("async env loader", function()
     }
     package.preload["ecolog.core.file_operations"] = function() return file_operations_mock end
     
-    async_loader = require("ecolog.env_loader_async")
+    async_loader = require("ecolog.env_loader")
   end)
 
   after_each(function()

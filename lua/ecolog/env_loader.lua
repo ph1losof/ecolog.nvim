@@ -1,21 +1,3 @@
-local M = {}
-
-local fn = vim.fn
-local utils = require("ecolog.utils")
-local types = require("ecolog.types")
-local shell = require("ecolog.shell")
-local interpolation = require("ecolog.interpolation")
-local NotificationManager = require("ecolog.core.notification_manager")
-
--- Lazy-loaded async loader for performance
-local AsyncEnvLoader = nil
-local function get_async_loader()
-  if not AsyncEnvLoader then
-    AsyncEnvLoader = require("ecolog.env_loader_async")
-  end
-  return AsyncEnvLoader
-end
-
 ---@class EnvVarInfo
 ---@field value any The processed value of the environment variable
 ---@field type string The detected type of the variable
@@ -28,6 +10,25 @@ end
 ---@field env_vars table<string, EnvVarInfo>
 ---@field selected_env_file? string
 ---@field _env_line_cache table
+
+local M = {}
+
+-- Compatibility layer for vim.loop -> vim.uv migration
+local uv = vim.uv or vim.loop
+local fn = vim.fn
+
+local utils = require("ecolog.utils")
+local types = require("ecolog.types")
+local shell = require("ecolog.shell")
+local interpolation = require("ecolog.interpolation")
+local NotificationManager = require("ecolog.core.notification_manager")
+local FileOperations = require("ecolog.core.file_operations")
+
+-- Enhanced caching system
+local _parse_cache = {}
+local _cache_timestamps = {}
+local MAX_CACHE_SIZE = 1000
+local CACHE_TTL = 300000 -- 5 minutes
 
 ---@param line string The line to parse from the env file
 ---@param file_path string The path of the env file
@@ -87,6 +88,150 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts, 
   return key, result[2], updated_state
 end
 
+---Parse a single environment file with intelligent caching
+---@param file_path string Path to environment file
+---@param content string[] Lines of file
+---@param opts table Configuration options
+---@return table<string, EnvVarInfo> parsed_vars
+local function parse_single_file(file_path, content, opts)
+  -- Check cache first using file modification time
+  local mtime = FileOperations.get_mtime(file_path)
+  local cache_key = file_path .. ":" .. mtime
+
+  if _parse_cache[cache_key] and is_cache_valid(cache_key) then
+    return _parse_cache[cache_key]
+  end
+
+  local env_vars = {}
+  local _env_line_cache = {}
+
+  -- Parse lines efficiently
+  for i = 1, #content do
+    local line = content[i]
+
+    -- Skip empty lines and comments quickly
+    if line ~= "" and not line:match("^%s*#") and not line:match("^%s*$") then
+      local key, value, comment, quote_char = utils.extract_line_parts(line)
+
+      if key and value then
+        local type_name, transformed_value = types.detect_type(value)
+
+        -- Use explicit nil check to handle boolean false correctly
+        local final_value = value
+        if transformed_value ~= nil then
+          final_value = transformed_value
+        end
+
+        env_vars[key] = {
+          value = final_value,
+          type = type_name,
+          raw_value = value,
+          source = file_path,
+          source_file = vim.fn.fnamemodify(file_path, ":t"),
+          comment = comment,
+          quote_char = quote_char,
+        }
+      end
+    end
+  end
+
+  -- Apply interpolation if enabled
+  if opts.interpolation and opts.interpolation.enabled then
+    apply_interpolation(env_vars, opts.interpolation)
+  end
+
+  -- Cache result
+  cache_result(cache_key, env_vars)
+
+  return env_vars
+end
+
+---Apply interpolation to environment variables
+---@param env_vars table<string, EnvVarInfo> Environment variables
+---@param interpolation_opts table Interpolation configuration
+local function apply_interpolation(env_vars, interpolation_opts)
+  for key, var_info in pairs(env_vars) do
+    if var_info.quote_char ~= "'" then
+      local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars, interpolation_opts)
+      if interpolated_value ~= var_info.raw_value then
+        local type_name, transformed_value = types.detect_type(interpolated_value)
+        local final_value = interpolated_value
+        if transformed_value ~= nil then
+          final_value = transformed_value
+        end
+        
+        env_vars[key] = {
+          value = final_value,
+          type = type_name,
+          raw_value = var_info.raw_value,
+          source = var_info.source,
+          source_file = var_info.source_file,
+          comment = var_info.comment,
+          quote_char = var_info.quote_char,
+        }
+      end
+    end
+  end
+end
+
+---Check if cache entry is still valid
+---@param cache_key string Cache key
+---@return boolean valid Whether cache entry is valid
+local function is_cache_valid(cache_key)
+  local timestamp = _cache_timestamps[cache_key]
+  if not timestamp then
+    return false
+  end
+
+  return (uv.now() - timestamp) < CACHE_TTL
+end
+
+---Cache result with automatic cleanup
+---@param cache_key string Cache key
+---@param env_vars table Parsed environment variables
+local function cache_result(cache_key, env_vars)
+  -- Clean up expired entries if cache is getting large
+  if vim.tbl_count(_parse_cache) >= MAX_CACHE_SIZE then
+    cleanup_cache()
+  end
+
+  _parse_cache[cache_key] = env_vars
+  _cache_timestamps[cache_key] = uv.now()
+end
+
+---Clean up expired cache entries
+local function cleanup_cache()
+  local current_time = uv.now()
+  local expired_keys = {}
+
+  for key, timestamp in pairs(_cache_timestamps) do
+    if (current_time - timestamp) > CACHE_TTL then
+      table.insert(expired_keys, key)
+    end
+  end
+
+  for _, key in ipairs(expired_keys) do
+    _parse_cache[key] = nil
+    _cache_timestamps[key] = nil
+  end
+end
+
+---Count expired cache entries
+---@return number count
+local function count_expired_entries()
+  local current_time = uv.now()
+  local expired_count = 0
+
+  for _, timestamp in pairs(_cache_timestamps) do
+    if (current_time - timestamp) > CACHE_TTL then
+      expired_count = expired_count + 1
+    end
+  end
+
+  return expired_count
+end
+
+---Load environment file synchronously using FileOperations
 ---@param file_path string Path to the env file
 ---@param _env_line_cache table Cache for parsed lines
 ---@param env_vars table<string, EnvVarInfo> Current environment variables
@@ -114,75 +259,38 @@ local function load_env_file(file_path, _env_line_cache, env_vars, opts)
   end
 
   -- Check file readability before attempting to open
-  if vim.fn.filereadable(file_path) == 0 then
+  if not FileOperations.is_readable(file_path) then
     vim.notify(string.format("Environment file is not readable: %s", file_path), vim.log.levels.WARN)
     return env_vars_result
   end
 
-  local env_file = io.open(file_path, "r")
-  if not env_file then
-    vim.notify(string.format("Could not open environment file: %s", file_path), vim.log.levels.WARN)
+  local content, err = FileOperations.read_file_sync(file_path)
+  if not content then
+    vim.notify(string.format("Could not read environment file: %s - %s", file_path, err or "unknown error"), vim.log.levels.WARN)
     return env_vars_result
   end
 
-  -- Use pcall to protect against file reading errors
-  local success, err = pcall(function()
-    local multi_line_state = {}
-    for line in env_file:lines() do
-      local initial_opts = vim.tbl_deep_extend("force", {}, opts)
-      local key, var_info, updated_state = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts, multi_line_state)
-      if key then
-        env_vars_result[key] = var_info
-      end
-      multi_line_state = updated_state or multi_line_state
+  -- Process lines
+  local multi_line_state = {}
+  for i = 1, #content do
+    local line = content[i]
+    local initial_opts = vim.tbl_deep_extend("force", {}, opts)
+    local key, var_info, updated_state = parse_env_line(line, file_path, _env_line_cache, env_vars, initial_opts, multi_line_state)
+    if key then
+      env_vars_result[key] = var_info
     end
-  end)
-
-  -- Ensure file is always closed, even on error
-  local close_success, close_err = pcall(function()
-    env_file:close()
-  end)
-
-  if not success then
-    vim.notify(string.format("Error reading environment file %s: %s", file_path, tostring(err)), vim.log.levels.ERROR)
-    return env_vars_result
+    multi_line_state = updated_state or multi_line_state
   end
 
-  if not close_success then
-    vim.notify(
-      string.format("Error closing environment file %s: %s", file_path, tostring(close_err)),
-      vim.log.levels.WARN
-    )
-  end
-
+  -- Apply interpolation if enabled
   if opts.interpolation and opts.interpolation.enabled then
-    for key, var_info in pairs(env_vars_result) do
-      if var_info.quote_char ~= "'" then
-        local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
-        if interpolated_value ~= var_info.raw_value then
-          local type_name, transformed_value = types.detect_type(interpolated_value)
-          local final_value = interpolated_value
-          if transformed_value ~= nil then
-            final_value = transformed_value
-          end
-          
-          env_vars_result[key] = {
-            value = final_value,
-            type = type_name,
-            raw_value = var_info.raw_value,
-            source = var_info.source,
-            comment = var_info.comment,
-            quote_char = var_info.quote_char,
-          }
-        end
-      end
-    end
+    apply_interpolation(env_vars_result, opts.interpolation)
   end
 
   return env_vars_result
 end
 
----Load environment file asynchronously using vim.fn.readfile
+---Load environment file asynchronously using FileOperations
 ---@param file_path string Path to the env file
 ---@param _env_line_cache table Cache for parsed lines
 ---@param env_vars table<string, EnvVarInfo> Current environment variables
@@ -203,29 +311,26 @@ local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, c
   end
 
   -- Check file readability before attempting to read
-  if vim.fn.filereadable(file_path) == 0 then
+  if not FileOperations.is_readable(file_path) then
     vim.schedule(function()
       callback({}, "Environment file is not readable: " .. file_path)
     end)
     return
   end
 
-  -- Use vim.defer_fn to read file in background
-  vim.defer_fn(function()
-    local env_vars_result = {}
-    local success, lines = pcall(vim.fn.readfile, file_path)
-
-    if not success then
+  FileOperations.read_file_async(file_path, function(content, err)
+    if not content then
       vim.schedule(function()
-        callback({}, "Error reading environment file: " .. tostring(lines))
+        callback({}, "Error reading environment file: " .. tostring(err))
       end)
       return
     end
 
     -- Process lines
+    local env_vars_result = {}
     local multi_line_state = {}
-    for i = 1, #lines do
-      local line = lines[i]
+    for i = 1, #content do
+      local line = content[i]
       local initial_opts = vim.tbl_deep_extend("force", {}, opts or {})
       local key, var_info, updated_state = parse_env_line(line, file_path, _env_line_cache or {}, env_vars or {}, initial_opts, multi_line_state)
       if key then
@@ -236,33 +341,77 @@ local function load_env_file_async(file_path, _env_line_cache, env_vars, opts, c
 
     -- Apply interpolation if enabled
     if opts and opts.interpolation and opts.interpolation.enabled then
-      for key, var_info in pairs(env_vars_result) do
-        if var_info.quote_char ~= "'" then
-          local interpolated_value = interpolation.interpolate(var_info.raw_value, env_vars_result, opts.interpolation)
-          if interpolated_value ~= var_info.raw_value then
-            local type_name, transformed_value = types.detect_type(interpolated_value)
-            local final_value = interpolated_value
-            if transformed_value ~= nil then
-              final_value = transformed_value
-            end
-            
-            env_vars_result[key] = {
-              value = final_value,
-              type = type_name,
-              raw_value = var_info.raw_value,
-              source = var_info.source,
-              comment = var_info.comment,
-              quote_char = var_info.quote_char,
-            }
-          end
-        end
-      end
+      apply_interpolation(env_vars_result, opts.interpolation)
     end
 
     vim.schedule(function()
       callback(env_vars_result, nil)
     end)
-  end, 0)
+  end)
+end
+
+---Parse environment files in parallel using FileOperations
+---@param file_paths string[] Array of file paths to parse
+---@param opts table Configuration options
+---@param callback function Callback function(results, errors)
+function M.parse_env_files_parallel(file_paths, opts, callback)
+  opts = opts or {}
+
+  if not file_paths or #file_paths == 0 then
+    callback({}, {})
+    return
+  end
+
+  -- Use FileOperations for batch reading
+  FileOperations.read_files_batch(file_paths, function(file_contents, read_errors)
+    local results = {}
+    local all_errors = read_errors
+
+    -- Parse each file's content
+    for file_path, content in pairs(file_contents) do
+      local success, parsed_vars = pcall(parse_single_file, file_path, content, opts)
+
+      if success then
+        results[file_path] = parsed_vars
+      else
+        all_errors[file_path] = tostring(parsed_vars)
+      end
+    end
+
+    callback(results, all_errors)
+  end)
+end
+
+---Load environment variables from multiple files with priority
+---@param file_paths string[] Array of file paths in priority order
+---@param opts table Configuration options
+---@param callback function Callback function(env_vars, errors)
+function M.load_env_vars_with_priority(file_paths, opts, callback)
+  opts = opts or {}
+
+  if not file_paths or #file_paths == 0 then
+    callback({}, {})
+    return
+  end
+
+  -- Parse files in parallel
+  M.parse_env_files_parallel(file_paths, opts, function(parsed_results, errors)
+    local final_env_vars = {}
+
+    -- Merge results according to file priority (first file wins)
+    for _, file_path in ipairs(file_paths) do
+      local parsed_vars = parsed_results[file_path]
+      if parsed_vars then
+        for key, var_info in pairs(parsed_vars) do
+          if not final_env_vars[key] then
+            final_env_vars[key] = var_info
+          end
+        end
+      end
+    end
+
+    callback(final_env_vars, errors)
+  end)
 end
 
 ---@param target table<string, EnvVarInfo> Target table to merge into
@@ -363,7 +512,7 @@ function M.load_environment(opts, state, force)
 
   -- Only check file readability and override if not handled by workspace transition
   if not opts._workspace_file_handled then
-    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+    if state.selected_env_file and not FileOperations.is_readable(state.selected_env_file) then
       local deleted_file = state.selected_env_file
       state.selected_env_file = nil
       state.env_vars = {}
@@ -454,7 +603,7 @@ function M.load_environment_async(opts, state, callback, force)
       end
     end
 
-    if state.selected_env_file and fn.filereadable(state.selected_env_file) == 0 then
+    if state.selected_env_file and not FileOperations.is_readable(state.selected_env_file) then
       local deleted_file = state.selected_env_file
       state.selected_env_file = nil
       state.env_vars = {}
@@ -581,10 +730,10 @@ function M.load_monorepo_environment(opts, state)
     return {}
   end
 
-  -- Respect the user's selected file if it exists in the available files
+  -- Respect to user's selected file if it exists in available files
   local selected_file = nil
   if state.selected_env_file then
-    -- Check if the previously selected file is still available
+    -- Check if previously selected file is still available
     for _, file in ipairs(env_files) do
       if file == state.selected_env_file then
         selected_file = state.selected_env_file
@@ -593,7 +742,7 @@ function M.load_monorepo_environment(opts, state)
     end
   end
 
-  -- If no previously selected file or it's not available, use the first file (highest priority)
+  -- If no previously selected file or it's not available, use to first file (highest priority)
   if not selected_file then
     selected_file = env_files[1]
   end
@@ -628,6 +777,23 @@ function M.load_monorepo_environment(opts, state)
 
   state.env_vars = env_vars
   return env_vars
+end
+
+---Clear parse cache
+function M.clear_cache()
+  _parse_cache = {}
+  _cache_timestamps = {}
+end
+
+---Get cache statistics
+---@return table stats
+function M.get_cache_stats()
+  return {
+    cache_size = vim.tbl_count(_parse_cache),
+    max_cache_size = MAX_CACHE_SIZE,
+    cache_ttl = CACHE_TTL,
+    expired_entries = count_expired_entries(),
+  }
 end
 
 return M

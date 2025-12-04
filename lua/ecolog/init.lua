@@ -263,9 +263,7 @@ local function require_module(name)
     local stub = {}
     setmetatable(stub, {
       __index = function(_, key)
-        NotificationManager.warn(
-          "Attempted to access '" .. key .. "' from stub module due to circular dependency"
-        )
+        NotificationManager.warn("Attempted to access '" .. key .. "' from stub module due to circular dependency")
         return function() end
       end,
     })
@@ -572,8 +570,12 @@ function M.get_env_vars()
           utils_mod.get_env_file_display_name(state.selected_env_file, state.last_opts or DEFAULT_CONFIG)
         local deleted_display_name =
           utils_mod.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
-          utils_mod.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
-        NotificationManager.notify_file_deleted(deleted_file, state.selected_env_file, state.last_opts or DEFAULT_CONFIG)
+        utils_mod.get_env_file_display_name(deleted_file, state.last_opts or DEFAULT_CONFIG)
+        NotificationManager.notify_file_deleted(
+          deleted_file,
+          state.selected_env_file,
+          state.last_opts or DEFAULT_CONFIG
+        )
       else
         local utils_mod = get_utils()
         local deleted_display_name =
@@ -804,7 +806,7 @@ local function create_commands(config)
         local success, err = pcall(function()
           local arg = args.args:lower()
           if arg == "" then
-            notify("Usage: EcologShelter {enable|disable|toggle} [feature]", vim.log.levels.INFO)
+            NotificationManager.notify("Usage: EcologShelter {enable|disable|toggle} [feature]", vim.log.levels.INFO)
             return
           end
           local parts = vim.split(arg, " ")
@@ -821,12 +823,12 @@ local function create_commands(config)
           elseif command == "enable" or command == "disable" then
             get_shelter().set_state(command, feature)
           else
-            notify("Invalid command. Use 'enable', 'disable', or 'toggle'", vim.log.levels.WARN)
+            NotificationManager.notify("Invalid command. Use 'enable', 'disable', or 'toggle'", vim.log.levels.WARN)
             return
           end
         end)
         if not success then
-          notify(string.format("EcologShelter error: %s", err), vim.log.levels.WARN)
+          NotificationManager.notify(string.format("EcologShelter error: %s", err), vim.log.levels.WARN)
         end
       end,
       nargs = "*",
@@ -861,7 +863,7 @@ local function create_commands(config)
           M.refresh_env_vars(config)
         end)
         if not success then
-          notify(string.format("EcologRefresh error: %s", err), vim.log.levels.WARN)
+          NotificationManager.notify(string.format("EcologRefresh error: %s", err), vim.log.levels.WARN)
         end
       end,
       desc = "Refresh environment variables cache",
@@ -871,7 +873,7 @@ local function create_commands(config)
         if state.selected_env_file then
           vim.cmd("edit " .. fn.fnameescape(state.selected_env_file))
         else
-          notify("No environment file selected", vim.log.levels.WARN)
+          NotificationManager.notify("No environment file selected", vim.log.levels.WARN)
         end
       end,
       desc = "Go to selected environment file",
@@ -887,7 +889,7 @@ local function create_commands(config)
         end
 
         if not var_name or #var_name == 0 then
-          notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
+          NotificationManager.notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
           return
         end
 
@@ -895,17 +897,20 @@ local function create_commands(config)
 
         local var = state.env_vars[var_name]
         if not var then
-          notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
+          NotificationManager.notify(
+            string.format("Environment variable '%s' not found", var_name),
+            vim.log.levels.WARN
+          )
           return
         end
 
         if var.source == "shell" then
-          notify("Cannot go to definition of shell variables", vim.log.levels.WARN)
+          NotificationManager.notify("Cannot go to definition of shell variables", vim.log.levels.WARN)
           return
         end
 
         if var.source:match("^asm:") or var.source:match("^vault:") then
-          notify("Cannot go to definition of secret manager variables", vim.log.levels.WARN)
+          NotificationManager.notify("Cannot go to definition of secret manager variables", vim.log.levels.WARN)
           return
         end
 
@@ -927,7 +932,7 @@ local function create_commands(config)
       callback = function()
         local has_fzf, fzf = pcall(require, "ecolog.integrations.fzf")
         if not has_fzf or not config.integrations.fzf then
-          notify(
+          NotificationManager.notify(
             "FZF integration is not enabled. Enable it in your setup with integrations.fzf = true",
             vim.log.levels.ERROR
           )
@@ -946,7 +951,10 @@ local function create_commands(config)
       callback = function()
         local has_telescope, telescope = pcall(require, "telescope")
         if not has_telescope then
-          notify("Telescope is not installed. Install telescope.nvim to use this command", vim.log.levels.ERROR)
+          NotificationManager.notify(
+            "Telescope is not installed. Install telescope.nvim to use this command",
+            vim.log.levels.ERROR
+          )
           return
         end
         telescope.load_extension("ecolog")
@@ -972,7 +980,7 @@ local function create_commands(config)
         end
 
         if not var_name or #var_name == 0 then
-          notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
+          NotificationManager.notify("No environment variable specified or found at cursor", vim.log.levels.WARN)
           return
         end
 
@@ -980,14 +988,20 @@ local function create_commands(config)
 
         local var = state.env_vars[var_name]
         if not var then
-          notify(string.format("Environment variable '%s' not found", var_name), vim.log.levels.WARN)
+          NotificationManager.notify(
+            string.format("Environment variable '%s' not found", var_name),
+            vim.log.levels.WARN
+          )
           return
         end
 
         local value = var.raw_value
         vim.fn.setreg("+", value)
         vim.fn.setreg('"', value)
-        notify(string.format("Copied raw value of '%s' to clipboard", var_name), vim.log.levels.INFO)
+        NotificationManager.notify(
+          string.format("Copied raw value of '%s' to clipboard", var_name),
+          vim.log.levels.INFO
+        )
       end,
       nargs = "?",
       desc = "Copy environment variable value to clipboard",
@@ -1041,7 +1055,7 @@ local function create_commands(config)
     EcologInterpolationToggle = {
       callback = function()
         if not state.last_opts then
-          notify("Ecolog not initialized", vim.log.levels.ERROR)
+          NotificationManager.notify("Ecolog not initialized", vim.log.levels.ERROR)
           return
         end
 
@@ -1049,7 +1063,7 @@ local function create_commands(config)
 
         M.refresh_env_vars(state.last_opts)
 
-        notify(
+        NotificationManager.notify(
           string.format("Interpolation %s", state.last_opts.interpolation.enabled and "enabled" or "disabled"),
           vim.log.levels.INFO
         )
@@ -1059,7 +1073,7 @@ local function create_commands(config)
     EcologShellToggle = {
       callback = function()
         if not state.last_opts then
-          notify("Ecolog not initialized", vim.log.levels.ERROR)
+          NotificationManager.notify("Ecolog not initialized", vim.log.levels.ERROR)
           return
         end
 
@@ -1079,7 +1093,10 @@ local function create_commands(config)
 
         M.refresh_env_vars(state.last_opts)
 
-        notify(string.format("Shell variables %s", current_state and "loaded" or "unloaded"), vim.log.levels.INFO)
+        NotificationManager.notify(
+          string.format("Shell variables %s", current_state and "loaded" or "unloaded"),
+          vim.log.levels.INFO
+        )
       end,
       desc = "Toggle shell variables loading",
     },
@@ -1224,7 +1241,7 @@ local function create_commands(config)
         local ecolog_config = M.get_config()
         local provider = M._get_monorepo_provider(root_path)
         if not provider then
-          notify("No monorepo provider found", vim.log.levels.WARN)
+          NotificationManager.notify("No monorepo provider found", vim.log.levels.WARN)
           return
         end
         local workspaces = monorepo.get_workspaces(root_path, provider)
@@ -1489,13 +1506,13 @@ end
 local function validate_config(config)
   -- Ensure config is a table
   if type(config) ~= "table" then
-    notify("Configuration must be a table", vim.log.levels.WARN)
+    NotificationManager.notify("Configuration must be a table", vim.log.levels.WARN)
     return
   end
 
   -- Handle deprecated env_file_pattern if it exists
   if config.env_file_pattern ~= nil then
-    notify(
+    NotificationManager.notify(
       "env_file_pattern is deprecated, please use env_file_patterns instead with glob patterns (e.g., '.env.*', 'config/.env*')",
       vim.log.levels.WARN
     )
@@ -1507,13 +1524,13 @@ local function validate_config(config)
 
   -- Handle backward compatibility for sort_fn -> sort_file_fn
   if config.sort_fn ~= nil and config.sort_file_fn == nil then
-    notify("sort_fn is deprecated, please use sort_file_fn instead", vim.log.levels.WARN)
+    NotificationManager.notify("sort_fn is deprecated, please use sort_file_fn instead", vim.log.levels.WARN)
     config.sort_file_fn = config.sort_fn
   end
 
   -- Validate types option
   if config.types ~= nil and type(config.types) ~= "boolean" and type(config.types) ~= "table" then
-    notify("types must be boolean or table, got " .. type(config.types), vim.log.levels.WARN)
+    NotificationManager.notify("types must be boolean or table, got " .. type(config.types), vim.log.levels.WARN)
     config.types = true -- fallback to default
   end
 
@@ -1523,13 +1540,16 @@ local function validate_config(config)
     and type(config.interpolation) ~= "boolean"
     and type(config.interpolation) ~= "table"
   then
-    notify("interpolation must be boolean or table, got " .. type(config.interpolation), vim.log.levels.WARN)
+    NotificationManager.notify(
+      "interpolation must be boolean or table, got " .. type(config.interpolation),
+      vim.log.levels.WARN
+    )
     config.interpolation = { enabled = true } -- fallback to default
   end
 
   -- Validate integrations
   if config.integrations ~= nil and type(config.integrations) ~= "table" then
-    notify("integrations must be a table, got " .. type(config.integrations), vim.log.levels.WARN)
+    NotificationManager.notify("integrations must be a table, got " .. type(config.integrations), vim.log.levels.WARN)
     config.integrations = {}
   end
 
@@ -1559,7 +1579,7 @@ function M.setup(opts)
 
     -- Handle invalid opts types gracefully
     if opts ~= nil and type(opts) ~= "table" then
-      vim.notify(
+      NotificationManager.notify(
         "Configuration must be a table, got " .. type(opts) .. ". Using default configuration.",
         vim.log.levels.WARN
       )

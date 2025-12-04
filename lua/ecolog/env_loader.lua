@@ -50,7 +50,7 @@ local function parse_env_line(line, file_path, _env_line_cache, env_vars, opts, 
     return unpack(cache_entry)
   end
 
-  if line:match("^%s*$") or line:match("^%s*#") then
+  if line:match(utils.PATTERNS.empty_line) or line:match(utils.PATTERNS.comment_line) then
     if not state or not state.in_multi_line then
       _env_line_cache[cache_key] = { nil }
       return nil, nil, state
@@ -110,7 +110,7 @@ local function parse_single_file(file_path, content, opts)
     local line = content[i]
 
     -- Skip empty lines and comments quickly
-    if line ~= "" and not line:match("^%s*#") and not line:match("^%s*$") then
+    if line ~= "" and not line:match(utils.PATTERNS.comment_line) and not line:match(utils.PATTERNS.empty_line) then
       local key, value, comment, quote_char = utils.extract_line_parts(line)
 
       if key and value then

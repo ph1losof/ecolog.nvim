@@ -747,7 +747,7 @@ function M.extract_line_parts(line, state)
     return M.handle_multi_line_continuation(line, state)
   end
 
-  if line:match("^%s*#") or line:match("^%s*$") then
+  if line:match(M.PATTERNS.comment_line) or line:match(M.PATTERNS.empty_line) then
     return nil, nil, nil, nil, state
   end
 
@@ -918,7 +918,7 @@ end
 ---@return string|nil value The environment variable value
 ---@return number|nil eq_pos The position of the equals sign
 function M.parse_env_line(line)
-  if not line or line:match("^%s*#") or line:match("^%s*$") then
+  if not line or line:match(M.PATTERNS.comment_line) or line:match(M.PATTERNS.empty_line) then
     return nil, nil, nil
   end
 
@@ -1109,8 +1109,8 @@ function M.parse_env_file(file_path)
                   -- If next line doesn't contain '=' or is empty/comment, might be multiline
                   if
                     next_line
-                    and not next_line:match("^%s*$")
-                    and not next_line:match("^%s*#")
+                    and not next_line:match(M.PATTERNS.empty_line)
+                    and not next_line:match(M.PATTERNS.comment_line)
                     and not next_line:find("=")
                   then
                     should_be_multiline = true
@@ -1333,7 +1333,7 @@ function M.generate_example_file(env_file)
 
   local read_success, read_err = pcall(function()
     for line in f:lines() do
-      if line:match("^%s*$") or line:match("^%s*#") then
+      if line:match(M.PATTERNS.empty_line) or line:match(M.PATTERNS.comment_line) then
         table.insert(example_content, line)
       else
         local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")

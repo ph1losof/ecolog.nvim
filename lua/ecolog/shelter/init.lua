@@ -70,11 +70,19 @@ function M.setup(opts)
   end
 
   for _, feature in ipairs(state_module.get_features()) do
-    local value = type(partial[feature]) == "boolean" and partial[feature] or false
+    local value = false
+    
+    -- Handle table configurations for all features
+    if type(partial[feature]) == "table" then
+      value = partial[feature].enabled ~= false -- Default to true if enabled is not explicitly false
+    elseif type(partial[feature]) == "boolean" then
+      value = partial[feature]
+    end
+    
     if feature == "files" then
       if type(partial[feature]) == "table" then
-        state_module.set_feature_state(feature, true)
-        state_module.set_initial_feature_state(feature, true)
+        state_module.set_feature_state(feature, value)
+        state_module.set_initial_feature_state(feature, value)
         state_module.get_config().shelter_on_leave = partial[feature].shelter_on_leave
         state_module.update_buffer_state("disable_cmp", partial[feature].disable_cmp ~= false)
 

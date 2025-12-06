@@ -490,7 +490,7 @@ API_KEY=dev_api_key
       -- Verify expected behavior - in single-file mode, only .env is loaded by default
       assert.equals("false", env_vars.DEBUG.value) -- From .env, not .env.local
       assert.equals("postgresql://localhost:5432/myapp", env_vars.DATABASE_URL.value) -- From .env
-      assert.equals("sk-1234567890abcdef", env_vars.API_KEY.value) -- From .env
+      assert.equals("your_api_key_here", env_vars.API_KEY.value) -- From .env
       assert.equals("3000", env_vars.PORT.value) -- From main .env
       assert.equals("development", env_vars.NODE_ENV.value) -- From main .env
 

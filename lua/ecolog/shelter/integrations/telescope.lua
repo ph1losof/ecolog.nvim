@@ -68,7 +68,13 @@ function M.create_masked_previewer(opts, preview_type)
 end
 
 function M.setup_telescope_shelter()
-  local conf = require("telescope.config").values
+  local ok, telescope_config = pcall(require, "telescope.config")
+  if not ok then
+    -- Telescope not available, skip setup
+    return
+  end
+  
+  local conf = telescope_config.values
 
   if not state._original_file_previewer then
     state._original_file_previewer = conf.file_previewer

@@ -176,10 +176,17 @@ function Schema.apply_defaults(config)
   local function apply_defaults_recursive(value, schema)
     if schema.type == "table" and schema.schema then
       local result = value or {}
+      -- Apply the default for this table if it doesn't exist
+      if value == nil and schema.default ~= nil then
+        result = vim.deepcopy(schema.default)
+      end
+      
       for field_name, field_schema in pairs(schema.schema) do
         if result[field_name] == nil and field_schema.default ~= nil then
           result[field_name] = field_schema.default
-        elseif field_schema.schema then
+        end
+        -- Always recurse into nested schemas to apply their defaults
+        if field_schema.schema then
           result[field_name] = apply_defaults_recursive(result[field_name], field_schema)
         end
       end

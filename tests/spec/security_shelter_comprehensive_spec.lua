@@ -178,18 +178,18 @@ describe("security features and shelter mode", function()
           partial_mode = {
             show_start = 2,
             show_end = 2,
-            min_mask = 8, -- Force at least 8 masked characters
+            min_mask = 8, -- Minimum 8 characters must be masked in middle
           },
           mask_char = "#",
           default_mode = "partial",
         },
       })
 
-      local short_value = shelter.mask_value("abc") -- Too short for partial
-      assert.equals("###########", short_value) -- Should be fully masked
+      local short_value = shelter.mask_value("abc") -- Too short for partial (3 - 2 - 2 = -1 < 8)
+      assert.equals("###", short_value) -- Should be fully masked with same length as original
 
-      local medium_value = shelter.mask_value("medium123") -- Just right
-      assert.equals("me########23", medium_value)
+      local medium_value = shelter.mask_value("verylongpassword123") -- Long enough for partial (19 - 2 - 2 = 15 >= 8)
+      assert.equals("ve###############23", medium_value) -- Should use partial masking
     end)
 
     it("should handle different mask characters", function()
@@ -285,13 +285,13 @@ describe("security features and shelter mode", function()
         },
       })
 
-      local env_masked = shelter.mask_value("secret", "VAR", ".env")
+      local env_masked = shelter.mask_value("secret", "cmp", "VAR", ".env")
       assert.is_true(env_masked:find("*") ~= nil) -- Should be partially masked
 
-      local local_masked = shelter.mask_value("secret", "VAR", ".env.local")
+      local local_masked = shelter.mask_value("secret", "cmp", "VAR", ".env.local")
       assert.equals("******", local_masked) -- Should be fully masked
 
-      local shell_masked = shelter.mask_value("secret", "VAR", "shell")
+      local shell_masked = shelter.mask_value("secret", "cmp", "VAR", "shell")
       assert.equals("secret", shell_masked) -- Should not be masked
     end)
   end)

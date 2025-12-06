@@ -14,6 +14,9 @@ describe("peek window", function()
   local notify_stub
 
   before_each(function()
+    -- Set test mode
+    _G._ECOLOG_TEST_MODE = true
+    
     package.loaded["ecolog.peek"] = nil
     package.loaded["ecolog.shelter"] = nil
     package.loaded["ecolog.types"] = nil

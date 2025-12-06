@@ -37,8 +37,20 @@ local status_cache = {
 }
 
 local _ecolog = nil
-local lazy = require("ecolog.core.lazy_loader")
-local get_ecolog = lazy.getter("ecolog")
+
+local function get_ecolog()
+  if not _ecolog then
+    -- Try to get from package.loaded first (for tests)
+    _ecolog = package.loaded["ecolog"]
+    if not _ecolog then
+      -- Fall back to lazy loading
+      local lazy = require("ecolog.core.lazy_loader")
+      local get_ecolog_lazy = lazy.getter("ecolog")
+      _ecolog = get_ecolog_lazy()
+    end
+  end
+  return _ecolog
+end
 
 local function get_cached_status()
   local current_time = uv.now()
@@ -47,11 +59,24 @@ local function get_cached_status()
   end
 
   local ecolog = get_ecolog()
+  if not ecolog then
+    -- Return default status when ecolog is not available
+    local status = {
+      file = "No env file",
+      vars_count = 0,
+      shelter_active = false,
+      has_env_file = false,
+    }
+    status_cache.data = status
+    status_cache.last_update = current_time
+    return status
+  end
+
   local env_vars = ecolog.get_env_vars()
   local current_file = ecolog.get_state().selected_env_file
 
   status_cache.env_vars_count = vim.tbl_count(env_vars)
-  status_cache.shelter_active = shelter.is_enabled("files")
+  status_cache.shelter_active = shelter and shelter.is_enabled and shelter.is_enabled("files") or false
 
   local status = {
     file = current_file and fn.fnamemodify(current_file, ":t") or "No env file",
@@ -352,6 +377,8 @@ function M.invalidate_cache()
     env_vars_count = 0,
     shelter_active = false,
   }
+  -- Clear ecolog reference to force re-fetch
+  _ecolog = nil
 end
 
 function M.setup(opts)

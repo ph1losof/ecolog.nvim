@@ -130,7 +130,7 @@ M.find_next_key_value = function(text, start_pos, multi_line_state)
     value = string_match(text:sub(eq_pos + 1, pos - 1), VALUE_PATTERN)
   end
 
-  if not value or #value == 0 then
+  if value == nil then
     return M.find_next_key_value(text, eq_pos + 1, multi_line_state)
   end
 

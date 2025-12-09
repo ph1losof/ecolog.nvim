@@ -183,8 +183,20 @@ function M.setup_watcher(config, state, refresh_callback)
           M._clear_monorepo_cache(config, state)
         end
 
-        -- Use debounced callback to prevent rapid-fire updates
-        debounced_callback("write_change", refresh_callback, config)
+        if
+          state.selected_env_file
+          and ev.file
+          and vim.fn.resolve(ev.file) == vim.fn.resolve(state.selected_env_file)
+        then
+          vim.schedule(function()
+            local success, err = pcall(refresh_callback, config)
+            if not success then
+              NotificationManager.notify("Immediate refresh error: " .. tostring(err), vim.log.levels.ERROR)
+            end
+          end)
+        else
+          debounced_callback("write_change", refresh_callback, config)
+        end
       end),
     }
   )
@@ -490,7 +502,7 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
   -- Debounce state to prevent rapid successive calls
   local last_change_time = 0
   local DEBOUNCE_DELAY = 100 -- ms
-  
+
   local function on_change(err, filename, events)
     if err then
       return
@@ -499,7 +511,7 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
     -- Debounce rapid file changes
     local now = uv.now()
     last_change_time = now
-    
+
     -- Schedule callback to avoid fast event context restrictions
     vim.schedule(function()
       -- Check if this is still the latest change
@@ -572,15 +584,13 @@ function M._setup_libuv_filesystem_watcher(config, state, refresh_callback)
   end
 
   -- Start watching the monorepo root recursively
-  local watch_success, watch_err = pcall(fs_event.start, fs_event, config._monorepo_root, { recursive = true }, on_change)
+  local watch_success, watch_err =
+    pcall(fs_event.start, fs_event, config._monorepo_root, { recursive = true }, on_change)
   if not watch_success then
     -- Ensure proper cleanup on startup failure
     pcall(fs_event.close, fs_event)
     state._libuv_fs_watcher = nil
-    NotificationManager.notify(
-      "Failed to start LibUV file watcher: " .. tostring(watch_err),
-      vim.log.levels.WARN
-    )
+    NotificationManager.notify("Failed to start LibUV file watcher: " .. tostring(watch_err), vim.log.levels.WARN)
     return
   end
 end

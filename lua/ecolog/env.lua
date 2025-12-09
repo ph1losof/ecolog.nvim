@@ -3,9 +3,11 @@ local utils = require("ecolog.utils")
 
 local added_vars = {}
 
-function M.update_env_vars()
+function M.update_env_vars(env_vars)
   local ecolog = require("ecolog")
-  local env_vars = ecolog.get_env_vars()
+  if not env_vars then
+    env_vars = ecolog.get_env_vars()
+  end
   local config = ecolog.get_config()
 
   if config.vim_env == false then

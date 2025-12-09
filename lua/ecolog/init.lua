@@ -502,6 +502,13 @@ function M.refresh_env_vars(opts, retry_count)
           vault.load_vault_secrets(opts.integrations.secret_managers.vault)
         end
       end
+
+      if opts.vim_env then
+        local env_module = get_env_module()
+        if env_module and env_module.update_env_vars then
+          env_module.update_env_vars()
+        end
+      end
     end)
 
     release_state_lock()

@@ -13,9 +13,7 @@ function M.update_env_vars()
   end
 
   for key, _ in pairs(added_vars) do
-    if not env_vars[key] then
-      utils.unset_env_var(key)
-    end
+    utils.unset_env_var(key)
   end
 
   added_vars = {}

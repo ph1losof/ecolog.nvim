@@ -1,7 +1,8 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 local FEATURES = {
   "cmp",
@@ -111,7 +112,7 @@ function M.force_garbage_collection()
   state.buffer.revealed_lines = {}
   collectgarbage("collect")
   state.memory.last_gc = uv.now()
-  vim.notify("Memory cleanup performed", vim.log.levels.INFO)
+  NotificationManager.info("Memory cleanup performed")
 end
 
 ---@return State

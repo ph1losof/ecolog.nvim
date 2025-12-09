@@ -1,6 +1,7 @@
 local M = {}
 
 local api = vim.api
+local NotificationManager = require("ecolog.core.notification_manager")
 local state = require("ecolog.shelter.state")
 local previewer_utils = require("ecolog.shelter.previewer_utils")
 local shelter_utils = require("ecolog.shelter.utils")
@@ -27,7 +28,7 @@ function M.setup_snacks_shelter()
 
   local ok, preview = pcall(require, "snacks.picker.preview")
   if not ok then
-    vim.notify("snacks.picker module not found. Snacks integration will be disabled.", vim.log.levels.WARN)
+    NotificationManager.warn("snacks.picker module not found. Snacks integration will be disabled.")
     return
   end
 

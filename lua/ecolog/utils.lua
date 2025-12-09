@@ -1,7 +1,8 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 -- Determine the best method for setting environment variables
 -- Prefer vim.uv.os_setenv (available in newer Neovim versions) for reliability
@@ -38,14 +39,18 @@ end
 ---@field trim string Pattern for trimming whitespace
 ---@field word string Pattern for matching word characters
 ---@field env_var string Pattern for matching environment variable names
+---@field comment_line string Pattern for matching comment lines
+---@field empty_line string Pattern for matching empty/whitespace-only lines
 M.PATTERNS = {
   env_file_combined = "^.+/%.env[%.%w]*$",
   env_line = "^[^#](.+)$",
   key_value = "([^=]+)=(.+)",
-  quoted = "^['\"](.*)['\"]$",
+  quoted = "^['\"](.*)['\"']$",
   trim = "^%s*(.-)%s*$",
   word = "[%w_]+",
   env_var = "^[%w_]+$",
+  comment_line = "^%s*#",
+  empty_line = "^%s*$",
 }
 
 -- Default patterns for .env files
@@ -539,7 +544,7 @@ function M.find_env_files(opts)
     files = env_files
   else
     if type(opts.env_file_patterns) ~= "table" then
-      vim.notify("env_file_patterns must be a table of glob patterns", vim.log.levels.WARN)
+      NotificationManager.warn("env_file_patterns must be a table of glob patterns")
       return {}
     end
 
@@ -742,7 +747,7 @@ function M.extract_line_parts(line, state)
     return M.handle_multi_line_continuation(line, state)
   end
 
-  if line:match("^%s*#") or line:match("^%s*$") then
+  if line:match(M.PATTERNS.comment_line) or line:match(M.PATTERNS.empty_line) then
     return nil, nil, nil, nil, state
   end
 
@@ -913,7 +918,7 @@ end
 ---@return string|nil value The environment variable value
 ---@return number|nil eq_pos The position of the equals sign
 function M.parse_env_line(line)
-  if not line or line:match("^%s*#") or line:match("^%s*$") then
+  if not line or line:match(M.PATTERNS.comment_line) or line:match(M.PATTERNS.empty_line) then
     return nil, nil, nil
   end
 
@@ -1104,8 +1109,8 @@ function M.parse_env_file(file_path)
                   -- If next line doesn't contain '=' or is empty/comment, might be multiline
                   if
                     next_line
-                    and not next_line:match("^%s*$")
-                    and not next_line:match("^%s*#")
+                    and not next_line:match(M.PATTERNS.empty_line)
+                    and not next_line:match(M.PATTERNS.comment_line)
                     and not next_line:find("=")
                   then
                     should_be_multiline = true
@@ -1309,18 +1314,18 @@ end
 ---@return boolean success Whether the file was generated successfully
 function M.generate_example_file(env_file)
   if not env_file or type(env_file) ~= "string" then
-    vim.notify("Invalid environment file path provided", vim.log.levels.ERROR)
+    NotificationManager.error("Invalid environment file path provided")
     return false
   end
 
   if vim.fn.filereadable(env_file) == 0 then
-    vim.notify("Environment file is not readable: " .. env_file, vim.log.levels.ERROR)
+    NotificationManager.error("Environment file is not readable: " .. env_file)
     return false
   end
 
   local f = io.open(env_file, "r")
   if not f then
-    vim.notify("Could not open .env file: " .. env_file, vim.log.levels.ERROR)
+    NotificationManager.error("Could not open .env file: " .. env_file)
     return false
   end
 
@@ -1328,7 +1333,7 @@ function M.generate_example_file(env_file)
 
   local read_success, read_err = pcall(function()
     for line in f:lines() do
-      if line:match("^%s*$") or line:match("^%s*#") then
+      if line:match(M.PATTERNS.empty_line) or line:match(M.PATTERNS.comment_line) then
         table.insert(example_content, line)
       else
         local name, comment = line:match("([^=]+)=[^#]*(#?.*)$")
@@ -1346,25 +1351,25 @@ function M.generate_example_file(env_file)
   end)
 
   if not read_success then
-    vim.notify("Error reading environment file: " .. tostring(read_err), vim.log.levels.ERROR)
+    NotificationManager.error("Error reading environment file: " .. tostring(read_err))
     return false
   end
 
   if not close_success then
-    vim.notify("Error closing environment file: " .. tostring(close_err), vim.log.levels.WARN)
+    NotificationManager.warn("Error closing environment file: " .. tostring(close_err))
   end
 
   local example_file = env_file:gsub("%.env$", "") .. ".env.example"
 
   local dir = vim.fn.fnamemodify(example_file, ":h")
   if vim.fn.isdirectory(dir) == 0 then
-    vim.notify("Directory does not exist: " .. dir, vim.log.levels.ERROR)
+    NotificationManager.error("Directory does not exist: " .. dir)
     return false
   end
 
   local out = io.open(example_file, "w")
   if not out then
-    vim.notify("Could not create .env.example file: " .. example_file, vim.log.levels.ERROR)
+    NotificationManager.error("Could not create .env.example file: " .. example_file)
     return false
   end
 
@@ -1377,15 +1382,15 @@ function M.generate_example_file(env_file)
   end)
 
   if not write_success then
-    vim.notify("Error writing to example file: " .. tostring(write_err), vim.log.levels.ERROR)
+    NotificationManager.error("Error writing to example file: " .. tostring(write_err))
     return false
   end
 
   if not out_close_success then
-    vim.notify("Error closing example file: " .. tostring(out_close_err), vim.log.levels.WARN)
+    NotificationManager.warn("Error closing example file: " .. tostring(out_close_err))
   end
 
-  vim.notify("Generated " .. example_file, vim.log.levels.INFO)
+  NotificationManager.info("Generated " .. example_file)
   return true
 end
 

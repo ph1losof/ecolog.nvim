@@ -1,7 +1,8 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 local PATTERNS = {
   SINGLE_QUOTED = "^'(.*)'$",
@@ -225,7 +226,7 @@ local function get_variable(var_name, env_vars, opts, suppress_warning)
         end
         _env_cache[var_name] = var
       elseif opts.warn_on_undefined and not suppress_warning then
-        vim.notify(string.format("Undefined variable: %s", var_name), vim.log.levels.WARN)
+        NotificationManager.warn(string.format("Undefined variable: %s", var_name))
       end
     end
   end
@@ -309,7 +310,7 @@ end
 local function process_cmd_substitution(cmd, opts)
   -- Validate command input
   if not cmd or type(cmd) ~= "string" or cmd == "" then
-    vim.notify("Invalid command for substitution", vim.log.levels.WARN)
+    NotificationManager.warn("Invalid command for substitution")
     return ""
   end
 
@@ -320,7 +321,7 @@ local function process_cmd_substitution(cmd, opts)
     -- Use disable_security option if you need full shell features
     local sanitized_cmd = cmd:gsub("[;&|`$()]", "")
     if sanitized_cmd ~= cmd then
-      vim.notify("Command contains potentially dangerous characters, sanitizing: " .. cmd, vim.log.levels.WARN)
+      NotificationManager.warn("Command contains potentially dangerous characters, sanitizing: " .. cmd)
       cmd = sanitized_cmd
     end
   end
@@ -336,7 +337,7 @@ local function process_cmd_substitution(cmd, opts)
     if opts.fail_on_cmd_error then
       error(msg)
     else
-      vim.notify(msg, vim.log.levels.ERROR)
+      NotificationManager.error(msg)
       return ""
     end
   end
@@ -348,7 +349,7 @@ local function process_cmd_substitution(cmd, opts)
     if opts.fail_on_cmd_error then
       error(msg)
     else
-      vim.notify(msg, vim.log.levels.WARN)
+      NotificationManager.warn(msg)
       return ""
     end
   end
@@ -428,7 +429,7 @@ function M.interpolate(value, env_vars, opts)
   until prev_value == value or iteration >= opts.max_iterations
 
   if iteration >= opts.max_iterations then
-    vim.notify("Maximum interpolation iterations reached", vim.log.levels.WARN)
+    NotificationManager.warn("Maximum interpolation iterations reached")
   end
 
   if opts.features.commands then
@@ -444,7 +445,7 @@ function M.interpolate(value, env_vars, opts)
           if opts.fail_on_cmd_error then
             error(cmd_result)
           else
-            vim.notify("Command substitution error: " .. tostring(cmd_result), vim.log.levels.ERROR)
+            NotificationManager.error("Command substitution error: " .. tostring(cmd_result))
             cmd_result = ""
           end
         end
@@ -458,7 +459,7 @@ function M.interpolate(value, env_vars, opts)
       if opts.fail_on_cmd_error then
         error(result)
       else
-        vim.notify("Command substitution processing failed: " .. tostring(result), vim.log.levels.ERROR)
+        NotificationManager.error("Command substitution processing failed: " .. tostring(result))
         return value
       end
     end

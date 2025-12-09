@@ -12,6 +12,9 @@ describe("notification and timer managers", function()
   local timer_manager
 
   before_each(function()
+    -- Set test mode before loading modules
+    _G._ECOLOG_TEST_MODE = true
+    
     -- Reset modules
     package.loaded["ecolog.core.notification_manager"] = nil
     package.loaded["ecolog.core.timer_manager"] = nil

@@ -11,6 +11,7 @@ local fn = vim.fn
 local lsp = vim.lsp
 
 local utils = require("ecolog.utils")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local original_handlers = {
   hover = nil,
@@ -55,12 +56,12 @@ local function handle_env_var_definition(env_var, ecolog)
   end
 
   if var.source == "shell" then
-    vim.notify("Cannot go to definition of shell variables", vim.log.levels.WARN)
+    NotificationManager.warn("Cannot go to definition of shell variables")
     return true
   end
 
   if var.source:match("^asm:") or var.source:match("^vault:") then
-    vim.notify("Cannot go to definition of secret manager variables", vim.log.levels.WARN)
+    NotificationManager.warn("Cannot go to definition of secret manager variables")
     return true
   end
 

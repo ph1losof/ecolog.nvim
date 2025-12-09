@@ -2,7 +2,7 @@
 local Cache = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 -- Hierarchical cache structure
 local _detection_cache = {} -- Provider detection results

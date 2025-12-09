@@ -1,5 +1,6 @@
 local BasePicker = require("ecolog.integrations.pickers.base")
 local api = vim.api
+local NotificationManager = require("ecolog.core.notification_manager")
 
 ---@class SnacksConfig
 ---@field shelter { mask_on_copy: boolean }
@@ -203,7 +204,7 @@ end
 function SnacksPicker:open()
   local has_snacks, snacks = pcall(require, "snacks.picker")
   if not has_snacks then
-    vim.notify("This extension requires snacks.nvim (https://github.com/folke/snacks.nvim)", vim.log.levels.ERROR)
+    NotificationManager.error("This extension requires snacks.nvim (https://github.com/folke/snacks.nvim)")
     return
   end
 

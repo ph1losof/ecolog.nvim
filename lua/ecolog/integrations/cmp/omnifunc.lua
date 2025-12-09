@@ -1,4 +1,5 @@
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local _shelter = nil
 local _providers = nil
@@ -12,7 +13,7 @@ local _augroup_id = nil
 local function safe_call(fn, ...)
   local success, result = pcall(fn, ...)
   if not success then
-    vim.notify("omnifunc error: " .. tostring(result), vim.log.levels.ERROR)
+    NotificationManager.error("omnifunc error: " .. tostring(result))
     return nil
   end
   return result
@@ -21,12 +22,12 @@ end
 -- Input validation helper
 local function validate_input(value, expected_type, name)
   if not value then
-    vim.notify("omnifunc: " .. name .. " is nil", vim.log.levels.WARN)
+    NotificationManager.warn("omnifunc: " .. name .. " is nil")
     return false
   end
 
   if expected_type and type(value) ~= expected_type then
-    vim.notify("omnifunc: " .. name .. " expected " .. expected_type .. ", got " .. type(value), vim.log.levels.WARN)
+    NotificationManager.warn("omnifunc: " .. name .. " expected " .. expected_type .. ", got " .. type(value))
     return false
   end
 
@@ -45,7 +46,7 @@ local function get_env_completion(findstart, base)
 
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
-    vim.notify("omnifunc: failed to load ecolog", vim.log.levels.WARN)
+    NotificationManager.warn("omnifunc: failed to load ecolog")
     return findstart == 1 and -1 or {}
   end
 
@@ -137,7 +138,7 @@ local function get_env_completion(findstart, base)
       end)
     end)
     if not success then
-      vim.notify("omnifunc: sort function error: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("omnifunc: sort function error: " .. tostring(err))
     end
   end
 
@@ -199,7 +200,7 @@ function M.cleanup()
   if _augroup_id then
     local success, err = pcall(vim.api.nvim_del_augroup_by_id, _augroup_id)
     if not success then
-      vim.notify("omnifunc: failed to delete augroup: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("omnifunc: failed to delete augroup: " .. tostring(err))
     end
     _augroup_id = nil
   end
@@ -208,7 +209,7 @@ function M.cleanup()
   for _, handler in ipairs(_cleanup_handlers) do
     local success, err = pcall(handler)
     if not success then
-      vim.notify("omnifunc cleanup error: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("omnifunc cleanup error: " .. tostring(err))
     end
   end
 
@@ -232,12 +233,12 @@ end
 function M.setup(opts, _, providers, shelter)
   -- Input validation
   if not providers then
-    vim.notify("omnifunc: providers is required", vim.log.levels.ERROR)
+    NotificationManager.error("omnifunc: providers is required")
     return
   end
 
   if not shelter then
-    vim.notify("omnifunc: shelter is required", vim.log.levels.ERROR)
+    NotificationManager.error("omnifunc: shelter is required")
     return
   end
 
@@ -266,7 +267,7 @@ function M.setup(opts, _, providers, shelter)
       end
     end)
     if not success then
-      vim.notify("omnifunc: failed to set completeopt: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("omnifunc: failed to set completeopt: " .. tostring(err))
     end
 
     local supported_filetypes = {}
@@ -280,7 +281,7 @@ function M.setup(opts, _, providers, shelter)
 
     local group_success, group = pcall(vim.api.nvim_create_augroup, "EcologOmnifunc", { clear = true })
     if not group_success then
-      vim.notify("omnifunc: failed to create augroup: " .. tostring(group), vim.log.levels.ERROR)
+      NotificationManager.error("omnifunc: failed to create augroup: " .. tostring(group))
       return
     end
     _augroup_id = group
@@ -296,14 +297,14 @@ function M.setup(opts, _, providers, shelter)
         end,
       })
       if not autocmd_success then
-        vim.notify("omnifunc: failed to create FileType autocmd: " .. tostring(autocmd_err), vim.log.levels.ERROR)
+        NotificationManager.error("omnifunc: failed to create FileType autocmd: " .. tostring(autocmd_err))
       end
     end
 
     local function close_preview()
       local success, err = pcall(vim.cmd, "pclose")
       if not success then
-        vim.notify("omnifunc: failed to close preview: " .. tostring(err), vim.log.levels.WARN)
+        NotificationManager.warn("omnifunc: failed to close preview: " .. tostring(err))
       end
     end
 
@@ -312,7 +313,7 @@ function M.setup(opts, _, providers, shelter)
       callback = close_preview,
     })
     if not close_success then
-      vim.notify("omnifunc: failed to create close preview autocmd: " .. tostring(close_err), vim.log.levels.ERROR)
+      NotificationManager.error("omnifunc: failed to create close preview autocmd: " .. tostring(close_err))
     end
   end
 

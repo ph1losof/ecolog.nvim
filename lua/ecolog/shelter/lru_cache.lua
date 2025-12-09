@@ -19,7 +19,7 @@
 local LRUCache = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 LRUCache.__index = LRUCache
 
 -- Add __gc metamethod to handle cleanup on garbage collection
@@ -530,7 +530,8 @@ function LRUCache:health_check()
   
   -- If we found errors, try to fix them
   if #errors > 0 then
-    vim.notify("LRU Cache corruption detected, attempting to fix: " .. table.concat(errors, ", "), vim.log.levels.WARN)
+    local NotificationManager = require("ecolog.core.notification_manager")
+    NotificationManager.warn("LRU Cache corruption detected, attempting to fix: " .. table.concat(errors, ", "))
     self:clear()
     return false, table.concat(errors, ", ")
   end

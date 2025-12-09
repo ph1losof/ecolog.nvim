@@ -1,24 +1,14 @@
 ---@class EcologShelterCommon
 ---Common utilities to reduce code duplication across shelter modules
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local api = vim.api
 
-local state, shelter_utils
-
-local function get_state()
-  if not state then
-    state = require("ecolog.shelter.state")
-  end
-  return state
-end
-
-local function get_shelter_utils()
-  if not shelter_utils then
-    shelter_utils = require("ecolog.shelter.utils")
-  end
-  return shelter_utils
-end
+-- Lazy-loaded modules using centralized lazy loader
+local lazy = require("ecolog.core.lazy_loader")
+local get_state = lazy.getter("ecolog.shelter.state")
+local get_shelter_utils = lazy.getter("ecolog.shelter.utils")
 
 -- Cache API references for performance
 local api_buf_is_valid = api.nvim_buf_is_valid
@@ -34,7 +24,7 @@ local api_win_set_option = api.nvim_win_set_option
 function M.ensure_valid_buffer(bufnr, error_message)
   if not api_buf_is_valid(bufnr) then
     if error_message then
-      vim.notify(error_message, vim.log.levels.WARN)
+      NotificationManager.warn(error_message)
     end
     return false
   end

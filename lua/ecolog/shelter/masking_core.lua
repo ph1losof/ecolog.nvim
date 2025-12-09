@@ -72,6 +72,50 @@ function M.generate_line_mask(line_value, line_length, mask_length, mask_char, i
   return final_mask
 end
 
+---Apply partial masking to a single-line value
+---Handles both fixed mask_length and dynamic length cases
+---@param value string The value to mask
+---@param mask_char string The character to use for masking
+---@param show_start number Characters to show at start
+---@param show_end number Characters to show at end
+---@param min_mask number Minimum mask characters required
+---@param mask_length number? Optional fixed mask length
+---@return string masked_value The masked value
+function M.apply_partial_masking(value, mask_char, show_start, show_end, min_mask, mask_length)
+  ensure_constants()
+
+  local value_len = #value
+  show_start = math.max(0, show_start or 0)
+  show_end = math.max(0, show_end or 0)
+  min_mask = math.max(0, min_mask or 0)
+
+  if mask_length then
+    -- Fixed mask_length mode: mask has exact length regardless of value length
+    local base_mask = string_rep(mask_char, mask_length)
+    local available_in_mask = mask_length - show_start - show_end
+
+    if mask_length <= (show_start + show_end) or available_in_mask < min_mask then
+      return base_mask
+    end
+
+    local start_part = show_start > 0 and string_sub(value, 1, math_min(show_start, value_len)) or EMPTY_STRING
+    local end_part = show_end > 0 and value_len > show_end and string_sub(value, -show_end) or EMPTY_STRING
+    local middle_mask_len = math_max(0, mask_length - #start_part - #end_part)
+
+    return start_part .. string_rep(mask_char, middle_mask_len) .. end_part
+  else
+    -- Dynamic length mode: mask length matches value length
+    local available_middle = value_len - show_start - show_end
+
+    if value_len <= (show_start + show_end) or available_middle < min_mask then
+      return string_rep(mask_char, value_len)
+    end
+
+    local end_part = show_end > 0 and string_sub(value, -show_end) or EMPTY_STRING
+    return string_sub(value, 1, show_start) .. string_rep(mask_char, available_middle) .. end_part
+  end
+end
+
 ---Add quotes around mask, placing closing quote before padding
 ---@param mask string The mask to wrap
 ---@param quote_char string The quote character

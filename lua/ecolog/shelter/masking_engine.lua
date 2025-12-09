@@ -15,57 +15,15 @@ local math_min = math.min
 local math_max = math.max
 local math_floor = math.floor
 
--- Lazy-loaded modules
-local lru_cache, common, utils, shelter_utils, comment_parser, masking_core, multiline_parsing
-
-local function get_lru_cache()
-  if not lru_cache then
-    lru_cache = require("ecolog.shelter.lru_cache")
-  end
-  return lru_cache
-end
-
-local function get_common()
-  if not common then
-    common = require("ecolog.shelter.common")
-  end
-  return common
-end
-
-local function get_utils()
-  if not utils then
-    utils = require("ecolog.utils")
-  end
-  return utils
-end
-
-local function get_shelter_utils()
-  if not shelter_utils then
-    shelter_utils = require("ecolog.shelter.utils")
-  end
-  return shelter_utils
-end
-
-local function get_comment_parser()
-  if not comment_parser then
-    comment_parser = require("ecolog.shelter.comment_parser")
-  end
-  return comment_parser
-end
-
-local function get_masking_core()
-  if not masking_core then
-    masking_core = require("ecolog.shelter.masking_core")
-  end
-  return masking_core
-end
-
-local function get_multiline_parser()
-  if not multiline_parsing then
-    multiline_parsing = require("ecolog.shelter.multiline_parsing")
-  end
-  return multiline_parsing
-end
+-- Lazy-loaded modules using centralized lazy loader
+local lazy = require("ecolog.core.lazy_loader")
+local get_lru_cache = lazy.getter("ecolog.shelter.lru_cache")
+local get_common = lazy.getter("ecolog.shelter.common")
+local get_utils = lazy.getter("ecolog.utils")
+local get_shelter_utils = lazy.getter("ecolog.shelter.utils")
+local get_comment_parser = lazy.getter("ecolog.shelter.comment_parser")
+local get_masking_core = lazy.getter("ecolog.shelter.masking_core")
+local get_multiline_parser = lazy.getter("ecolog.shelter.multiline_parsing")
 
 local perf_config = {
   parsed_cache_size = 200,

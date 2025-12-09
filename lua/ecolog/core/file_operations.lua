@@ -2,7 +2,7 @@
 local FileOperations = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 local NotificationManager = require("ecolog.core.notification_manager")
 

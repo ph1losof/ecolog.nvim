@@ -2,9 +2,10 @@
 local M = {}
 
 -- Compatibility layer for uv -> vim.uv migration
-local uv = vim.uv or uv
+local uv = require("ecolog.core.compat").uv
 
 M.DEFAULT_MONOREPO_CONFIG = require("ecolog.monorepo.config.defaults")
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local _modules = {}
 
@@ -110,7 +111,7 @@ function M.setup(config)
 
   local providers = Detection.get_providers()
   if not next(providers) then
-    vim.notify("No monorepo providers available. Disabling monorepo system.", vim.log.levels.WARN)
+    NotificationManager.warn("No monorepo providers available. Disabling monorepo system.")
     _state.enabled = false
     return
   end
@@ -134,7 +135,7 @@ function M._load_builtin_providers(provider_names)
       local provider = provider_module.new()
       Detection.register_provider(provider)
     else
-      vim.notify("Failed to load built-in provider: " .. name, vim.log.levels.WARN)
+      NotificationManager.warn("Failed to load built-in provider: " .. name)
     end
   end
 end
@@ -156,7 +157,7 @@ function M._load_custom_providers(custom_providers)
         local provider = provider_module.new(provider_config.config)
         Detection.register_provider(provider)
       else
-        vim.notify("Failed to load custom provider: " .. provider_config.module, vim.log.levels.WARN)
+        NotificationManager.warn("Failed to load custom provider: " .. provider_config.module)
       end
     elseif provider_config.provider then
       Detection.register_provider(provider_config.provider)
@@ -250,7 +251,7 @@ function M.detect_monorepo_root(path, config)
 
     providers = Detection.get_providers()
     if not next(providers) then
-      vim.notify("No monorepo providers registered. Disabling monorepo detection.", vim.log.levels.WARN)
+      NotificationManager.warn("No monorepo providers registered. Disabling monorepo detection.")
       _state.enabled = false
       return nil, nil
     end

@@ -74,6 +74,9 @@ pcall(require, 'cmp')
 pcall(require, 'blink.cmp')
 pcall(require, 'lspsaga')
 
+-- Set test mode for ecolog
+_G._ECOLOG_TEST_MODE = true
+
 -- Helper function to ensure ecolog is available in tests
 -- This is needed because tests change directory which can break module loading
 _G.ensure_ecolog_available = function()

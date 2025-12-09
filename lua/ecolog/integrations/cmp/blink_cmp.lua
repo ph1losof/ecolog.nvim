@@ -1,5 +1,6 @@
 --- @type blink.cmp.Source
 local M = {}
+local NotificationManager = require("ecolog.core.notification_manager")
 
 local _providers = nil
 local _shelter = nil
@@ -14,7 +15,7 @@ local _cleanup_handlers = {}
 local function safe_call(fn, ...)
   local success, result = pcall(fn, ...)
   if not success then
-    vim.notify("blink_cmp error: " .. tostring(result), vim.log.levels.ERROR)
+    NotificationManager.error("blink_cmp error: " .. tostring(result))
     return nil
   end
   return result
@@ -23,12 +24,12 @@ end
 -- Input validation helper
 local function validate_input(value, expected_type, name)
   if not value then
-    vim.notify("blink_cmp: " .. name .. " is nil", vim.log.levels.WARN)
+    NotificationManager.warn("blink_cmp: " .. name .. " is nil")
     return false
   end
 
   if expected_type and type(value) ~= expected_type then
-    vim.notify("blink_cmp: " .. name .. " expected " .. expected_type .. ", got " .. type(value), vim.log.levels.WARN)
+    NotificationManager.warn("blink_cmp: " .. name .. " expected " .. expected_type .. ", got " .. type(value))
     return false
   end
 
@@ -42,7 +43,7 @@ end
 function M:get_trigger_characters()
   -- Input validation
   if not _providers then
-    vim.notify("blink_cmp: providers not initialized", vim.log.levels.WARN)
+    NotificationManager.warn("blink_cmp: providers not initialized")
     return {}
   end
 
@@ -57,7 +58,7 @@ function M:get_trigger_characters()
 
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
-    vim.notify("blink_cmp: failed to load ecolog", vim.log.levels.WARN)
+    NotificationManager.warn("blink_cmp: failed to load ecolog")
     return {}
   end
 
@@ -105,12 +106,12 @@ end
 function M:get_completions(ctx, callback)
   -- Input validation
   if not callback or type(callback) ~= "function" then
-    vim.notify("blink_cmp: callback must be a function", vim.log.levels.ERROR)
+    NotificationManager.error("blink_cmp: callback must be a function")
     return function() end
   end
 
   if not ctx or not ctx.cursor or not ctx.line then
-    vim.notify("blink_cmp: invalid context provided", vim.log.levels.ERROR)
+    NotificationManager.error("blink_cmp: invalid context provided")
     callback({
       context = ctx,
       items = {},
@@ -124,13 +125,13 @@ function M:get_completions(ctx, callback)
   local safe_callback = function(result)
     local success, err = pcall(callback, result)
     if not success then
-      vim.notify("blink_cmp: callback error: " .. tostring(err), vim.log.levels.ERROR)
+      NotificationManager.error("blink_cmp: callback error: " .. tostring(err))
     end
   end
 
   local ok, ecolog = pcall(require, "ecolog")
   if not ok then
-    vim.notify("blink_cmp: failed to load ecolog", vim.log.levels.WARN)
+    NotificationManager.warn("blink_cmp: failed to load ecolog")
     safe_callback({
       context = ctx,
       items = {},
@@ -249,7 +250,7 @@ function M:get_completions(ctx, callback)
       end)
     end)
     if not success then
-      vim.notify("blink_cmp: sort function error: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("blink_cmp: sort function error: " .. tostring(err))
     end
   end
 
@@ -335,7 +336,7 @@ function M.cleanup()
   for _, handler in ipairs(_cleanup_handlers) do
     local success, err = pcall(handler)
     if not success then
-      vim.notify("blink_cmp cleanup error: " .. tostring(err), vim.log.levels.WARN)
+      NotificationManager.warn("blink_cmp cleanup error: " .. tostring(err))
     end
   end
 
@@ -359,12 +360,12 @@ end
 M.setup = function(opts, _, providers, shelter)
   -- Input validation
   if not providers then
-    vim.notify("blink_cmp: providers is required", vim.log.levels.ERROR)
+    NotificationManager.error("blink_cmp: providers is required")
     return
   end
 
   if not shelter then
-    vim.notify("blink_cmp: shelter is required", vim.log.levels.ERROR)
+    NotificationManager.error("blink_cmp: shelter is required")
     return
   end
 

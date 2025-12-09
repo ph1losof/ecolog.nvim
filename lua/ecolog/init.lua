@@ -506,7 +506,7 @@ function M.refresh_env_vars(opts, retry_count)
       if opts.vim_env then
         local env_module = get_env_module()
         if env_module and env_module.update_env_vars then
-          env_module.update_env_vars()
+          env_module.update_env_vars(state.env_vars)
         end
       end
     end)

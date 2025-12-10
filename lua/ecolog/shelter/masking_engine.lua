@@ -255,6 +255,14 @@ function M.parse_lines_cached(lines, content_hash)
     local util = get_utils()
     local key, value, comment, quote_char, updated_state = util.extract_line_parts(line, multi_line_state)
     if updated_state then
+      if multi_line_state.start_line then
+        updated_state.start_line = multi_line_state.start_line
+      end
+      
+      if updated_state.in_multi_line and not was_in_multi_line then
+        updated_state.start_line = current_line_idx
+      end
+      
       multi_line_state = updated_state
       if updated_state.in_multi_line and updated_state.key then
         local unique_tracking_key = updated_state.key .. "_line_" .. current_line_idx
@@ -284,7 +292,7 @@ function M.parse_lines_cached(lines, content_hash)
     if key and value then
 
       local unique_tracking_key = key .. "_line_" .. current_line_idx
-      local start_line = line_start_positions[unique_tracking_key] or line_start_positions[key] or current_line_idx
+      local start_line = multi_line_state.start_line or line_start_positions[unique_tracking_key] or line_start_positions[key] or current_line_idx
       local end_line = current_line_idx
 
       local unique_key = key .. "_line_" .. start_line

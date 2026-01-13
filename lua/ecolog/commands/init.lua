@@ -175,9 +175,9 @@ function M.remote_cmd(action)
 end
 
 ---Handle interpolation commands
----@param action? string "on"|"off"|"toggle"|nil
+---@param action? string "enable"|"disable"|"toggle"|nil
 function M.interpolation_cmd(action)
-  if action == "on" or action == "enable" then
+  if action == "enable" then
     lsp_commands.set_interpolation(true, function(success, enabled)
       if success then
         notify.info("Interpolation enabled")
@@ -185,7 +185,7 @@ function M.interpolation_cmd(action)
         notify.error("Failed to enable interpolation")
       end
     end)
-  elseif action == "off" or action == "disable" then
+  elseif action == "disable" then
     lsp_commands.set_interpolation(false, function(success, enabled)
       if success then
         notify.info("Interpolation disabled")
@@ -385,7 +385,7 @@ function M._register_commands()
         elseif sub == "interpolation" then
           return vim.tbl_filter(function(c)
             return c:find(arglead, 1, true) == 1
-          end, { "on", "off", "toggle" })
+          end, { "enable", "disable", "toggle" })
         end
       end
 

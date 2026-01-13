@@ -145,6 +145,17 @@ function M.setup(lsp_config)
           state.set_enabled_sources(enabled)
         end
       end)
+
+      -- Sync interpolation state for statusline
+      -- If user configured it in init_options, use that; otherwise query LSP
+      local init_opts = lsp_config.init_options or {}
+      if init_opts.interpolation and init_opts.interpolation.enabled ~= nil then
+        state.set_interpolation_enabled(init_opts.interpolation.enabled)
+      else
+        lsp_commands.get_interpolation(function(enabled)
+          state.set_interpolation_enabled(enabled)
+        end)
+      end
     end)
   end
 
@@ -180,6 +191,7 @@ function M.setup(lsp_config)
         name = "ecolog",
         cmd = config.cmd,
         root_dir = config.settings.workspace and config.settings.workspace.root or vim.fn.getcwd(),
+        init_options = config.init_options,
         settings = config.settings,
         capabilities = vim.lsp.protocol.make_client_capabilities(),
         on_attach = on_attach,
@@ -194,6 +206,7 @@ function M.setup(lsp_config)
       name = "ecolog",
       cmd = config.cmd,
       root_dir = config.settings.workspace and config.settings.workspace.root or vim.fn.getcwd(),
+      init_options = config.init_options,
       settings = config.settings,
       capabilities = vim.lsp.protocol.make_client_capabilities(),
       on_attach = on_attach,

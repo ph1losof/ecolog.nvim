@@ -25,6 +25,7 @@ M.DEFAULT_FILETYPES = {
 ---@class EcologServerConfigResult
 ---@field cmd string[] Command to start the LSP
 ---@field filetypes string[] Filetypes to attach
+---@field init_options table LSP initialization options
 ---@field settings table LSP settings
 ---@field single_file_support boolean Support single files without workspace
 ---@field name string Server name
@@ -68,9 +69,13 @@ function M.build(user_config)
   -- Merge with any additional user settings
   local settings = vim.tbl_deep_extend("force", base_settings, user_config.settings or {})
 
+  -- Build init_options (sent as initializationOptions to LSP)
+  local init_options = user_config.init_options or {}
+
   return {
     cmd = cmd,
     filetypes = user_config.filetypes or M.DEFAULT_FILETYPES,
+    init_options = init_options,
     settings = settings,
     single_file_support = true,
     name = "ecolog",

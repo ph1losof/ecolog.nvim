@@ -27,6 +27,7 @@ local M = {}
 ---@field env_patterns? string[] File patterns for env files (used for file watching)
 ---@field features? EcologFeatureConfig Feature toggles (merged with ecolog.toml)
 ---@field strict? EcologStrictConfig Strict mode settings (merged with ecolog.toml)
+---@field init_options? table LSP initialization options (interpolation, features, etc.)
 ---@field settings? table Additional LSP settings to send to server
 
 ---@class EcologPickerKeymaps
@@ -86,6 +87,7 @@ local M = {}
 ---@field picker? EcologPickerConfig Picker configuration
 ---@field statusline? EcologStatuslineConfig Statusline configuration
 ---@field sort_var_fn? fun(a: EcologVariable, b: EcologVariable): boolean Custom variable sort function
+---@field vim_env? boolean Enable vim.env sync (default: false)
 
 ---@type EcologUserConfig
 local DEFAULT_CONFIG = {
@@ -147,6 +149,7 @@ local DEFAULT_CONFIG = {
     },
   },
   sort_var_fn = nil, -- No custom sorting by default (use LSP order)
+  vim_env = false, -- Sync variables to vim.env
 }
 
 ---@type EcologUserConfig
@@ -186,6 +189,12 @@ end
 ---@return fun(a: EcologVariable, b: EcologVariable): boolean|nil
 function M.get_sort_var_fn()
   return current_config.sort_var_fn
+end
+
+---Get vim_env configuration
+---@return boolean
+function M.get_vim_env()
+  return current_config.vim_env or false
 end
 
 return M

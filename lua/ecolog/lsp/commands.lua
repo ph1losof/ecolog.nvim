@@ -110,6 +110,12 @@ function M.list_variables(file_path, callback)
 
     callback(processed_vars or vars)
 
+    -- Sync to vim.env if enabled (use raw vars, not masked)
+    if config.get_vim_env() then
+      local vim_env = require("ecolog.vim_env")
+      vim_env.sync(vars)
+    end
+
     -- Update state with count only on successful response
     state.set_var_count(#vars)
   end)

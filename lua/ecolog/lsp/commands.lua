@@ -98,6 +98,11 @@ function M.list_variables(file_path, callback)
       vars = result
     end
 
+    -- Store raw_value before any hooks can mask the value
+    for _, var in ipairs(vars) do
+      var.raw_value = var.value
+    end
+
     -- Fire hook for masking before returning
     local processed_vars = hooks.fire_filter("on_variables_list", vars)
 
@@ -311,6 +316,7 @@ function M._parse_hover_result(result)
     return {
       name = name,
       value = value or "",
+      raw_value = value or "", -- Store raw before any masking
       source = source or "",
       type = var_type,
     }
@@ -329,9 +335,11 @@ function M.get_variable(name, callback)
       return
     end
 
+    local raw_value = result.value or ""
     local var = {
       name = result.name or name,
-      value = result.value or "",
+      value = raw_value,
+      raw_value = raw_value, -- Store raw before any masking
       source = result.source or "",
       type = result.type,
     }

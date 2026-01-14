@@ -62,8 +62,8 @@ function M.pick_variables(opts)
         if not item then
           return
         end
-        -- Get unmasked value from _raw
-        local value = item._raw and item._raw.value or item.value
+        -- Get unmasked value from raw_value (stored before hooks)
+        local value = item._raw and item._raw.raw_value or item.raw_value or item.value
         common.copy_to_clipboard(value, string.format("value of '%s'", item.name))
         picker:close()
       end,
@@ -82,7 +82,8 @@ function M.pick_variables(opts)
         if not item then
           return
         end
-        local value = item._raw and item._raw.value or item.value
+        -- Get unmasked value from raw_value (stored before hooks)
+        local value = item._raw and item._raw.raw_value or item.raw_value or item.value
         picker:close()
         vim.schedule(function()
           if common.append_at_cursor(value) then

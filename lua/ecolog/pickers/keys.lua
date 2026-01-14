@@ -71,7 +71,7 @@ function M.to_fzf(key)
   end
 
   -- Single character or unknown format - return as-is
-  return key:lower():gsub("[<>]", "")
+  return (key:lower():gsub("[<>]", ""))
 end
 
 ---Get fzf-formatted keymaps

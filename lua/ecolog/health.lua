@@ -64,6 +64,7 @@ function M._check_binary()
       "  - Manual: place ecolog-lsp in PATH",
       "",
       "Searched locations:",
+      ---@diagnostic disable-next-line: deprecated
       unpack(locations),
     })
   end

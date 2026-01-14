@@ -8,7 +8,6 @@ local state = require("ecolog.state")
 local hooks = require("ecolog.hooks")
 local notify = require("ecolog.notification_manager")
 
----@alias EcologLspBackend "auto"|"native"|"lspconfig"|false
 ---@alias EcologResolvedBackend "native"|"lspconfig"|"external"
 
 ---Resolve backend from config to actual implementation
@@ -114,7 +113,7 @@ function M.setup()
 end
 
 ---Get the active ecolog LSP client
----@return vim.lsp.Client|nil
+---@return table|nil client The LSP client object
 function M.get_client()
   local client_id = state.get_client_id()
   if client_id then

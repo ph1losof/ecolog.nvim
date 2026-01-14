@@ -68,6 +68,7 @@ function M.refresh_state(file_path, callback)
 end
 
 ---List all environment variables
+---@overload fun(callback: fun(vars: EcologVariable[]))
 ---@param file_path? string Optional file path for package scoping
 ---@param callback fun(vars: EcologVariable[])
 function M.list_variables(file_path, callback)
@@ -127,6 +128,8 @@ function M.list_variables(file_path, callback)
 end
 
 ---List available env files
+---@overload fun(callback: fun(files: string[]))
+---@overload fun(file_path: string, callback: fun(files: string[]))
 ---@param file_path? string Optional file path for package scoping
 ---@param opts? { all?: boolean } Options: all=true returns all registered files (for pickers)
 ---@param callback fun(files: string[])

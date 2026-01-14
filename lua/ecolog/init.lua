@@ -124,20 +124,12 @@ function M.pickers()
 end
 
 -- Convenience functions that delegate to commands
-
----Peek at variable under cursor
-function M.peek()
-  require("ecolog.commands").peek()
-end
+-- Note: For hover (K), go-to-definition (gd), references (gr), and rename (:LspRename),
+-- use Neovim's native LSP keybindings - no plugin wrapper needed.
 
 ---Select active env file via picker
 function M.select()
   require("ecolog.commands").files_cmd("select")
-end
-
----Go to definition for variable under cursor
-function M.goto_definition()
-  require("ecolog.commands").goto_definition()
 end
 
 ---Copy variable name or value at cursor

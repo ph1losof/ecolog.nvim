@@ -3,11 +3,22 @@
 local M = {}
 
 local notify = require("ecolog.notification_manager")
+local hooks = require("ecolog.hooks")
 local api = vim.api
 local fn = vim.fn
 
 ---@type number|nil
 local original_winid = nil
+
+---@class EcologDisplayEntry
+---@field name string Variable name
+---@field value string|nil Variable value (may be masked)
+---@field source string|nil Source file path
+---@field raw EcologVariable Original unmasked variable data
+
+---@class EcologVariablesData
+---@field entries EcologDisplayEntry[] Transformed entries
+---@field longest_name number Longest variable name length for alignment
 
 ---Save current window for later use
 ---Call this before opening a picker
@@ -77,6 +88,89 @@ function M.goto_source(source)
   else
     notify.warn("Cannot find file: " .. source)
   end
+end
+
+---Build display entries from variables list
+---Transforms variables through hooks and calculates alignment
+---@param vars EcologVariable[] Raw variables from LSP
+---@return EcologVariablesData
+function M.build_entries(vars)
+  local entries = {}
+  local longest_name = 0
+
+  for _, var in ipairs(vars) do
+    longest_name = math.max(longest_name, #var.name)
+  end
+
+  for _, var in ipairs(vars) do
+    -- Transform through hooks for display (may mask values)
+    local display = hooks.fire_filter("on_picker_entry", {
+      name = var.name,
+      value = var.value,
+      source = var.source,
+    })
+
+    table.insert(entries, {
+      name = display.name,
+      value = display.value,
+      source = display.source,
+      raw = var, -- Keep original for actions that need unmasked value
+    })
+  end
+
+  return {
+    entries = entries,
+    longest_name = longest_name,
+  }
+end
+
+---Get unmasked variable value through peek hook
+---@param var EcologVariable Variable to peek
+---@return EcologVariable var with unmasked value
+function M.get_unmasked(var)
+  return hooks.fire_filter("on_variable_peek", var) or var
+end
+
+---Copy variable value to clipboard (unmasked)
+---@param var EcologVariable Variable to copy value from
+function M.copy_value(var)
+  local unmasked = M.get_unmasked(var)
+  M.copy_to_clipboard(unmasked.value, "value of '" .. var.name .. "'")
+end
+
+---Copy variable name to clipboard
+---@param var EcologVariable Variable to copy name from
+function M.copy_name(var)
+  M.copy_to_clipboard(var.name, "variable '" .. var.name .. "' name")
+end
+
+---Append variable value at cursor (unmasked)
+---@param var EcologVariable Variable to append value from
+---@return boolean success
+function M.append_value(var)
+  local unmasked = M.get_unmasked(var)
+  local success = M.append_at_cursor(unmasked.value)
+  if success then
+    notify.info("Appended value")
+  end
+  return success
+end
+
+---Append variable name at cursor
+---@param var EcologVariable Variable to append name from
+---@return boolean success
+function M.append_name(var)
+  local success = M.append_at_cursor(var.name)
+  if success then
+    notify.info("Appended " .. var.name)
+  end
+  return success
+end
+
+---Go to variable source file
+---@param var EcologVariable Variable to navigate to
+function M.goto_var_source(var)
+  M.goto_source(var.source)
 end
 
 return M

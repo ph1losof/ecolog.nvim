@@ -234,13 +234,15 @@ end
 function M.get_variable_at_cursor(bufnr, callback)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
 
-  local params = vim.lsp.util.make_position_params()
   local client = lsp.get_client()
-
   if not client then
     callback(nil)
     return
   end
+
+  -- Get position encoding from client to avoid deprecation warning
+  local position_encoding = client.offset_encoding or "utf-16"
+  local params = vim.lsp.util.make_position_params(0, position_encoding)
 
   client:request("textDocument/hover", params, function(err, result)
     if err or not result then

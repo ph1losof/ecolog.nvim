@@ -3,7 +3,6 @@
 local M = {}
 
 local lsp_commands = require("ecolog.lsp.commands")
-local hooks = require("ecolog.hooks")
 local picker_keys = require("ecolog.pickers.keys")
 local common = require("ecolog.pickers.common")
 local notify = require("ecolog.notification_manager")
@@ -28,28 +27,18 @@ function M.pick_variables(opts)
       return
     end
 
-    -- Find longest name for alignment
-    local longest_name = 0
-    for _, var in ipairs(vars) do
-      longest_name = math.max(longest_name, #var.name)
-    end
+    -- Build entries using common helper
+    local data = common.build_entries(vars)
 
-    -- Build entries
-    local entries = {}
+    -- Build display strings and map to raw variables
+    local display_entries = {}
     local entry_map = {}
 
-    for _, var in ipairs(vars) do
-      -- Transform through hooks for display
-      local display = hooks.fire_filter("on_picker_entry", {
-        name = var.name,
-        value = var.value,
-        source = var.source,
-      })
-
-      local format_str = "%-" .. longest_name .. "s │ %-40s │ %s"
-      local entry = string.format(format_str, display.name, display.value or "", display.source or "")
-      table.insert(entries, entry)
-      entry_map[entry] = var
+    for _, entry in ipairs(data.entries) do
+      local format_str = "%-" .. data.longest_name .. "s │ %-40s │ %s"
+      local display = string.format(format_str, entry.name, entry.value or "", entry.source or "")
+      table.insert(display_entries, display)
+      entry_map[display] = entry.raw
     end
 
     -- Get configured keymaps in fzf format
@@ -65,9 +54,7 @@ function M.pick_variables(opts)
             opts.on_select(var)
           else
             vim.schedule(function()
-              if common.append_at_cursor(var.name) then
-                notify.info("Appended " .. var.name)
-              end
+              common.append_name(var)
             end)
           end
         end
@@ -78,10 +65,7 @@ function M.pick_variables(opts)
     if k.copy_value and k.copy_value ~= "" then
       fzf_actions[k.copy_value] = function(selected)
         if #selected > 0 then
-          local var = entry_map[selected[1]]
-          -- Get unmasked value via peek hook
-          var = hooks.fire_filter("on_variable_peek", var) or var
-          common.copy_to_clipboard(var.value, "value of '" .. var.name .. "'")
+          common.copy_value(entry_map[selected[1]])
         end
       end
     end
@@ -90,8 +74,7 @@ function M.pick_variables(opts)
     if k.copy_name and k.copy_name ~= "" then
       fzf_actions[k.copy_name] = function(selected)
         if #selected > 0 then
-          local var = entry_map[selected[1]]
-          common.copy_to_clipboard(var.name, "variable '" .. var.name .. "' name")
+          common.copy_name(entry_map[selected[1]])
         end
       end
     end
@@ -100,9 +83,8 @@ function M.pick_variables(opts)
     if k.goto_source and k.goto_source ~= "" then
       fzf_actions[k.goto_source] = function(selected)
         if #selected > 0 then
-          local var = entry_map[selected[1]]
           vim.schedule(function()
-            common.goto_source(var.source)
+            common.goto_var_source(entry_map[selected[1]])
           end)
         end
       end
@@ -112,18 +94,14 @@ function M.pick_variables(opts)
     if k.append_value and k.append_value ~= "" then
       fzf_actions[k.append_value] = function(selected)
         if #selected > 0 then
-          local var = entry_map[selected[1]]
-          var = hooks.fire_filter("on_variable_peek", var) or var
           vim.schedule(function()
-            if common.append_at_cursor(var.value) then
-              notify.info("Appended value")
-            end
+            common.append_value(entry_map[selected[1]])
           end)
         end
       end
     end
 
-    fzf.fzf_exec(entries, {
+    fzf.fzf_exec(display_entries, {
       prompt = "Env Variables> ",
       actions = fzf_actions,
       winopts = {

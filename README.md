@@ -1,13 +1,20 @@
-# ecolog.nvim
+# 🌲 ecolog.nvim
 
 <div align="center">
 
 ![Neovim](https://img.shields.io/badge/NeoVim-%2357A143.svg?&style=for-the-badge&logo=neovim&logoColor=white)
 ![Lua](https://img.shields.io/badge/lua-%232C2D72.svg?style=for-the-badge&logo=lua&logoColor=white)
 
-**LSP-powered environment variable management for Neovim**
+Ecolog (эколог) - your environment guardian in Neovim. Named after the Russian word for "environmentalist", this plugin protects and manages your environment variables with the same care an ecologist shows for nature.
 
-A modern Neovim plugin that leverages the Language Server Protocol for intelligent environment variable completion, hover information, go-to-definition, references, and diagnostics across your codebase.
+A modern LSP-powered Neovim plugin for seamless environment variable integration and management. Provides intelligent auto-completion, hover, go-to-definition, references, and diagnostics for environment variables in your projects.
+
+> ⚠️ **Upgrading from v1?** If you previously used ecolog.nvim with `shelter.modules`, `integrations.nvim_cmp`, or other v1 config options:
+>
+> - **See [MIGRATION.md](MIGRATION.md)** for the full migration guide
+> - **Stay on v1:** Use `branch = "v1"` in your plugin manager until you migrate
+>
+> v1 receives security fixes only. New features are developed for v2.
 
 </div>
 
@@ -15,50 +22,52 @@ A modern Neovim plugin that leverages the Language Server Protocol for intellige
 
 ## Table of Contents
 
-- [Architecture](#architecture)
-- [Installation](#installation)
+- [Architecture](#-architecture)
+- [Installation](#-installation)
   - [Prerequisites](#prerequisites)
   - [Plugin Setup](#plugin-setup)
   - [Binary Installation](#binary-installation)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [Configuration](#-configuration)
   - [LSP Configuration](#lsp-configuration)
   - [Picker Configuration](#picker-configuration)
   - [Statusline Configuration](#statusline-configuration)
   - [Additional Options](#additional-options)
   - [Full Configuration Example](#full-configuration-example)
-- [Commands](#commands)
-- [Lua API](#lua-api)
-- [Hooks System](#hooks-system)
+- [Commands](#-commands)
+- [Lua API](#-lua-api)
+- [Hooks System](#-hooks-system)
   - [Available Hooks](#available-hooks)
   - [Hook Registration](#hook-registration)
   - [shelter.nvim Integration](#shelternvim-integration)
-- [Picker Integration](#picker-integration)
+- [shelter.nvim Integration](#️-shelternvim-integration)
+- [Picker Integration](#-picker-integration)
   - [Supported Backends](#supported-backends)
   - [Keymaps](#keymaps)
   - [Variables Picker](#variables-picker)
   - [Files Picker](#files-picker)
-- [Statusline Integration](#statusline-integration)
+- [Statusline Integration](#-statusline-integration)
   - [Built-in Statusline](#built-in-statusline)
   - [Lualine Integration](#lualine-integration)
   - [Status Data Access](#status-data-access)
-- [LSP Backends](#lsp-backends)
+- [LSP Backends](#-lsp-backends)
   - [Auto Mode](#auto-mode-default)
   - [Native Mode](#native-mode)
   - [LSPConfig Mode](#lspconfig-mode)
   - [External Mode](#external-mode)
-- [ecolog.toml Configuration](#ecologtoml-configuration)
-- [Supported Languages](#supported-languages)
-- [Health Check](#health-check)
-- [Troubleshooting](#troubleshooting)
-- [Related Projects](#related-projects)
+- [ecolog.toml Configuration](#-ecologtoml-configuration)
+- [Supported Languages](#-supported-languages)
+- [Health Check](#-health-check)
+- [Troubleshooting](#-troubleshooting)
+- [Author Setup](#️-author-setup)
+- [Related Projects](#-related-projects)
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
-This plugin is the **LSP client** for [ecolog-lsp](../ecolog-lsp/), a Language Server that provides intelligent environment variable analysis using tree-sitter.
+This plugin is the **LSP client** for [ecolog-lsp](https://github.com/ph1losof/ecolog-lsp), a Language Server that provides intelligent environment variable analysis using tree-sitter.
 
 **Key differences from traditional approaches:**
 
@@ -72,7 +81,7 @@ This plugin is the **LSP client** for [ecolog-lsp](../ecolog-lsp/), a Language S
 
 ---
 
-## Installation
+## 📦 Installation
 
 ### Prerequisites
 
@@ -85,7 +94,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-  "ecolog/ecolog-plugin",
+  "ph1losof/ecolog.nvim",
   lazy = false,
   config = function()
     require("ecolog").setup()
@@ -97,7 +106,7 @@ Using [packer.nvim](https://github.com/wbthomason/packer.nvim):
 
 ```lua
 use {
-  "ecolog/ecolog-plugin",
+  "ph1losof/ecolog.nvim",
   config = function()
     require("ecolog").setup()
   end,
@@ -136,7 +145,7 @@ The plugin automatically detects the binary in this order:
 
 ---
 
-## Features
+## ✨ Features
 
 **LSP-Powered Intelligence**
 
@@ -180,9 +189,15 @@ The plugin automatically detects the binary in this order:
 - Sync variables to `vim.env`
 - Generate `.env.example` files
 
+**Security**
+
+- Integrate with [shelter.nvim](https://github.com/ph1losof/shelter.nvim) for value masking
+- Prevent accidental exposure in screen shares, meetings, and recordings
+- Copy actual values when needed while keeping display masked
+
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 **Minimal setup:**
 
@@ -205,7 +220,7 @@ vim.keymap.set("n", "<leader>ef", "<cmd>Ecolog files select<cr>", { desc = "Sele
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 ### LSP Configuration
 
@@ -387,7 +402,7 @@ require("ecolog").setup({
 
 ---
 
-## Commands
+## 📋 Commands
 
 All commands use the format `:Ecolog <subcommand> [action]`:
 
@@ -419,7 +434,7 @@ All commands use the format `:Ecolog <subcommand> [action]`:
 
 ---
 
-## Lua API
+## 🔧 Lua API
 
 ### Core Functions
 
@@ -513,9 +528,9 @@ require("lualine").setup({
 
 ---
 
-## Hooks System
+## 🪝 Hooks System
 
-The hooks system enables external integrations like [shelter.nvim](../shelter.nvim/) for value masking.
+The hooks system enables external integrations like [shelter.nvim](https://github.com/ph1losof/shelter.nvim) for value masking.
 
 ### Available Hooks
 
@@ -595,7 +610,7 @@ end, { priority = 200 })
 
 ---
 
-## Picker Integration
+## 🔍 Picker Integration
 
 ### Supported Backends
 
@@ -669,7 +684,7 @@ Shows all detected `.env` files in the workspace.
 
 ---
 
-## Statusline Integration
+## 📊 Statusline Integration
 
 ### Built-in Statusline
 
@@ -939,11 +954,9 @@ Run the health check to diagnose issues:
 
 ## Related Projects
 
-- **[ecolog-lsp](../ecolog-lsp/)** - The Language Server providing all analysis
-- **[abundantis](../abundantis/)** - Resolution engine with plugin architecture
-- **[germi](../germi/)** - SIMD-accelerated variable interpolation
-- **[korni](../korni/)** - Zero-copy `.env` file parser
-- **[shelter.nvim](../shelter.nvim/)** - Value masking for Neovim
+- **[ecolog-lsp](https://github.com/ph1losof/ecolog-lsp)** - The Language Server providing all analysis
+- **[shelter.nvim](https://github.com/ph1losof/shelter.nvim)** - Value masking to prevent accidental exposure in meetings
+- **[korni](https://github.com/ph1losof/korni)** - Zero-copy `.env` file parser
 
 ---
 

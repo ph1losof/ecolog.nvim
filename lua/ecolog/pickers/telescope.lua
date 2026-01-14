@@ -3,7 +3,6 @@
 local M = {}
 
 local lsp_commands = require("ecolog.lsp.commands")
-local hooks = require("ecolog.hooks")
 local picker_keys = require("ecolog.pickers.keys")
 local common = require("ecolog.pickers.common")
 local notify = require("ecolog.notification_manager")
@@ -35,36 +34,18 @@ function M.pick_variables(opts)
       return
     end
 
-    -- Find longest name for alignment
-    local longest_name = 0
-    for _, var in ipairs(vars) do
-      longest_name = math.max(longest_name, #var.name)
-    end
+    -- Build entries using common helper
+    local data = common.build_entries(vars)
 
     -- Create entry displayer
     local displayer = entry_display.create({
       separator = " ",
       items = {
-        { width = longest_name + 2 }, -- name
+        { width = data.longest_name + 2 }, -- name
         { width = 40 }, -- value
         { remaining = true }, -- source
       },
     })
-
-    local make_display = function(entry)
-      -- Transform through hooks
-      local display_entry = hooks.fire_filter("on_picker_entry", {
-        name = entry.name,
-        value = entry.value,
-        source = entry.source,
-      })
-
-      return displayer({
-        { display_entry.name, "Identifier" },
-        { display_entry.value or "", "String" },
-        { display_entry.source or "", "Comment" },
-      })
-    end
 
     pickers
       .new({
@@ -74,15 +55,21 @@ function M.pick_variables(opts)
       }, {
         prompt_title = "Environment Variables",
         finder = finders.new_table({
-          results = vars,
-          entry_maker = function(var)
+          results = data.entries,
+          entry_maker = function(entry)
             return {
-              value = var,
-              display = make_display,
-              ordinal = var.name .. " " .. (var.value or "") .. " " .. (var.source or ""),
-              name = var.name,
-              source = var.source,
-              _raw = var,
+              value = entry.raw,
+              display = function()
+                return displayer({
+                  { entry.name, "Identifier" },
+                  { entry.value or "", "String" },
+                  { entry.source or "", "Comment" },
+                })
+              end,
+              ordinal = entry.name .. " " .. (entry.value or "") .. " " .. (entry.source or ""),
+              name = entry.name,
+              source = entry.source,
+              _raw = entry.raw,
             }
           end,
         }),
@@ -97,9 +84,7 @@ function M.pick_variables(opts)
               opts.on_select(selection.value)
             else
               vim.schedule(function()
-                if common.append_at_cursor(selection.name) then
-                  notify.info("Appended " .. selection.name)
-                end
+                common.append_name(selection.value)
               end)
             end
           end)
@@ -108,52 +93,47 @@ function M.pick_variables(opts)
           local k = picker_keys.get_telescope()
 
           -- Copy value
-          local function copy_value_action()
-            local selection = action_state.get_selected_entry()
-            -- Get unmasked value via peek hook
-            local var = hooks.fire_filter("on_variable_peek", selection.value) or selection.value
-            common.copy_to_clipboard(var.value, "value of '" .. selection.name .. "'")
-          end
           if k.copy_value and k.copy_value ~= "" then
+            local function copy_value_action()
+              local selection = action_state.get_selected_entry()
+              common.copy_value(selection.value)
+            end
             map("i", k.copy_value, copy_value_action)
             map("n", k.copy_value, copy_value_action)
           end
 
           -- Copy name
-          local function copy_name_action()
-            local selection = action_state.get_selected_entry()
-            common.copy_to_clipboard(selection.name, "variable '" .. selection.name .. "' name")
-          end
           if k.copy_name and k.copy_name ~= "" then
+            local function copy_name_action()
+              local selection = action_state.get_selected_entry()
+              common.copy_name(selection.value)
+            end
             map("i", k.copy_name, copy_name_action)
             map("n", k.copy_name, copy_name_action)
           end
 
           -- Go to source file
-          local function go_to_source_action()
-            local selection = action_state.get_selected_entry()
-            actions.close(prompt_bufnr)
-            vim.schedule(function()
-              common.goto_source(selection.source)
-            end)
-          end
           if k.goto_source and k.goto_source ~= "" then
+            local function go_to_source_action()
+              local selection = action_state.get_selected_entry()
+              actions.close(prompt_bufnr)
+              vim.schedule(function()
+                common.goto_var_source(selection.value)
+              end)
+            end
             map("i", k.goto_source, go_to_source_action)
             map("n", k.goto_source, go_to_source_action)
           end
 
           -- Append value at cursor
-          local function append_value_action()
-            local selection = action_state.get_selected_entry()
-            local var = hooks.fire_filter("on_variable_peek", selection.value) or selection.value
-            actions.close(prompt_bufnr)
-            vim.schedule(function()
-              if common.append_at_cursor(var.value) then
-                notify.info("Appended value")
-              end
-            end)
-          end
           if k.append_value and k.append_value ~= "" then
+            local function append_value_action()
+              actions.close(prompt_bufnr)
+              local selection = action_state.get_selected_entry()
+              vim.schedule(function()
+                common.append_value(selection.value)
+              end)
+            end
             map("i", k.append_value, append_value_action)
             map("n", k.append_value, append_value_action)
           end

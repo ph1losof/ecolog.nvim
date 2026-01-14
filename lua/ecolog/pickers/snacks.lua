@@ -3,7 +3,6 @@
 local M = {}
 
 local lsp_commands = require("ecolog.lsp.commands")
-local hooks = require("ecolog.hooks")
 local keys = require("ecolog.pickers.keys")
 local common = require("ecolog.pickers.common")
 local notify = require("ecolog.notification_manager")
@@ -28,93 +27,70 @@ function M.pick_variables(opts)
       return
     end
 
-    -- Build items with proper fields
+    -- Build entries using common helper
+    local data = common.build_entries(vars)
+
+    -- Build items for snacks picker
     local items = {}
-    local longest_name = 0
-    for _, var in ipairs(vars) do
-      longest_name = math.max(longest_name, #var.name)
-    end
-
-    for i, var in ipairs(vars) do
-      -- Transform through hooks
-      local display = hooks.fire_filter("on_picker_entry", {
-        name = var.name,
-        value = var.value,
-        source = var.source,
-      })
-
+    for i, entry in ipairs(data.entries) do
       table.insert(items, {
         idx = i,
-        text = display.name .. " " .. (display.value or ""),
-        name = display.name,
-        value = display.value or "",
-        source = display.source or "",
-        file = display.source, -- For go-to-file action
-        _raw = var,
-        _longest = longest_name,
+        text = entry.name .. " " .. (entry.value or ""),
+        name = entry.name,
+        value = entry.value or "",
+        source = entry.source or "",
+        file = entry.source, -- For go-to-file action
+        _raw = entry.raw,
+        _longest = data.longest_name,
       })
     end
 
-    -- Define actions
+    -- Define actions using common helpers
     local actions = {
       copy_value = function(picker)
         local item = picker:current()
-        if not item then
-          return
+        if item and item._raw then
+          common.copy_value(item._raw)
         end
-        -- Get unmasked value from raw_value (stored before hooks)
-        local value = item._raw and item._raw.raw_value or item.raw_value or item.value
-        common.copy_to_clipboard(value, string.format("value of '%s'", item.name))
         picker:close()
       end,
 
       copy_name = function(picker)
         local item = picker:current()
-        if not item then
-          return
+        if item and item._raw then
+          common.copy_name(item._raw)
         end
-        common.copy_to_clipboard(item.name, string.format("variable '%s' name", item.name))
         picker:close()
       end,
 
       append_value = function(picker)
         local item = picker:current()
-        if not item then
-          return
-        end
-        -- Get unmasked value from raw_value (stored before hooks)
-        local value = item._raw and item._raw.raw_value or item.raw_value or item.value
         picker:close()
-        vim.schedule(function()
-          if common.append_at_cursor(value) then
-            notify.info("Appended value")
-          end
-        end)
+        if item and item._raw then
+          vim.schedule(function()
+            common.append_value(item._raw)
+          end)
+        end
       end,
 
       append_name = function(picker)
         local item = picker:current()
-        if not item then
-          return
-        end
         picker:close()
-        vim.schedule(function()
-          if common.append_at_cursor(item.name) then
-            notify.info("Appended name")
-          end
-        end)
+        if item and item._raw then
+          vim.schedule(function()
+            common.append_name(item._raw)
+          end)
+        end
       end,
 
       goto_source = function(picker)
         local item = picker:current()
-        if not item then
-          return
-        end
-        local source = item._raw and item._raw.source or item.source
         picker:close()
-        vim.schedule(function()
-          common.goto_source(source)
-        end)
+        if item and item._raw then
+          vim.schedule(function()
+            common.goto_var_source(item._raw)
+          end)
+        end
       end,
     }
 
@@ -169,16 +145,13 @@ function M.pick_variables(opts)
         if not item then
           return
         end
+        picker:close()
         if opts.on_select then
-          picker:close()
           opts.on_select(item._raw)
         else
           -- Default: append name at cursor
-          picker:close()
           vim.schedule(function()
-            if common.append_at_cursor(item.name) then
-              notify.info("Appended " .. item.name)
-            end
+            common.append_name(item._raw)
           end)
         end
       end,

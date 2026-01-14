@@ -1,5 +1,6 @@
 -- Integration tests for statusline state updates
 -- Tests source enable/disable, file switching, and file deletion scenarios
+---@diagnostic disable: undefined-global
 
 local state = require("ecolog.state")
 

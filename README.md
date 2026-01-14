@@ -116,12 +116,6 @@ use {
 
 The plugin requires the `ecolog-lsp` binary. Choose one method:
 
-**Mason (recommended):**
-
-```vim
-:MasonInstall ecolog-lsp
-```
-
 **Cargo:**
 
 ```bash

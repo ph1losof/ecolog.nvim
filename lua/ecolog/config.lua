@@ -155,10 +155,90 @@ local DEFAULT_CONFIG = {
 ---@type EcologUserConfig
 local current_config = vim.deepcopy(DEFAULT_CONFIG)
 
+-- Valid top-level configuration keys for v2
+local VALID_KEYS = {
+  "lsp",
+  "picker",
+  "statusline",
+  "sort_var_fn",
+  "vim_env",
+}
+
+-- Valid nested keys for deeper validation
+local VALID_LSP_KEYS = {
+  "backend",
+  "client",
+  "cmd",
+  "filetypes",
+  "root_dir",
+  "env_patterns",
+  "features",
+  "strict",
+  "init_options",
+  "settings",
+}
+
+---Check for unrecognized configuration keys
+---@param opts table
+---@return string[] unrecognized_keys
+local function find_unrecognized_keys(opts)
+  local unrecognized = {}
+
+  -- Check top-level keys
+  for key, _ in pairs(opts) do
+    local found = false
+    for _, valid_key in ipairs(VALID_KEYS) do
+      if key == valid_key then
+        found = true
+        break
+      end
+    end
+    if not found then
+      table.insert(unrecognized, key)
+    end
+  end
+
+  -- Check lsp nested keys
+  if opts.lsp and type(opts.lsp) == "table" then
+    for key, _ in pairs(opts.lsp) do
+      local found = false
+      for _, valid_key in ipairs(VALID_LSP_KEYS) do
+        if key == valid_key then
+          found = true
+          break
+        end
+      end
+      if not found then
+        table.insert(unrecognized, "lsp." .. key)
+      end
+    end
+  end
+
+  return unrecognized
+end
+
 ---Setup configuration
 ---@param opts? EcologUserConfig
 function M.setup(opts)
-  current_config = vim.tbl_deep_extend("force", vim.deepcopy(DEFAULT_CONFIG), opts or {})
+  opts = opts or {}
+
+  -- Check for unrecognized keys and warn about v1 branch
+  local unrecognized = find_unrecognized_keys(opts)
+  if #unrecognized > 0 then
+    vim.schedule(function()
+      vim.notify(
+        string.format(
+          "[ecolog.nvim] Unrecognized config option(s): %s\n"
+            .. "This version (v2) has a different configuration API.\n"
+            .. "If you were using ecolog.nvim before, use branch = 'v1' in your plugin config to keep the old version.",
+          table.concat(unrecognized, ", ")
+        ),
+        vim.log.levels.WARN
+      )
+    end)
+  end
+
+  current_config = vim.tbl_deep_extend("force", vim.deepcopy(DEFAULT_CONFIG), opts)
 end
 
 ---Get current configuration

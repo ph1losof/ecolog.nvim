@@ -14,8 +14,9 @@ A modern LSP-powered Neovim plugin for seamless environment variable integration
 >
 > - Use `branch = "v1"` in your plugin manager until you migrate
 
-</div>
+![CleanShot 2026-01-14 at 17 41 04](https://github.com/user-attachments/assets/b5aa42e6-3fae-4a4f-b88f-c1b00eaff495)
 
+</div>
 ---
 
 ## Table of Contents

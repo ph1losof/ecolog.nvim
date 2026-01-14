@@ -147,10 +147,19 @@ function M.setup(lsp_config)
       end)
 
       -- Sync interpolation state for statusline
-      -- If user configured it in init_options, use that; otherwise query LSP
+      -- If user configured it in init_options, explicitly send the command to LSP
+      -- (init_options may not be processed by all LSP versions)
       local init_opts = lsp_config.init_options or {}
       if init_opts.interpolation and init_opts.interpolation.enabled ~= nil then
-        state.set_interpolation_enabled(init_opts.interpolation.enabled)
+        local desired_state = init_opts.interpolation.enabled
+        lsp_commands.set_interpolation(desired_state, function(success)
+          if success then
+            state.set_interpolation_enabled(desired_state)
+          else
+            -- Fallback: at least set the state even if command failed
+            state.set_interpolation_enabled(desired_state)
+          end
+        end)
       else
         lsp_commands.get_interpolation(function(enabled)
           state.set_interpolation_enabled(enabled)

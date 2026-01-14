@@ -9,12 +9,12 @@ Ecolog (эколог) - your environment guardian in Neovim. Named after the Rus
 
 A modern LSP-powered Neovim plugin for seamless environment variable integration and management. Provides intelligent auto-completion, hover, go-to-definition, references, and diagnostics for environment variables in your projects.
 
-> ⚠️ **Upgrading from v1?** If you previously used ecolog.nvim with `shelter.modules`, `integrations.nvim_cmp`, or other v1 config options:
+> ⚠️ This is a full rewrite of ecolog.nvim
+> If you previously used ecolog.nvim with `shelter.modules`, `integrations.nvim_cmp`, or other v1 config options:
 >
-> - **See [MIGRATION.md](MIGRATION.md)** for the full migration guide
-> - **Stay on v1:** Use `branch = "v1"` in your plugin manager until you migrate
+> - Use `branch = "v1"` in your plugin manager until you migrate
 >
-> v1 receives security fixes only. New features are developed for v2.
+> v1 receives security fixes only. New features are developed only for v2.
 
 </div>
 

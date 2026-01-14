@@ -13,8 +13,6 @@ A modern LSP-powered Neovim plugin for seamless environment variable integration
 > If you previously used ecolog.nvim with `shelter.modules`, `integrations.nvim_cmp`, or other v1 config options:
 >
 > - Use `branch = "v1"` in your plugin manager until you migrate
->
-> v1 receives security fixes only. New features are developed only for v2.
 
 </div>
 
@@ -60,7 +58,6 @@ A modern LSP-powered Neovim plugin for seamless environment variable integration
 - [Supported Languages](#-supported-languages)
 - [Health Check](#-health-check)
 - [Troubleshooting](#-troubleshooting)
-- [Author Setup](#️-author-setup)
 - [Related Projects](#-related-projects)
 
 ---

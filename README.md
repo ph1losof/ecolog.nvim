@@ -9,6 +9,8 @@ Ecolog (эколог) - your environment guardian in Neovim. Named after the Rus
 
 A Neovim plugin for seamless environment variable integration and management. Provides intelligent autocompletion, type checking, and value peeking for environment variables in your projects. All in one place.
 
+> 💡 **LATEST INFO**: Please set branch to **v1** or consider **beta** if possible, **beta** is a complete rewrite of ecolog.nvim from the ground up.
+
 ![CleanShot 2025-01-03 at 21 20 37](https://github.com/user-attachments/assets/f19c9979-7334-44ac-8845-77db2e93d187)
 
 </div>
@@ -107,6 +109,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   'ph1losof/ecolog.nvim',
+  branch = "v1",
   -- Optional: you can add some keybindings
   -- (I personally use lspsaga so check out lspsaga integration or lsp integration for a smoother experience without separate keybindings)
   keys = {
@@ -2630,6 +2633,7 @@ It's author's (`ph1losof`) personal setup for ecolog.nvim, it is opionated. Howe
 ```lua
   {
     'ph1losof/ecolog.nvim',
+    branch = "v1",
     keys = {
       { '<leader>e', '', desc = '+ecolog', mode = { 'n', 'v' } },
       { '<leader>el', '<Cmd>EcologShelterLinePeek<cr>', desc = 'Peek line' },

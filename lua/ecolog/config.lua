@@ -18,6 +18,14 @@ local M = {}
 ---@field hover? boolean Strict hover mode (default: true)
 ---@field completion? boolean Strict completion mode (default: true)
 
+---@class EcologSourceDefaults
+---@field shell? boolean Enable Shell source by default (default: true)
+---@field file? boolean Enable File source by default (default: true)
+---@field remote? boolean Enable Remote source by default (default: false)
+
+---@class EcologSourcesConfig
+---@field defaults? EcologSourceDefaults Default enable states for sources
+
 ---@class EcologLspConfig
 ---@field backend? EcologLspBackend LSP setup backend (default: "auto")
 ---@field client? string Client name to match when backend=false (default: "ecolog")
@@ -29,6 +37,7 @@ local M = {}
 ---@field strict? EcologStrictConfig Strict mode settings (merged with ecolog.toml)
 ---@field init_options? table LSP initialization options (interpolation, features, etc.)
 ---@field settings? table Additional LSP settings to send to server
+---@field sources? EcologSourcesConfig Source configuration (defaults, etc.)
 
 ---@class EcologPickerKeymaps
 ---@field copy_value? string Copy variable value (default: "<C-y>")
@@ -98,6 +107,13 @@ local DEFAULT_CONFIG = {
     filetypes = nil, -- nil = attach to all buffers; or specify list like {"javascript", "python"}
     env_patterns = { "*.env", ".env.*" }, -- Patterns for env file watching
     settings = {},
+    sources = {
+      defaults = {
+        shell = true,
+        file = true,
+        remote = false,
+      },
+    },
   },
   picker = {
     backend = nil, -- auto-detect
@@ -176,6 +192,7 @@ local VALID_LSP_KEYS = {
   "strict",
   "init_options",
   "settings",
+  "sources",
 }
 
 ---Check for unrecognized configuration keys

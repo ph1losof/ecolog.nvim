@@ -100,6 +100,17 @@ function M.set_enabled_sources(sources)
   state.enabled_sources = sources or { shell = true, file = true }
 end
 
+---Initialize enabled sources from config defaults
+---@param defaults? EcologSourceDefaults
+function M.init_from_config(defaults)
+  if defaults then
+    state.enabled_sources = {
+      shell = defaults.shell ~= false,
+      file = defaults.file ~= false,
+    }
+  end
+end
+
 ---Get interpolation enabled state
 ---@return boolean
 function M.get_interpolation_enabled()

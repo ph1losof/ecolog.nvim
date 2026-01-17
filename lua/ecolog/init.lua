@@ -28,6 +28,12 @@ function M.setup(opts)
   -- Configure
   config.setup(opts)
 
+  -- Initialize state from config defaults (e.g., sources.defaults)
+  local lsp_cfg = config.get_lsp()
+  if lsp_cfg.sources and lsp_cfg.sources.defaults then
+    state.init_from_config(lsp_cfg.sources.defaults)
+  end
+
   -- Setup statusline with highlights
   local statusline = require("ecolog.statusline")
   statusline.setup(config.get_statusline())

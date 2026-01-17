@@ -66,11 +66,18 @@ function M.build(user_config)
     base_settings.strict = user_config.strict
   end
 
+  -- Add sources config if provided
+  if user_config.sources then
+    base_settings.sources = user_config.sources
+  end
+
   -- Merge with any additional user settings
   local settings = vim.tbl_deep_extend("force", base_settings, user_config.settings or {})
 
   -- Build init_options (sent as initializationOptions to LSP)
-  local init_options = user_config.init_options or {}
+  -- The LSP reads configuration from initializationOptions, so we merge
+  -- base_settings into init_options to ensure features, strict, sources, etc. are sent
+  local init_options = vim.tbl_deep_extend("force", base_settings, user_config.init_options or {})
 
   return {
     cmd = cmd,
